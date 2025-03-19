@@ -1,0 +1,915 @@
+\documentclass[preprint,5p,times,twocolumn]{elsarticle}
+% \documentclass[preprint,5p,times,twocolumn]{elsarticle}
+\usepackage[UTF8, scheme=plain, punct=plain, zihao=false]{ctex}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{bm}
+\usepackage{color}
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{url}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, citecolor=blue, linkcolor=blue, urlcolor=blue}
+
+% \bibliographystyle{apalike}
+\bibliographystyle{elsarticle-num}
+% \biboptions{authoryear}
+
+\usepackage{caption}
+\captionsetup[figure]{labelfont={bf}, labelformat={default}, labelsep=period, name={Fig.}}
+
+\renewcommand{\dblfloatpagefraction}{.9}
+
+
+\journal{Journal of King Saud University - Computer and Information Sciences}
+
+
+\begin{document}
+\begin{frontmatter}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\title{Extended Euclidean Distance-based Model Predictive Control for Safety-Critical Dynamic Obstacle Avoidance
+}
+
+% 我想体现运动规划方法 扩展欧式距离 包括全局层，局部层
+% Extended Euclidean distance-based Model Predictive Control (EEMPC-Planner)基于扩展欧式距离的模型预测控制规划器: 动态环境下的实时 AMD 运动规划框架
+% 原本题目: A Safety-Critical Method with Model Predictive Control and Control Barrier Function for Dynamic Autonomous Obstacle-Avoidance
+
+%Advanced Safety-Critical Dynamic Obstacle Avoidance for Autonomous Mobile Robots: Integrating Model Predictive Control with Extended Euclidean Distance Metrics
+
+%Enhanced Autonomous Obstacle Avoidance through Model Predictive Control and Extended Euclidean Distance Metrics: A Safety-Critical Approach
+
+%Enhanced Autonomous Obstacle Avoidance: A Safety-Critical MPC and Extended Euclidean Distance Integrated Approach
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+在本文, 一个基于模型预测控制(MPC)的安全关键动态避障方法被提出, 该方法使用一种基于扩展欧氏距离(EE)的安全指标，相比其它方法能够更早地判断动态障碍物的风险关系，从而使移动机器人制定更好的避让决策. 
+% This paper proposes a safety-critical dynamic obstacle avoidance method utilizing Model Predictive Control (MPC), which employs a safety metric defined by the Extended Euclidean Distance (EE) to evaluate the risk associated with a dynamic obstacle in advance, thereby facilitating improved avoidance decisions for autonomous mobile robots. 
+首先, 发展了一种基于板载激光雷达的动态感知方法, 通过点云处理技术, 完成障碍物的检测和预测.
+% Firstly, a dynamic perceptual approach utilizing parametric representation is developed for identifying and predicting moving obstacles through point cloud processing technology.
+接着, 在全局规划层, 一种结合了基于扩展欧式距离的安全指标(EESM)和运动学约束的路径搜索算法被设计，以得到无碰撞的全局路径.
+% Then, at the global planning layer, a path search algorithm combining Extended Euclidean Distance Based Safety Metrics (EESM) and kinematic constraints is designed to obtain collision-free global paths.
+在局部规划层, 扩展了传统控制屏障函数（CBF），提出了扩展控制屏障函数（ECBF）. 并将ECBF与MPC结合（MPC-ECBF）, 使移动机器人在跟踪参考轨迹时实现安全关键的障碍物避免.
+% At the local planning layer, the traditional control barrier function (CBF) is extended and the extended control barrier function (ECBF) is proposed. And the ECBF is combined with MPC (MPC-ECBF) to enable AMR to realize safety-critical obstacle avoidance while tracking a reference trajectory.
+最后, 仿真实验和实景实验所获得的更高的成功率和更好的轨迹平滑度, 说明了应用所提出方法的自主导航框架更有效和更安全.
+% Finally, the higher success rate and better trajectory smoothness obtained from both simulation and real-world experiments illustrate that the autonomous navigation framework applying the proposed method is more effective and safer.
+
+\end{abstract}
+
+\begin{keyword}
+Autonomous mobile robots \sep
+Safety-critical control \sep
+Model predictive control \sep
+Control barrier function \sep
+Dynamic collision avoidance
+\end{keyword}
+
+\end{frontmatter}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 1%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+
+\begin{figure}[htp]
+\centering
+\includegraphics[width=8.5cm]{images/1cover_fig.png}
+\caption{Example of planning feasible trajectories for a wheeled mobile robot in an unknown dynamic environment.}
+\label{fig.1}
+\end{figure}
+
+\label{introduction}
+移动机器人的自主导航技术在过去几十年取得令人鼓舞的进步，地面机器人尤其已经广泛地参与到我们社会生活的各个方面。
+% Autonomous navigation technologies for AMR have made encouraging progress in the past decades, and ground-based robots in particular have become widely involved in all aspects of our social life.
+如Fig.\ref{fig.1}所示，在包括其它机器人或行人的工作空间中，动态目标会对正在执行自主导航任务的移动机器人形成干扰，甚至造成安全事故。
+% As shown in Fig.\ref{fig.1}, in a workspace that includes other robots or pedestrians, dynamic targets can interfere with AMR that are performing autonomous navigation tasks, or even cause safety accidents.
+这对移动机器人自主导航技术面对动态目标的安全关键避障能力提出了更高的要求。
+% This puts higher requirements on the safety-critical obstacle avoidance capability of AMR autonomous navigation technology in the face of dynamic targets.
+
+
+运动规划技术是AMR的自主导航技术的至关重要的组成部分\citep{schwarting2018planningAD}.
+% Motion planning techniques are a crucial component of AMR's autonomous navigation technology\citep{schwarting2018planningAD}.
+运动规划通常分为全局规划和局部规划,是生成起始状态到目标状态的最佳的最佳决策,也称为最佳运动轨迹的过程\citep{Han2022AnES}.
+% Motion planning is usually categorized into global planning and local planning, which is the process of generating the best optimal decision from the start state to the target state, also known as the optimal motion trajectory\citep{Han2022AnES}.
+局部规划需要完成轨迹的细化处理,而且对应动态障碍物需要实时地制定安全关键的规避策略\citep{Zhou2020EGOPlannerAE,Annaswamy2024ControlFS}.
+% Local planning requires the refinement of the trajectory and the development of safety-critical avoidance strategies in real time for dynamic obstacles\citep{Zhou2020EGOPlannerAE,Annaswamy2024ControlFS}.
+但由于以下方面，移动机器人在自主导航时考虑动态障碍物的运动规划仍是个开放性的问题：
+% However, motion planning for AMR considering dynamic obstacles during autonomous navigation is still an open problem due to the following aspects:
+第一, 对于移动机器人而言, 实现动态场景下对障碍物可靠的检测与预测仍然是一项具有挑战性的任务\citep{Xu2022ARD, schmid2023dynabloxRD}。
+% Firstly, achieving reliable detection and prediction of obstacles in dynamic scenarios remains a challenging task for AMRs\citep{Xu2022ARD, schmid2023dynabloxRD}.
+第二, 目前大部分运动规划方法将移动机器人和障碍物的传统的欧式距离(CE)作为安全指标，而忽略了速度信息, 导致产生激进或保守的避障策略\citep{Chen2022RealtimeIA}.
+% Secondly, most of the current motion planning methods use the Conventional European distance (CE) between the AMR and the obstacle as a safety metric while ignoring the velocity information, leading to the generation of aggressive or conservative obstacle avoidance strategies\citep{Chen2022RealtimeIA}.
+第三,在动态环境下，许多采用欧式距离硬约束的运动规划方法生成令系统震荡或阻塞的避障策略，导致避障失败\citep{Chen2023RASTRS}.
+% Thirdly, in dynamic environments, many motion planning methods that use hard constraints on the Euclidean distance generate obstacle avoidance strategies that cause the system to oscillate or block, leading to obstacle avoidance failures\citep{Chen2023RASTRS}.
+
+
+为了解决这些问题, 一种基于板载激光雷达的方法被提出了, 其新颖之处在于采用EESM来评估动态环境中的轨迹状态安全性.
+% In order to solve these problems, an onboard LIDAR-based approach has been proposed, which is novel in that it employs EESM to evaluate the safety of trajectory states in dynamic environments.
+EE是CE与速度障碍物（VO）的结合, 被集成进移动机器人轨迹的位置和速度的状态的安全评估中, 并应用于一个结合CBF的MPC（MPC-ECBF）的运动规划框架中.
+% EE is a combination of CE and Velocity Obstacle (VO)\citep{Xu2020CollisionAO}, which is integrated into the safety assessment of the position and velocity states of AMR trajectories, and applied in a motion planning framework that combines MPC with CBF (MPC-ECBF).
+在动态感知层, 对实时点云执行基于密度的聚类操作\citep{Nasibov2009RobustnessOD}, 将障碍物参数化表示为最小边界球. 接着使用KM算法\citep{Kuhn1955TheHM}完成帧间障碍物的数据关联, 并通过曲线拟合的方法表示预测轨迹.
+% At the dynamic perception layer, a density-based clustering operation\citep{Nasibov2009RobustnessOD} is performed on the real-time point cloud to parametrically represent the obstacle as a minimum bounding sphere. Then the KM algorithm \citep{Kuhn1955TheHM} is used to complete the data association of obstacles between frames, and the predicted trajectories are represented by curve fitting.
+在全局规划层, EESM引导的路径搜索算法被开发了, 用于得到无碰撞的全局路径, 其中EESM被用于扩展基元过程中的碰撞检查.
+% At the global planning level, EESM-guided path search algorithms are developed for obtaining collision-free global paths, where EESM is used for collision checking in the extended primitive process.
+在局部规划层中, 使用EE扩展了CBF, 并以此提出了一种结合了ECBF的MPC，用于生成实时的无碰撞的局部轨迹.
+% In the local planning layer, CBF is extended using EE, and in this way an MPC incorporating ECBF is proposed for generating real-time collision-free local trajectories.
+最后所提出方法被集成到一个自主导航框架中.
+% Finally the proposed method is integrated into an autonomous navigation framework.
+
+本文的贡献点如下:
+% The contributions of this paper are outlined as follows:
+\begin{itemize}
+\item 提出一种基于EE的安全指标, 与基于CE指标相比, 能更好地描述移动机器人与障碍物之间的时空风险。
+% \item An EE-based safety metric is proposed to better characterize the spatio-temporal risk between AMR and obstacles compared to CE-based metrics.
+\item 提出一个基于EESM的运动规划方法, 结合了基于EESM引导的全局路径搜索以及基于MPC-ECBF的局部路径优化, 能在动态场景中实时地生成可行的无碰撞轨迹。
+% \item An EESM-based motion planning method is proposed, which combines EESM-guided global path search and MPC-ECBF-based local path optimization to generate feasible collision-free trajectories in dynamic scenes in real time.
+\item 通过在虚拟和真实环境的实验，我们所提出的方法的有效性和稳定性得到了验证。
+% \item The effectiveness and stability of our proposed method is verified through experiments in both virtual and real environments.
+\end{itemize}
+
+
+
+% \subsection{System Framework}
+% \label{system_overview}
+我们的系统框架如Fig.\ref{fig.2}所示，主要包括以下几个模块。
+% The framework of our system is shown in Fig.\ref{fig.2} and consists of the following modules.
+基于FAST-LIO\citep{Xu2020FASTLIOAF}的状态估计模块用于实现移动机器人的定位。
+% A state estimation module based on FAST-LIO\citep{Xu2020FASTLIOAF} is used to realize the localization of AMR.
+在Section.\ref{Dynamic_Perception}中，介绍了用于检测和预测障碍物状态的动态感知模块。
+% In Section.\ref{Dynamic_Perception}, the dynamic perception module for detecting and predicting the state of an obstacle is described.
+% 在Section.\ref{AED-section}中，制定并推导了EE和EESM。
+% In Section.\ref{AED-section}, EE and EESM are formulated and derived.
+基于EESM引导的路径搜索算法在Section.\ref{Path_Searching}中被描述。
+% The path searching algorithm based on EESM bootstrapping is described in Section.\ref{Path_Searching}.
+在Section.\ref{ACBF-section}中，使用EE扩展的CBF被制定。
+% In Section.\ref{ACBF-section}, CBFs using EE extensions are formulated.
+MPC-ECBF的优化问题在Section.\ref{MPC-section}中被介绍。
+% The optimization problem of MPC-ECBF is presented in Section.\ref{MPC-section}.
+在Section.\ref{related_work}中概述了相关工作。在Section.\ref{Experiments}中，描述了实验设置和结果讨论。最后在\ref{CONCLUSIONS}中介绍了结论和未来的工作。
+% In Section.\ref{related_work} the related work is summarized. In Section.\ref{Experiments}, the experimental setup and discussion of results are described. Finally, conclusions and future work are presented in \ref{CONCLUSIONS}.
+
+
+
+% \item Dynamic Perception：通过对原始点云进行处理，我们把检测到的障碍物参数化表示为封闭圆形，并通过贝塞尔曲线拟合的方法得到障碍物的预测轨迹，我们在Section.\ref{Dynamic_Perception}中简要介绍了这一过程。
+% \item Global Planning：基于障碍物的预测轨迹和AMR里程计，使用ADSM引导的路径搜索算法去搜索一条符合运动动力学且无碰撞的全局路径，在Section.\ref{Path_Searching}中介绍了该算法。其中AD以及ADSM的概念在Section.\ref{AED-section}中详细介绍了制定的过程。搜索得到全局路径被作为初始参考轨迹发送至局部规划模块中。
+% \item Local Planning：在Section.\ref{MPC-section}中设计了一个非线性模型预测控制优化问题以执行对参考轨迹的同步跟踪, 其中使用ADSM去制定控制屏障函数去作为安全约束实现安全关键的障碍物规避，这部分在Section.\ref{ACBF-section}中介绍。经优化后的局部轨迹最后被发送至机载控制器来驱动移动机器人。
+
+
+\begin{figure}[htp]
+\centering
+\includegraphics[width=9cm]{images/2system-frame.png}
+\caption{系统框架概述。从IMU和激光雷达传感器接收到原始数据后，状态估计模块用于估计机器人的定位。动态感知模块利用激光雷达的实时点云数据，通过聚类拟合实现障碍物的几何表示，并通过曲线拟合预测障碍物的未来轨迹。运动规划模块的全局规划层中，执行碰撞检测并在必要时激活重新规划。EESM用于指导路径搜索以生成无碰撞的全局路径。局部规划层通过求解MPC-ECBF优化问题生成控制指令并发送至移动机器人板载控制器，实现自主导航和避障。}
+% \caption{Overview of the system framework. After receiving raw data from the IMU and LIDAR sensors, the state estimation module is used to estimate the robot's localization. The dynamic sensing module utilizes the real-time point cloud data from the LiDAR to achieve a geometric representation of the obstacle through cluster fitting and predicts the future trajectory of the obstacle through curve fitting. The global planning layer of the motion planning module performs collision detection and activates replanning when necessary.EESM is used to guide the path search to generate collision-free global paths. The local planning layer generates control commands by solving the MPC-ECBF optimization problem and sends them to the AMR on-board controller for autonomous navigation and obstacle avoidance.}
+\label{fig.2}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 2%%%%%%%%%%%%%%%%%%
+\section{Related Work}
+\label{related_work}
+% 这部分需要重新修改一下论述顺序为: 动态感知方法，运动规划->动态避障（实时避障）->MPC-CBF
+% 先用2，3篇工作介绍所用到的动态感知方法；然后介绍动态环境下的运动规划方法
+相比于在静态环境，在动态环境中的避障对运动规划更具挑战性，因为需要在规划器中增加时间维度，以此考虑动态障碍物的未来状态。
+% Obstacle avoidance in dynamic environments is more challenging for motion planning than in static environments because of the need to add a time dimension to the planner as a way to take into account the future state of dynamic obstacles.
+目前主要有两类考虑动态障碍物的方法。一是将静态障碍物和动态障碍物统一使用一种带有速度信息的粒子进行连续占用映射表示\citep{Guizilini2019DynamicHM, Chen2022ContinuousOM}。但这类方法往往需要高昂的成本维护这个映射以及不能准确预测动态障碍物的轨迹。
+% There are two main types of approaches to consider dynamic obstacles. One is to represent static and dynamic obstacles uniformly using a continuous occupancy mapping of particles with velocity information\citep{Guizilini2019DynamicHM, Chen2022ContinuousOM}. However, such methods often require high costs to maintain this mapping as well as fail to accurately predict the trajectories of dynamic obstacles.
+另一个是以几何的方式跟踪和表示动态障碍物，然后将动态信息融合进表示静态障碍物的占用网格映射中\citep{Lin2020RobustVO,Xu2022VisionaidedUN}。这类方法因为能针对动态目标使用卡尔曼滤波等状态预测技术，能更加快速且准确地预测动态障碍物的轨迹。
+% Another is to track and represent dynamic obstacles geometrically and then fuse the dynamic information into an occupancy mesh mapping that represents static obstacles\citep{Lin2020RobustVO,Xu2022VisionaidedUN}. This type of approach can predict the trajectories of dynamic obstacles more quickly and accurately because it can use state prediction techniques such as Kalman filtering for dynamic targets.
+
+% 介绍动态环境下的运动规划方法
+在动态环境中的运动规划方法往往是静态环境中的方法的继承，并且添加了一些额外处理动态障碍物的技术在全局规划层和局部规划层。
+% Motion planning methods in dynamic environments are often an inheritance of methods in static environments and add some additional techniques for dealing with dynamic obstacles at the global planning layer and at the local planning layer.
+在全局规划层，得益于动态障碍物的几何表示，\citep{wang2021autonomousFI}扩展了传统的Kinodynamic A*算法\citep{Zhou2019RobustAE}，通过在扩展基元的采样检查阶段加入对动态障碍物的碰撞检查，以得到无碰撞的初始轨迹。
+% At the global planning layer, thanks to the geometric representation of dynamic obstacles,\citep{wang2021autonomousFI} extends the traditional Kinodynamic A* algorithm\citep{Zhou2019RobustAE} to obtain collision-free by adding collision checking for dynamic obstacles in the sampling checking stage of the extended primitives to obtain a collision-free initial trajectory.
+在局部规划层，一些反应式方法被广泛应用，例如动态窗口法(DWA)\citep{fox1997TheDW}，人工势场(APF)\citep{khatib1985realTO}和速度障碍物(VO)\citep{fiorini1998MotionPI}等。
+% At the local planning layer, some reactive methods are widely used, such as the Dynamic Window Approach (DWA)\citep{fox1997TheDW}, Artificial Potential Field (APF)\citep{khatib1985realTO} and Velocity Obstacle (VO)\citep{fiorini1998MotionPI}.
+这类方法可以根据当前的环境信息制定实时的避障策略，但在处理复杂的动态场景时，由于其短视的局部性可能导致系统震荡。
+% This type of approach can develop real-time obstacle avoidance strategies based on the current environmental information, but may lead to system oscillations due to its short-sighted localization when dealing with complex dynamic scenes.
+相较之下，轨迹优化方法在动态环境中往往表现出更安全，更稳定的性能，因为动态障碍物的未来状态被纳入到前向时间域的评估轨迹轨迹安全性的过程中。
+% In contrast, trajectory optimization methods tend to exhibit safer and more stable performance in dynamic environments, as the future state of dynamic obstacles is incorporated into the forward time domain for assessing the safety of trajectory trajectories.
+% 无模型预测：距离惩罚项，分段轨迹细化->非线性优化问题 1.轨迹可能无法执行 2.陷入局部最优
+% 有模型预测：MPC方法 求解难度增大
+\citep{wang2021autonomousFI}将动态障碍物几何表示为椭球体，通过在轨迹优化求解分段轨迹非线性优化问题，以得到无碰撞的平滑局部轨迹。但这种方法没有考虑模型预测问题，导致所生成的轨迹移动机器人无法执行。
+% \citep{wang2021autonomousFI} represents the dynamic obstacle geometry as an ellipsoid by solving the segmented trajectory nonlinear optimization problem in trajectory optimization in order to obtain collision-free smooth local trajectories. However, this approach does not consider the model prediction problem, resulting in the generated trajectories mobile robots cannot execute.
+针对该问题，一些基于MPC的方法被提出\citep{Ji2017PathPA}，并且各种避障方法被引入到MPC的安全约束制定当中，例如外形轮廓\citep{Brito2019ModelPC}、碰撞概率\citep{Xu2021DPMPCPlannerAR}、VO\citep{Piccinelli2023MPCBM}和CBF\citep{Manjunath2020SafeAR,Singletary2020ComparativeAO}等。
+% To address this problem, some MPC-based approaches have been proposed\citep{Ji2017PathPA}and various obstacle avoidance methods have been introduced into the formulation of safety constraints for MPC, such as shape profile\citep{Brito2019ModelPC}, collision probability\citep{Xu2021DPMPCPlannerAR}, VO\citep{Piccinelli2023MPCBM}and CBF\citep{Manjunath2020SafeAR,Singletary2020ComparativeAO}, etc.
+其中基于CBF的方法近年被广泛研究，以实现移动机器人的安全关键避障\citep{ames2019controlBF, Li2023ASO}。Zeng等人在\citep{Zeng2020SafetyCriticalMP}提出了一种具有离散时间CBF约束的MPC，实现了在静态避障，并在\citep{Zeng2021EnhancingFA}中研究了可行性和安全性的协商，以增大MPC的可解性。在此基础上，\citep{jian2022dynamicCB}考虑了动态障碍物的未来状态，提出了一种具有离散时间的动态控制屏障函数的MPC，实现了简单场景下的动态避障。
+% Among them, CBF-based methods have been widely studied in recent years to realize safety-critical obstacle avoidance for AMRs \citep{ames2019controlBF, Li2023ASO}.Zeng et al. proposed an MPC with discrete-time CBF constraints in \citep{Zeng2020SafetyCriticalMP}. realized in static obstacle avoidance, and investigated the feasibility and safety negotiation in \citep{Zeng2021EnhancingFA} to increase the solvability of the MPC. Based on this, \citep{jian2022dynamicCB} considers the future state of dynamic obstacles, and proposes an MPC with a discrete-time dynamic control barrier function to realize dynamic obstacle avoidance in simple scenarios.
+但这些方法大多只考虑了动态障碍物的未来位置，而忽略了它们的速度信息，这不足以在复杂动态环境中确保移动机器人的安全。
+% However, most of these methods only consider the future positions of dynamic obstacles and ignore their velocity information, which is not sufficient to ensure the safety of AMRs in complex dynamic environments.
+在本文中，我们的方法结合CE与VO的特点提出一个新颖的安全指标EESM，并应用于运动规划框架中，以提高动态环境中移动机器人路径的安全性和可行性。
+% In this paper, our approach combines the characteristics of CE and VO to propose a novel safety metric, EESM, which is applied to a motion planning framework to improve the safety and feasibility of AMR paths in dynamic environments.
+
+
+% 移动机器人对动态障碍物规避的研究可以分为反应式方法，基于学习的方法和基于规划的方法.
+% Research on dynamic obstacle avoidance by AMR can be categorized into reactive, learning-based and planning-based methods.
+% 反应式方法包括动态窗口(DWA)\citep{fox1997TheDW}，人工势场(APF)\citep{khatib1985realTO}，速度障碍物(VO)\citep{fiorini1998MotionPI}和社会力\citep{ferrer2013robotCA}等.
+% Reactive methods include Dynamic Window (DWA)\citep{fox1997TheDW}, Artificial Potential Field (APF)\citep{khatib1985realTO}, Velocity Obstacle (VO)\citep{ fiorini1998MotionPI} and Social Force\citep{ferrer2013robotCA} and so on.
+% 这类方法可以根据当前的环境信息制定实时的避障策略, 但在处理复杂的动态场景时, 其可能陷入局部最优甚至系统震荡的情况.
+% These methods can formulate real-time obstacle avoidance strategies based on the current environmental information, but when dealing with complex dynamic scenes, they may fall into local optimization or even system oscillation.
+% 一些基于学习方法建立并训练以学习从输入数据到避障决策的映射网络. 但这些方法通常需要大量的训练数据和计算资源，并可能只针对特定场景\citep{Chen2023SafeAS, Xie2023DRLVOLT}.
+% Some learning-based methods build and train networks to learn the mapping from input data to obstacle avoidance decisions. However, these methods usually require a large amount of training data and computational resources, and may only target specific scenarios\citep{Chen2023SafeAS, Xie2023DRLVOLT}.
+
+% 在动态环境中，基于规划的方法往往更安全、更稳定，因为动态障碍物的预测信息被纳入到前向时间域中评估轨迹轨迹的安全性的过程中.
+% In dynamic environments, planning-based methods tend to be safer and more stable because predictive information about dynamic obstacles is incorporated into the process of evaluating the safety of trajectory trajectories in the forward time domain.
+% 基于规划的方法通常分为全局规划层和局部规划层, 全局规划在先验地图的基础上确定从起始点到目标点的一条大致路径.
+% Planning-based methods are usually divided into a global planning layer and a local planning layer, where the global planning determines an approximate path from the start point to the goal point on the basis of an a priori map.
+% 局部规划根据所获取的局部环境信息, 采用轨迹优化技术对全局路径进行细化和调整的规划, 在其中的优化目标函数中添加各种量化障碍物距离的惩罚项作为安全约束\citep{wang2021autonomousFI}.
+% Local planning based on the acquired local environment information, using trajectory optimization techniques to refine and adjust the global path planning, in which the optimization objective function to add a variety of quantitative obstacle distance penalty term as a security constraint \citep{wang2021autonomousFI}.
+% 一些方法依靠复杂状态机触发局部重规划，难以满足动态场景下实时性和可靠性的要求\citep{Chen2023RASTRS}。
+% Some approaches rely on complex state machines to trigger local replanning, which is difficult to meet the requirements of real-time and reliability in dynamic scenarios\citep{Chen2023RASTRS}.
+% 而我们的方法是基于MPC，近年来它被广泛用于实时地生成可行的局部路径。
+% In contrast, our approach is based on MPC, which has been widely used in recent years to generate feasible local paths in real time.
+% \citep{Brito2019ModelPC}基于碰撞检查机制，开发了Model Predictive Contouring Control (MPCC).
+% \citep{Brito2019ModelPC} developed Model Predictive Contouring Control (MPCC) based on the collision checking mechanism.
+% \citep{Xu2021DPMPCPlannerAR}基于碰撞概率制定了安全约束，开发了Dynamic Polynomial-based Model Predictive Control (DPMPC).
+% \citep{Xu2021DPMPCPlannerAR} developed Dynamic Polynomial-based Model Predictive Control (DPMPC) by formulating safety constraints based on collision probabilities.
+% \citep{Liu2022DynamicOA}将VO的概念引入MPC，实现了移动机器人对动态障碍物的碰撞避免. 
+% \citep{Liu2022DynamicOA} introduces the concept of VO into MPC to realize collision avoidance of dynamic obstacles by AMR.
+% 但这些方法仅在障碍物分布稀疏或者运动模式简单的情况下适用，而在更复杂的动态场景下表现不佳.
+% However, these methods are only applicable when the obstacle distribution is sparse or the motion pattern is simple, and perform poorly in more complex dynamic scenes.
+
+% 需要解释CBF-MPC的联系
+% 与SSA类似, CBF也是控制理论中用于确保系统安全性的重要概念, 它是受控制李雅普诺夫函数方法启发而产生\citep{Li2023ASO}.
+% Similar to SSA, CBF is an important concept used in control theory to ensure the safety of a system, which is inspired by the control Lyapunov function approach \citep{Li2023ASO}.
+% CBF通过制定一个连续可微的函数来定义一个安全集, 并且通过控制输入来确保系统保持在安全集范围内, 最近被广泛研究\citep{nguyen2016exponentialCB, xiao2019controlBF, Ma2021FeasibilityEO}. 
+% CBF defines a safe set by formulating a continuously differentiable function, and ensures that the system stays within the safe set by controlling the inputs, which has been widely studied recently\citep{nguyen2016exponentialCB, xiao2019controlBF, Ma2021FeasibilityEO}.
+% 并且一些工作通过将CBF与MPC结合起来形成一种在避障方面的强大的控制策略(MPC-CBF), 该控制策略结合了CBF的安全性的保证以及MPC的最优性的保证, 但仅在静态场景下表现出较好的效果\citep{Zeng2020SafetyCriticalMP, Zeng2021EnhancingFA, he2022autonomousRW}.
+% Moreover, some works have combined CBF with MPC to form a powerful control strategy in obstacle avoidance (MPC-CBF), which combines the safety guarantee of CBF and the optimality guarantee of MPC, but only shows good results in static scenarios\citep{Zeng2020SafetyCriticalMP, zeng2021EnhancingFA, he2022autonomousRW}.
+% \citep{jian2022dynamicCB}在制定CBF时考虑了动态障碍物的预测轨迹，提出了动态控制屏障函数(DCBF)并与MPC结合，实现了在简单的动态场景下对障碍物的规避.
+% \citep{jian2022dynamicCB}The predicted trajectories of dynamic obstacles are taken into account in the formulation of the CBF, and the dynamic control barrier function (DCBF) is proposed and combined with the MPC to realize the obstacle avoidance in simple dynamic scenarios.
+% 但这些MPC-CBF方法的CBF是基于移动机器人与障碍物之间的欧式距离而制定的，这样的做法忽略了两者的的速度信息，导致CBF不足以在高度非线性动态场景下的移动机器人的安全性. 
+% However, the CBFs of these MPC-CBF methods are formulated based on the Euclidean distance between the mobile AMR and the obstacle, such an approach ignores the velocity information of both, resulting in CBFs that are insufficient for the safety of the mobile AMR in highly nonlinear dynamic scenarios.
+% 在本文中，我们的方法考虑了障碍物位置和速度，提出一个扩展欧氏距离的安全指标. 并将该指标集成进全局规划层和局部规划层，通过发挥基于SSA的方法和基于规划的方法的优点, 以提高复杂在动态场景中规划的轨迹的安全性和质量。
+
+
+
+
+\begin{table}[htbp]
+  \vspace{-0.20cm}
+  \centering
+  \caption{Symbols and their meanings used in the formulas}
+  \renewcommand{\arraystretch}{1.1}
+  \setlength{\tabcolsep}{3mm}{
+  
+    \begin{tabular}{cc}
+    \hline
+    \multicolumn{1}{p{4em}}{\textbf{Symbol}} & \multicolumn{1}{p{16.0em}}{\textbf{Definitions}}\\
+    \hline
+    \multicolumn{1}{c}{$C$} & \multicolumn{1}{l}{$C \subset \mathcal{E}^{\text {obs}}$, 障碍物的点云簇}\\
+    \hline
+    \multicolumn{1}{c}{$O$} & \multicolumn{1}{l}{$O \subset \mathcal{A}^{\text {obs}}$, 代表障碍物的封闭圆形区域}\\
+    \hline
+    \multicolumn{1}{c}{$\boldsymbol{x}$} & \multicolumn{1}{l}{$\boldsymbol{x} \in \mathcal{X}_{tra}$, 机器人状态量}\\
+    \hline
+    \multicolumn{1}{c}{$\boldsymbol{u}$} & \multicolumn{1}{l}{$\boldsymbol{u} \in \mathcal{U}$, 机器人控制量}\\
+    \hline
+    \multicolumn{1}{c}{$\boldsymbol{p}, \boldsymbol{v}$} & \multicolumn{1}{l}{机器人位置, 速度}\\
+    \hline
+    \multicolumn{1}{c}{$\boldsymbol{p}^{ob}, \boldsymbol{v}^{ob}$} & \multicolumn{1}{l}{障碍物位置, 速度}\\
+    \hline
+    \multicolumn{1}{c}{$CE,EE$} & \multicolumn{1}{l}{当前, 超前欧式范数}\\
+    \hline
+    \multicolumn{1}{c}{$\tau,\tau_{max}$} & \multicolumn{1}{l}{超前时间，最大超前时间}\\
+    \hline
+    \multicolumn{1}{c}{$K_h$} & \multicolumn{1}{l}{$\tau$值放松系数}\\
+    \hline
+    \multicolumn{1}{c}{$\operatorname{CESM}$} & \multicolumn{1}{l}{基于当前欧式距离的安全指标}\\
+    \hline
+    \multicolumn{1}{c}{$\operatorname{EESM}$} & \multicolumn{1}{l}{基于超前欧式距离的安全指标}\\
+    \hline
+    \multicolumn{1}{c}{$X$} & \multicolumn{1}{l}{$X \in \mathcal{D}$, 系统状态量}\\
+    \hline
+    \multicolumn{1}{c}{$\mathcal{Z}$} & \multicolumn{1}{l}{$\mathcal{Z} \subset \mathcal{D}$, 系统状态的安全集}\\
+    \hline
+    \multicolumn{1}{c}{$h_{CE}$} & \multicolumn{1}{l}{基于$CE$控制屏障函数(DCBF)}\\
+    \hline
+    \multicolumn{1}{c}{$h_{EE}$} & \multicolumn{1}{l}{基于$EE$控制屏障函数(ECBF)}\\
+    \hline
+    \multicolumn{1}{c}{$K_c$} & \multicolumn{1}{l}{CBF分隔系数}\\
+    \hline
+    \multicolumn{1}{c}{$\gamma$} & \multicolumn{1}{l}{CBF中的扩展K类函数}\\
+    \hline
+    \multicolumn{1}{c}{$\epsilon$} & \multicolumn{1}{l}{MPC中关于CBF松弛变量}\\
+    \hline
+    \end{tabular}%
+    }
+  \label{tab:Symbol}%
+\end{table}%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 3%%%%%%%%%%%%%%%%%%
+% \section{Overview Of The Framework}
+
+% \subsection{Problem Formulation}
+% \label{problem_formulation}
+% 在存在静态和动态障碍物的未知环境中对移动机器人可靠的自主导航问题可以分成稳定性和安全性两部分: 1）保证机器人跟踪参考轨迹或行进到目标点; 2）保证机器人不与障碍物发生碰撞。首先进行基本的定义和假设：
+% The problem of reliable autonomous navigation for AMR in unknown environments in the presence of static and dynamic obstacles can be divided into two parts, stability and safety: 1.Ensuring that the robot tracks a reference trajectory or travels to a target point; 2.Ensuring that the robot does not collide with obstacles. Basic definitions and assumptions are made first:
+
+% 1）移动机器人在一个二维工作空间上运行$\mathcal{X} \subset \mathbb{R}^2$，工作空间中障碍物表示一些占据空间$\mathcal{X}_{obs} \subset \mathcal{X}$。 工作空间除去占据空间的剩余空间就是自由空间$\mathcal{X}_{free} = \mathcal{X} \backslash \mathcal{X}_{obs}$，自由空间包括了移动机器人的可行空间$\mathcal{X}_{tra} \subset \mathcal{X}_{free}$。 
+% 1) AMR operating on a 2D workspace $\mathcal{X} \subset \mathbb{R}^2$, obstacles in the workspace indicate some occupied space $\mathcal{X}_{obs} \subset \mathcal{X}$. The space remaining in the workspace after the occupied space is the free space $\mathcal{X}_{free} = \mathcal{X} \backslash \mathcal{X}_{obs}$, free space includes the feasible space $\mathcal{X}_{tra} \subset \mathcal{X}_{free}$ for AMR.
+
+% 2）差速驱动的移动机器人动力学被离散时间非线性系统描述Eq.\ref{eq.model}，其中状态量、控制量、位置和速度分别表示为$\boldsymbol{x}=[x,y,\theta] \in X_{tra}$、$\boldsymbol{u}=[v,\omega]$、$\boldsymbol{p}=[x,y]$、$\boldsymbol{v}=[\dot x,\dot y]$。$v$、$\omega$分别表示移动机器人的线速度和角速度。移动机器人方向角$\theta=\arctan(\dot y, \dot x)$可以由$x，y$以微分平坦的方式表示。
+% 2) Differential-drive AMR dynamics are described by discrete-time nonlinear systems Eq.\ref{eq.model}, where the state, control, position, and velocity quantities are denoted as $\boldsymbol{x}=[x,y,\theta] \in X_{tra}$, $\boldsymbol{u}=[v,\omega]$, $\boldsymbol{p}=[x,y]$, $\boldsymbol{v}=[\dot x,\dot y]$, respectively. $v$ and $\omega$ denote the linear and angular velocities of the AMR respectively. The AMR orientation angle $\theta=\arctan(\dot y, \dot x)$ can be represented by $x$ and $y$ in a differential flat manner.
+
+% 3）障碍物可以被参数化表示为封闭圆形空间$O \subset \mathbb{R}^2$。每个障碍物可以由位置，半径两个参数表示$\boldsymbol{p}^{ob}=[x_{ob},y_{ob}]$和半径 $r_{ob}$。
+% 3) Obstacles can be parametrically represented as closed circular spaces $O \subset \mathbb{R}^2$. Each obstacle can be represented by two parameters: position $\boldsymbol{p}^{ob}=[x_{ob},y_{ob}]$, and radius $r_{ob}$.
+
+% 4）环境中动态障碍物的最大速度与机器人的最大速度接近$\boldsymbol{v}^{ob}=[\dot x_{ob},\dot y_{ob}]$。
+% 4) The maximum speed of the dynamic obstacle is close to the maximum speed of the robot $\boldsymbol{v}^{ob}=[\dot x_{ob},\dot y_{ob}]$.
+
+% \begin{equation}
+% \label{eq.model}
+% \dot{\boldsymbol{x}}=\left[\begin{array}{c}
+% \dot{x} \\
+% \dot{y} \\
+% \dot{\theta}
+% \end{array}\right]=\left[\begin{array}{c}
+% v \cos (\theta) \\
+% v \sin (\theta) \\
+% \omega
+% \end{array}\right]=\left[\begin{array}{cc}
+% \cos (\theta) & 0 \\
+% \sin (\theta) & 0 \\
+% 0 & 1
+% \end{array}\right] \boldsymbol{u}.
+% \end{equation}
+
+
+% 问题的正式定义如下：给定移动机器人的初始状态$\boldsymbol{x}^{start}$和目标状态$\boldsymbol{x}^{goal}$，所设计的自主导航系统需要在离散时间域中生成一组可行的控制策略$\pi^* (0:N_{end}\mid t)$，去控制移动机器人从初始位置移动到目标位置。同时控制策略需要满足一些约束条件
+% The problem is formally defined as follows: given the initial $\boldsymbol{x}^{start}$ and target $\boldsymbol{x}^{goal}$ states of the AMR, the designed autonomous navigation system needs to generate a set of feasible control strategies $\pi^* (0:N_{end}\mid t)$ in the discrete time domain to control the AMR to move to the target position. At the same time the control strategies need to satisfy some constraints
+
+% 1)所有运动学和动力学约束; 2)避免与障碍物发生碰撞; 3)尽量减少控制成本; 4)尽量使运动轨迹平滑; 5)尽量减少行进时耗
+% \begin{equation}
+% \label{eq.problem}
+% \begin{aligned}
+% & \pi^*(\boldsymbol{x}_{start})=\min _{\boldsymbol{u}_{0: N_{end}-1 \mid t}} \boldsymbol{J}(\boldsymbol{x}_k, \boldsymbol{u}_k) \\
+% \text { s.t.} \quad &\boldsymbol{x}_{k+1}=f(\boldsymbol{x}_k, \boldsymbol{u}_k), k=0,1,...,N_{end}-1,\\
+% & \boldsymbol{x}_k \in \mathcal{X}_{tra}^k, \boldsymbol{u}_k \in \mathcal{U}, k=0,1,...,N_{end} \\
+% & \boldsymbol{x}_0=\boldsymbol{x}^{start} \in \mathcal{X}_{tra}^0, \\
+% & \boldsymbol{x}_{N_{end}}=\boldsymbol{x}^{goal} \in \mathcal{X}_{tra}^{N_{end}}, \\
+% \end{aligned}
+% \end{equation}
+% 其中$\boldsymbol{J}$是制定的优化目标函数，$f$是对应Eq.\ref{eq.model}的运动学模型。
+% where $\boldsymbol{J}$ is the formulated optimization objective function and $f$ is the kinematic model corresponding to Eq.\ref{eq.model}.
+ 
+% 最后Table.\ref{tab:Symbol}列出了我们在Section.\ref{method}中的公式所使用的符号及其含义.
+
+% Finally Table.\ref{tab:Symbol} lists the symbols used in our formulas in Section.\ref{method} and their meanings.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 4%%%%%%%%%%%%%%%%%%
+
+\begin{figure}[htp]
+\centering
+\includegraphics[width=8cm]{images/3ADSM concept.pdf}
+\caption{一个关于$EE$以及EESM的图示。障碍物半径会进行安全性的膨胀$r_{inflate}$。根据移动机器人与障碍物的相对位移，相对速度和膨胀半径可以计算出扩展时间的最大值$\tau_{max}$。假设每个障碍物是静止的，而移动机器人向对应的障碍物以$v_r$方向作扩展时间$\tau$的移动。若移动机器人模拟位置与障碍物发生重叠，则表明处于不安全状态。}
+% \caption{An illustration of EE as well as EESM. The radius of the obstacles undergoes a security inflation $r_{inflate}$. The maximum value of the expansion time $\tau_{max}$ can be computed based on the relative displacement of the AMR with respect to the obstacle, the relative velocity and the expansion radius. It is assumed that each obstacle is stationary and the AMR makes an expansion time $\tau$ toward the corresponding obstacle in the $v_r$ direction. If the simulated position of the AMR overlaps with the obstacle, it indicates an unsafe condition.}
+\label{fig.3}
+\end{figure}
+
+\section{Method}
+\label{method}
+
+\subsection{Advanced Euclidean Distance}
+\label{AED-section}
+
+本节介绍了移动机器人与障碍物之间的$Ad$的概念以及ADSM的制定。如图Fig.\ref{fig.3}所示，移动机器人与障碍物的$Cd$表示为两者的形心距离
+% This section introduces the concept of $Ad$ between an AMR and an obstacle and the formulation of ADSM. As shown in Fig.\ref{fig.3}, the $Cd$ between the AMR and the obstacle is denoted as the form-center distance between them
+\begin{equation}
+\label{eq.CED}
+Cd \triangleq Cd(t) := \left\|\boldsymbol{p}^{ob}(t)-\boldsymbol{p}(t)\right\|_2,
+\end{equation}
+其被应用于Section.\ref{related_work}中目前大部分安全关键系统中规划以及控制算法的安全指标中。通常当其小于所定义的安全距离时$Cd<d_{safe}$, 系统就会被认为处于不安全状态，因此基于普通欧式距离安全指标CDSM的通用评价公式被制定为
+% which is used in the safety metrics of planning as well as control algorithms in most of the current safety-critical systems in Section.\ref{related_work}. Usually when $Cd<d_{safe}$, the system is considered to be in an unsafe state, so a generalized evaluation formula based on the common Euclidean distance safety metric CDSM is formulated as
+\begin{equation}
+\begin{aligned}
+\label{eq.security certificate1}
+F_{CD}^i&:=Cd_i-d_{safe}>0,\\
+Cd_i&=\left\|\boldsymbol{p}^{ob}_i(t)-\boldsymbol{p}(t)\right\|_2.
+\end{aligned}
+\end{equation}
+其中$\boldsymbol{p}^{ob,i}_t$表示第i个障碍物在当前时间$t$的位置。
+% where $\boldsymbol{p}^{ob,i}_t$ denotes the position of the ith obstacle at the current time $t$.
+
+与$Cd$考虑在当前$t$时刻移动机器人与障碍物的位置不同，$Ad$被定义为在未来$t+\tau$时刻的移动机器人与障碍物的相对距离，其中两者的未来的位置通过当前位置、当前速度以及时间$\tau$进行前向积分预测。$Ad$被制定为以下形式
+% Unlike $Cd$, which considers the position of the AMR with respect to the obstacle at the current $t$ moment, $Ad$ is defined as the relative distance of the AMR with respect to the obstacle at the future $t+\tau$ moment, where the future positions of both are predicted by forward integration of the current position, the current velocity, and the time $\tau$. $Ad$ is formulated in the form
+
+\begin{subequations}
+\begin{align}
+\label{eq.AED}
+&Ad \triangleq Cd(t+\tau) := \left\|\boldsymbol{p}^{ob}(t)-\boldsymbol{p}(t)+\tau \left(\boldsymbol{v}^{ob}(t)-\boldsymbol{v}(t)\right)\right\|_2\\
+&\tau \in [0,\tau_{max}), Ad \in (Ad_{min}, Cd] \label{eq:AED-1}\\
+&\tau_{max}= \begin{cases} -\frac{\left\|\boldsymbol{p}^{ob}(t)-\boldsymbol{p}(t)\right\|_2 - r - r^{ob} }{\left\|\boldsymbol{v}^{ob}(t)-\boldsymbol{v}(t)\right\|_2 \cos{\delta}} & \cos{\delta} <0, \\ 0 & \text { others, }\end{cases} \label{eq:AED-2} \\
+& Ad_{min}= \begin{cases}-\left\|\boldsymbol{p}^{ob}(t)-\boldsymbol{p}(t)\right\|_2 \cos{\delta} & \cos{\delta} <0, \\ Cd & \text { others},\end{cases}, \label{eq:AED-3}
+\end{align}
+\end{subequations}
+其中$\delta$表示为移动机器人与障碍物相对位移$\boldsymbol{p}_{r}(t)=\boldsymbol{p}^{ob}(t)-\boldsymbol{p}(t)$与相对相对速度$\boldsymbol{v}_{r}(t)=\boldsymbol{v}^{ob}(t)-\boldsymbol{v}(t)$的向量夹角。进一步基于超前欧式距离安全指标ADSM的通用评价公式被制定为
+% where $\delta$ is represented as the relative displacement of the AMR from the obstacle $\boldsymbol{p}_{r}(t)=\boldsymbol{p}^{ob}(t)-\boldsymbol{p}(t)$ with the relative relative velocity $\boldsymbol{v}_{r} (t)=\boldsymbol{v}^{ob}(t)-\boldsymbol{v}(t)$ vector pinch angle. Further a generalized evaluation formula based on the Advanced Euclidean Distance Safety Metric ADSM is formulated as
+\begin{equation}
+\begin{aligned}
+\label{eq.security certificate2}
+F_{AD}^i&:=Ad_i-d_{safe}>0,\\
+Ad_i&=\left\|\boldsymbol{p}^{ob}_i(t)-\boldsymbol{p}(t)+\tau \left(\boldsymbol{v}^{ob}_i(t)-\boldsymbol{v}(t)\right)\right\|_2,
+\end{aligned}
+\end{equation}
+其中$\boldsymbol{p}^{ob}_i(t),\boldsymbol{v}^{ob}_i(t)$分别表示第i个障碍物在当前时间$t$的位置和速度。当$\cos{\delta} \le 0$时，移动机器人与障碍物处于接近的趋势，两者的相对距离处于缩小的趋势，这意味着此时该障碍物对于移动机器人来说是潜在危险的，在这种情况下考虑更严格的安全指标$F_{AD}$才有意义。通过移动机器人与障碍物的相对距离考虑当前相对速度$\boldsymbol{v}_r$作前向时间域$\tau$的积分，将会使两者的相对距离相比于$Cd$的值要减小，$Ad \leq Cd$恒成立，因此$F_{AD}$会比$F_{CD}$更严格。
+% where $\boldsymbol{p}^{ob}_i(t),\boldsymbol{v}^{ob}_i(t)$ denote the position and velocity of the ith obstacle at the current time $t$ respectively. When $\cos{\delta} \le 0$, the AMR and the obstacle are in the tendency of approaching and the relative distance between the two is in the tendency of shrinking, which means that at this time, the obstacle is potentially dangerous for the AMR, and it makes sense to consider the stricter safety index $F_{AD}$ in this case. Considering the current relative velocity $\boldsymbol{v}_r$ through the relative distance between the AMR and the obstacle as an integral of the forward time domain $\tau$ will result in the relative distance between the two being reduced compared to the value of $Cd$, $Ad \leq Cd$ is constant, so $F_{AD}$ will be more strict than $F_{CD}$.
+
+进一步我们讨论$\tau$的意义，其值在$[0,\tau_{max})$范围内，而$\tau_{max}$是一个与相对位移$\boldsymbol{p}_{r}(t)$，相对速度$\boldsymbol{v}_{r}(t)$相关的量。对$\tau_{max}$取放松系数，可制定$\tau$的公式为
+% Further we discuss the significance of $\tau$, whose value is in the range $[0,\tau_{max})$, and $\tau_{max}$ is a quantity related to the relative displacement $\boldsymbol{p}_{r}(t)$, and relative velocity $\boldsymbol{v}_{r}(t)$. Taking the relaxation factor for $\tau_{max}$, the formula for $\tau$ can be formulated as
+\begin{equation}
+\label{eq.tau_func}
+\tau = K_h \tau_{max}
+\end{equation}
+其中系数$K_h \in (0,1)$，当$\lim_{K_h \to 0} Ad \to Cd$此时$Ad$近似$Cd$，当$\lim_{K_h \to 1} Ad \to Ad_{min}$时，随着系数$K$的增大，安全指标的严格程度也随之增大。但并不是越大的$K_h$值越好，过于严格的安全指标会使机器人运动规划，控制系统震荡，甚至问题无解。$K_h$的选择需要根据具体的机器人系统以及工作空间参数进行设置，例如运动规划模块中的线速度与角速度的边界、安全距离、表示机器人的圆形的半径、表示障碍物的球形半径以及感知模块中障碍物有效检测距离等，因此$K_h$的选择是一个工程性的问题。关于公式Eq.\ref{eq.tau_func}的参数选择将在\ref{Experiments}中讨论。
+% where the coefficient $K_h \in (0,1)$, when $\lim_{K_h \to 0} Ad \to Cd$ at this point in time $Ad$ approximates $Cd$, when $\lim_{K_h \to 1} Ad \to Ad_{min}$, as the coefficient $K$ increases, the degree of strictness of the safety index also increases. However, it is not the case that the larger the value of $K_h$ the better, too strict safety index will make the robot motion planning, control system oscillation, or even the problem is not solved. The selection of $K_h$ needs to be set according to the specific robot system and workspace parameters, such as the boundary between linear and angular velocities in the motion planning module, the safety distance, the radius of the circle that represents the robot, the radius of the sphere that represents the obstacle, and the effective detection distance of the obstacle in the perception module, etc., so that the selection of $K_h$ is an engineering problem. The choice of parameters for Eq. Eq.\ref{eq.tau_func} will be discussed in \ref{Experiments}.
+
+
+\begin{algorithm}
+\caption{ADSM-Guided Path Searching.}\label{algorithm.1}
+\begin{algorithmic}[1]
+\STATE $\textbf{Initialize}()$;\;
+\STATE $\mathcal{P}\textbf{.insert}(node_{start})$;\;
+\WHILE{$\mathcal{P}\textbf{.size}() > 0$}
+\STATE $node_c \leftarrow \mathcal{P}\textbf{.pop}()$, $\mathcal{C}\textbf{.insert}\left(node_c\right)$;\;
+\IF{${\textbf{NearGoal}}(node_c)$}
+    \RETURN{${\textbf{RetrievePath}}(node_c)$};
+\ENDIF
+\STATE $ primitives \leftarrow \textbf{Expand}\left(node_c\right)$;\;
+\FOR{$node_i$ \textbf{in} $primitives$}
+
+\IF{${node_i \notin \mathcal{C}} \wedge {\textbf{CheckADSM}(node_i)}$}
+    \STATE $g_{temp} \leftarrow node_c.g_s+\textbf{EdgeCost}(node_i)$;\;
+    \IF{${node_i \notin \mathcal{P}}$}
+        \STATE $\mathcal{P}\textbf{.insert}(node_i)$;\;
+    \ELSIF{$g_{temp} \geq node_i.g_s $}
+        \STATE \textbf{continue};\;
+    \ENDIF
+    \STATE $node_i.par \leftarrow node_c$, $node_i.g_s \leftarrow g_{temp} $;\;
+    \STATE $node_i.f_s = node_i.g_s+\textbf{Heuristic}(node_i)$;\;
+\ENDIF
+\ENDFOR
+\ENDWHILE
+\RETURN{NULL};\;
+\end{algorithmic}
+\end{algorithm}
+
+
+
+\subsection{Dynamic Perception}
+\label{Dynamic_Perception}
+本节介绍了动态感知模块对障碍物进行检测，跟踪，预测并参数化表示的过程。首先机载激光雷达所接收到的点云信息需要经过体素网格滤波器处理后，使用一种基于密度的聚类算法DBSCAN对处理后的点云生成一组n个聚类$\mathcal{E}_t^{\text {obs }}=\left\{C_1, C_2, \ldots, C_n\right\}$，其中每个$C_i$聚类表示独立的点云簇。
+然后对每个点云簇使用最小边界球体的方法计算出其形心位置$\boldsymbol{p}_{ob}$与半径$r_{ob}$，将障碍物简化表示为一组n个圆形封闭区域$\mathcal{A}_t^{o b s}=\bigcup_{i=1,2, \ldots, n} O^i(t)$。
+为了将当前帧的$\mathcal{A}^{\text {obs }}_{\text {cur}}$与历史最新帧的$\mathcal{A}^{\text {obs }}_{\text {last}}$进行数据匹配，基于$O^{\text {cur}}_i$与$O^{\text {last}}_j$的质心之间的距离$ds$组成的亲和矩阵，KM算法被用于标签分配。
+如果与$O^{\text {last}}_j$的距离大于所设定的阈值$ds>ds_{max}$且当前帧中不匹配的$O^{\text {cur}}_i$已被分配了新标签，则拒绝$O^{\text {last}}_j$的标签分配，同时每个障碍物$O_i$的历史位置会被存储进对应标签的滑动窗口$O_i(t_{init}: t \mid t)$中。最后我们使用二阶贝塞尔曲线拟合历史轨迹的位置，以生成障碍物的预测轨迹$O_i(t: t+N \mid t)$。
+
+% This section describes the process of detecting, tracking, predicting and parameterizing the representation of obstacles by the dynamic perception module. Firstly, the point cloud information received by the airborne lidar needs to be processed by a voxel grid filter, and then a set of n clusters $\mathcal{E}_t^{\text {obs }}=\left\{C_1, C_2, \ldots, C_n\right\}$ is generated for the processed point cloud using a density-based clustering algorithm, DBSCAN, where each cluster $C_i$ represents an independent point cloud cluster. 
+% Then for each point cloud cluster, the center position $\boldsymbol{p}_{ob}$ and radius $r_{ob}$ are calculated using the method of minimum bounding sphere, and the obstacle is simplified to be represented as a set of n circular closed regions $\mathcal{A}_t^{o b s}=\bigcup_{i=1,2, \ldots, n} O^i(t)$.
+% In order to data-match the $\mathcal{A}^{\text {obs }}_{\text {cur}}$ of the current frame with the $\mathcal{A}^{\text {obs }}_{\text {last}}$ of the most recent frame in history, an affinity matrix consisting of the distance $ds$ between the centers of mass of $O^{\text {cur}}_i$ and $O^{\text {last}}_j$ is first used. Then the Kuhn-Munkres algorithm is used for label assignment. 
+% If the distance to $O^{\text {last}}_j$ is greater than the set threshold $ds>ds_{max}$ and the mismatched $O^{\text {cur}}_i$ in the current frame has been assigned a new label, the label assignment of $O^{\text {last}}_j$ is rejected, while the historical position of each obstacle $O_i$ is stored into the sliding window of the corresponding label $O_i(t_{init}: t \mid t)$. Finally, we use second-order Bessel curves to fit the positions of the historical trajectories to generate the predicted trajectories of the obstacles $O_i(t: t+N \mid t)$.
+
+
+\begin{figure}[htp]
+\centering
+\includegraphics[width=8cm]{images/4ADSM searching.pdf}
+\caption{一个关于ADSM引导路径搜索算法的图示。实线表示满足ADSM的运动基元的路径，虚线表示违反ADSM。橙色箭头表示相应时刻运动基元与障碍物之间的相对速度。为了考虑到机器人的尺寸，障碍物已根据移动机器人半径进行了膨胀。}
+% \caption{An illustration of the ADSM-guided path searching algorithm. The solid lines indicate the paths of the motion primitives that satisfy the ADSM, and the dashed lines indicate the violation of the ADSM. the orange arrows indicate the relative velocities between the motion primitives and the obstacles at the corresponding moments. The obstacles have been inflated according to the radius of the AMR in order to take into account the size of the robot.}
+\label{fig.4}
+\end{figure}
+
+\subsection{ADSM-Guided Path Searching}
+\label{Path_Searching}
+
+本节介绍了框架中全局规划模块中的ADSM引导的路径搜索算法, 它是Hybird A* Algorithm的扩展. 该算法能搜索得到一条无碰撞安全且符合移动机器人运动动力学可行的轨迹, 该轨迹在体素体网格图中的持续时间成本和控制成本方面最小. 
+% This section presents the ADSM-guided path search algorithm in the global planning module of the framework, which is an extension of the Hybird A* Algorithm. The algorithm searches to obtain a collision-free safe and kinematically feasible trajectory for the AMR that minimizes both the duration cost and the control cost in terms of the voxel grid graph.
+开集$\mathcal{P}$被用于存储扩展得到待分析的基元, 其里面的元素$node_i$是按照各自$node_i.f_s$值进行排序, 以保证$\mathcal{P}.\textbf{pop}()$会弹出$f_s$总代价最低的基元. 闭集$\mathcal{C}$被用于存放已经分析过的基元, 以避免重复分析. 
+% The open set $\mathcal{P}$ is used to store the primitives to be analyzed from the expansion, and its elements $node_i$ are sorted according to their respective $node_i.f_s$ values to ensure that $\mathcal{P}. \textbf{pop}()$ will pop the primitive with the lowest $f_s$ total cost. The closed set $\mathcal{C}$ is used to hold primitives that have already been analyzed to avoid repeated analysis. 
+
+如Fig.\ref{fig.4}以及Alg.\ref{algorithm.1}所示，获得安全凭证且不在闭集中的基元会在$\textbf{Expand}()$步骤中执行基元扩展。下一时刻基元的状态由离散加速度$\bm{u}(t)$和持续时间$T$作前向时间域积分的方式得到。
+% As shown in Fig.\ref{fig.4} as well as in Alg.\ref{algorithm.1}, primitives that have obtained security credentials and are not in the closed set perform primitive expansion in the $\textbf{Expand}()$ step. The state of the primitive at the next moment is obtained by forward time-domain integration of the discrete acceleration $\bm{u}(t)$ and duration $T$.
+接着在$\textbf{CheckADSM}()$步骤中对所扩展基元路径采样检查时，会对跟据在动态感知模块得到的障碍物的预测轨迹$O^i(t: t+N \mid t)$对每个障碍物执行基于ADSM的判断，对于存在违反Eq.\ref{eq.security certificate2}的采样点，则该运动基元将被忽略。
+% Then, during the sampling check of the paths of the extended primitives in the $\textbf{CheckADSM}()$ step, an ADSM-based judgment will be performed for each obstacle according to the predicted trajectory of the obstacle $O^i(t: t+N \mid t)$ obtained in the dynamic perception module, and for the presence of a sampling point that violates the Eq.\ref{eq.security certificate2}.
+然后经过筛选的基元需要通过一个函数$\textbf{EdgeCost}()$计算从$node_c$到$node_i$的边代价然后组成参考累计代价$g_{temp}$，该函数被定义为以下形式
+% The filtered primitives are then required to compute the edge costs from $node_c$ to $node_i$ and then compose the reference cumulative cost $g_{temp}$ by a function $\textbf{EdgeCost}()$ defined in the following form
+\begin{equation}
+\label{eq.kino1}
+J(T)=\int_{0}^{T}\Vert \bm{u}(t) \Vert_2^2dt + \rho T
+\end{equation}
+其可以被进一步表示为离散形式$j_s=\left(\left\|\mathbf{u}_d\right\|^2+\rho\right) t_s$ 基于离散控制量$\bm{u}(t)=\bm{u}_d$和持续时间$t_s$. $\textbf{Heuristic}()$表示从当前基元$node_c$到目标点$node_{goal}$的启发式代价，其通过求解两点边值问题(TPBVP)获得。
+% which can be further expressed in the discrete form $j_s=\left(\left\|\mathbf{u}_d\right\|^2+\rho\right) t_s$ based on the discrete control quantity $\bm{u}(t)=\bm{u}_d$ and duration $t_s$. $\textbf{Heuristic}()$ denotes the cost of traveling from the current primitive element $node_c$ to the goal point $ node_{goal}$ heuristic cost, which is obtained by solving the two-point margin value problem (TPBVP).
+
+\begin{figure}[htp]
+\centering
+\includegraphics[width=8cm]{images/5ACBF.pdf}
+\caption{一个关于ACBF的图示。移动机器人的最佳路径$x(t:t+N|t)$，可以避免在未来$N$个步骤中与预测障碍物$Oi(t:t+N|t)$发生碰撞。通过连接移动机器人和障碍物圆形的中心，外围和移动机器人之间的距离$di(t:t+N|t)$被计算的得到。这组距离扫过CBF区域受到CBF的边界约束，这可以防止机器人过快地接近障碍物。}
+% \caption{An illustration of ACBF. The optimal path $x(t:t+N|t)$ for AMR can avoid collision with the predicted obstacle $Oi(t:t+N|t)$ in the next $N$ steps. By connecting the mobile AMR to the center of the obstacle circle, the distance $di(t:t+N|t)$ between the periphery and the mobile AMR is computationally obtained. This set of distances sweeps through the CBF zone subject to the boundary constraints of the CBF, which prevents the robot from approaching the obstacle too quickly.}
+\label{fig.5}
+\end{figure}
+
+\subsection{Advance Control Barrier Function}
+\label{ACBF-section}
+
+已经有不少采用CBF的方法实现了在静态场景中的障碍物规避\citep{Zeng2020SafetyCriticalMP,Singletary2020ComparativeAO}, 然而对于动态场景，现有方法的对系统的安全性仍然是一个挑战。与Static Control Barrier Function(S-CBF)不同, A-CBF是属于Dynamic Control Barrier Function(D-CBF)\citep{jian2022dynamicCB}，它不仅在安全指标的考虑上使用ADSM代替了CDSM, 而且它考虑障碍物是可移动的。定义系统变量为$\boldsymbol{X}=[\boldsymbol{x},\boldsymbol{v}, \boldsymbol{p}^{ob}, r_{ob}, \boldsymbol{v}^{ob}] \in \mathbb{R}^3 \times \mathbb{R}^2 \times \mathbb{R}^2 \times \mathbb{R} \times \mathbb{R}^2$。
+% A number of methods using CBF have been realized for obstacle avoidance in static scenarios \citep{Zeng2020SafetyCriticalMP,Singletary2020ComparativeAO}, however, for dynamic scenarios, the existing methods are still a challenge for the safety of the system. Unlike the Static Control Barrier Function (S-CBF), A-CBF belongs to the Dynamic Control Barrier Function (D-CBF) \citep{ jian2022dynamicCB}, which not only uses ADSM instead of CDSM in the consideration of safety metrics, but also it considers that the obstacles are movable. Define the system variable as $\boldsymbol{X}=[\boldsymbol{x},\boldsymbol{v}, \boldsymbol{p}^{ob}, r_{ob}, \boldsymbol{v}^{ob}] \in \mathbb{R}^3 \times \mathbb{R}^2 \times \mathbb{R}^2 \times \mathbb{R} \times \mathbb{R}^2$.
+
+系统安全性可以在强制集合不变性的背景下构建, 通常我们考虑一个集合，其定义为一个关于连续可微函数$h:\mathcal{D} \subset \mathbb{R}^3 \times \mathbb{R}^2 \times \mathbb{R}^2 \times \mathbb{R} \times \mathbb{R}^2 \to \mathbb{R}$的超集合$\mathcal{Z}$。
+% System security can be constructed in the context of enforced set invariance. Typically we consider a set  defined as a superset $\mathcal{Z}$ with respect to a continuously differentiable function $h:\mathcal{D} \subset \mathbb{R}^3 \times \mathbb{R}^2 \times \mathbb{R}^2 \times \mathbb{R} \times \mathbb{R}^2 \to \mathbb{R}$.
+\begin{equation}
+\label{eq.safeXet}
+\begin{aligned}
+\mathcal{Z} & =\left\{\boldsymbol{X} \in \mathcal{D} : h(\boldsymbol{X}) \geq 0\right\}, \\
+\partial \mathcal{Z} & =\left\{\boldsymbol{X} \in \mathcal{D} : h(\boldsymbol{X})=0\right\}, \\
+\operatorname{Int}(\mathcal{Z}) & =\left\{\boldsymbol{X} \in \mathcal{D} :h(\boldsymbol{X})>0\right\}.
+\end{aligned}
+\end{equation}
+
+进一步将屏障函数条件扩展到了整个安全集, 提出了$h$成为控制屏障函数的充分必要条件\citep{ames2019controlBF}
+% Further extending the barrier function condition to the entire security set, it is proposed that $h$ becomes sufficiently necessary to control the barrier function\citep{ames2019controlBF}
+\begin{equation}
+\label{eq.cbf00}
+\exists u \text { s.t. } \dot{h}(\boldsymbol{X}, \boldsymbol{u}) \geq-\gamma(h(\boldsymbol{X})) \quad \Leftrightarrow \quad \mathcal{Z} \text { is invariant }
+\end{equation}
+其中$\gamma$是扩展class $\mathcal{K}$函数。而且对于输入仿射系统$\dot{\boldsymbol{x}}=f(\boldsymbol{x})+g(\boldsymbol{x}) \boldsymbol{u}$，不等式Eq.\ref{eq.cbf00}可以转化为
+% where $\gamma$ is the extension class $\mathcal{K}$ function. And for the input affine system $\dot{\boldsymbol{x}}=f(\boldsymbol{x})+g(\boldsymbol{x}) \boldsymbol{u}$ the inequality Eq.\ref{eq.cbf00} can be transformed into
+\begin{equation}
+\label{eq.cbf00a}
+\sup _{\boldsymbol{u} \in \mathcal{U}}[L_f h+L_g h \boldsymbol{u}+\underbrace{\frac{\partial h}{\partial \boldsymbol{p}^{ob}} \frac{\partial \boldsymbol{p}^{ob}}{\partial t}}_{\varepsilon}+\gamma h \geqslant 0, 
+\end{equation}
+其中$\varepsilon$表示障碍物位置的变化对控制量$\mathrm{u}$的影响，它是区分S-CBF与D-CBF的重要标志。
+% where $\varepsilon$ denotes the effect of the change in obstacle position on the control quantity $\mathrm{u}$, which is an important distinction between S-CBF and D-CBF.
+
+对于所有$\boldsymbol{X} \in \mathcal{D}$, 在$\boldsymbol{X}$处于S-CBF和D-CBF两种约束下的控制量集合分别表示为
+% For all $\boldsymbol{X} \in \mathcal{D}$, the set of control quantities under the constraints that $\boldsymbol{X}$ is in the two constraints of S-CBF and D-CBF, respectively, is denoted by
+\begin{equation}
+\label{eq.safeU}
+\begin{aligned}
+K_{\mathrm{scbf}}(\boldsymbol{X})&:=\left\{\boldsymbol{u} \in \mathcal{U}: L_f h(\boldsymbol{X})+L_g h(\boldsymbol{X}) \boldsymbol{u}+\gamma(h(\boldsymbol{X})) \geq 0\right\},\\
+K_{\mathrm{dcbf}}(\boldsymbol{X})&:=\left\{\boldsymbol{u} \in \mathcal{U}: L_f h(\boldsymbol{X})+L_g h(\boldsymbol{X}) \boldsymbol{u}+\epsilon+\gamma(h(\boldsymbol{X})) \geq 0\right\}.
+\end{aligned}
+\end{equation}
+
+为了将CBF约束结合进离散时间模型预测控制问题中，将Eq.\ref{eq.cbf00}扩展到离散时域中，得到离散的控制屏障函数表达式
+% In order to incorporate CBF constraints into the discrete-time model predictive control problem, Eq.\ref{eq.cbf00} is extended into the discrete-time domain to obtain a discrete control barrier function expression
+\begin{equation}
+\label{eq.cbf01}
+\Delta h\left(\boldsymbol{X}_k, \boldsymbol{u}_k\right) \geq-\gamma h\left(\boldsymbol{X}_k\right), 0<\gamma \leq 1
+\end{equation}
+% 其中$\Delta h\left(\boldsymbol{X}_k, \boldsymbol{u}_k\right):=h\left(\boldsymbol{X}_{k+1}\right)-h\left(\boldsymbol{X}_k\right)$。
+where $\Delta h\left(\boldsymbol{X}_k, \boldsymbol{u}_k\right):=h\left(\boldsymbol{X}_{k+1}\right)-h\left(\boldsymbol{X}_k\right)$.
+
+从动态感知模块中可以得到在$t$时刻时环境中障碍物参数化表示信息的集合$\mathcal{A}_t^{obs}=\bigcup_{i=1,2, \ldots, n} O_i(t)$, 其中$O_i(t)=[\boldsymbol{p}^{ob}_i(t), \boldsymbol{v}^{ob}_i(t), r^{ob}_i] \in \mathbb{R}^5$。每个障碍物$O_i$的前向时间域的$N$步的预测轨迹表示为$O_i(t: t+N \mid t)$。为了简化表示, 令$k \triangleq t+k\mid t$。然后根据Eq.\ref{eq.security certificate1}, 基于CDSM的控制屏障函数$h_{Cd}$可以被表示为
+% From the dynamic perception module, the set of parameterized representation information of obstacles in the environment at moment $t$ can be obtained $\mathcal{A}_t^{obs}=\bigcup_{i=1,2, \ldots, n} O_i(t)$, where $O_i(t)=[\boldsymbol{p}^{ob}_i(t), \ boldsymbol{v}^{ob}_i(t), r^{ob}_i] \in \mathbb{R}^5$. The predicted trajectory of $N$ steps in the forward time domain for each obstacle $O_i$ is denoted as $O_i(t: t+N \mid t)$. To simplify the representation, let $k \triangleq t+k\mid t$. Then according to Eq.\ref{eq.security certificate1}, the CDSM-based control barrier function $h_{Cd}$ can be represented as
+\begin{equation}
+\label{eq.hcd}
+\begin{aligned}
+h_{Cd}\left(\boldsymbol{X}_k\right)=\left\|\boldsymbol{p}_r^i(k)\right\|_2-d_{inflate},\\
+\text { for } k=0,1, \ldots, N-1
+\end{aligned}
+\end{equation}
+
+根据Eq.\ref{eq.security certificate2}中的安全指标评价公式, 基于ADSM的控制屏障函数$h_{Ad}$可以被制定为
+% According to the security index evaluation formula in Eq.\ref{eq.security certificate2}, the ADSM-based control barrier function $h_{Ad}$ can be formulated as
+\begin{equation}
+\label{eq.had}
+\begin{aligned}
+h_{Ad}\left(\boldsymbol{X}_k\right)=\left\|\boldsymbol{p}_r^i(k)+\tau \boldsymbol{v}_{cr}^i\right\|_2-d_{inflate},\\
+\text { for } k=0,1, \ldots, N-1
+\end{aligned}
+\end{equation}
+其中碰撞半径表示为$d_{inflate}=r^{ob}_i+r_{ro}+d_{safe}$，$\boldsymbol{v}_{cr}^i=\boldsymbol{v}_{ob}^i(0)-\boldsymbol{v}(0)$表示$t$时刻机器人与第$i$个障碍物的相对速度。
+% where the collision radius is denoted as $d_{inflate}=r^{ob}_i+r_{ro}+d_{safe}$, and $\boldsymbol{v}_{cr}^i=\boldsymbol{v}_{ob}^i(0)-\boldsymbol{v}(0)$ denotes the relative velocity of AMR at moment $t$ to the $i$-th obstacle's relative velocity.
+
+
+\subsection{Model Predictive Control}
+\label{MPC-section}
+机器人的运动学模型由系统状态方程在离散时间域下被展开$\boldsymbol{x}(t+1)=f(\boldsymbol{x}(t), \boldsymbol{u}(t))$ 得到
+% The kinematic model of the robot is obtained by the system state equation expanded in the discrete time domain $ \boldsymbol{x}(t+1)=f(\boldsymbol{x}(t), \boldsymbol{u}(t))$
+\begin{equation}
+\label{eq.d-model}
+\boldsymbol{x}_{t+1}=\boldsymbol{x}_t+\left[\begin{array}{cc}
+\cos \theta_t & 0 \\
+\sin \theta_t & 0 \\
+0 & 1
+\end{array}\right] \boldsymbol{u}_t \Delta t,
+\end{equation}
+其中该公式的$f$表示差速驱动模型。
+% where $f$ denotes the differential drive model.
+
+我们将对全局规划器生成的参考路径$\mathbf{x}_{t: t+N|t}^d$的的轨迹跟踪问题制定为MPC优化问题。在配置安全约束时，一方面，针对ACBF过于严格导致没有可行解的问题，仅对预测时间内前$K_c$范围的离散时间步骤中配置基于ADSM的CBF约束，而对于范围之外的离散时间步骤中，配置基于CDSM的CBF约束\citep{Ma2021FeasibilityEO}。
+% We formulate the trajectory tracking problem for the reference path $\mathbf{x}_{t: t+N|t}^d$ generated by the global planner as an MPC optimization problem. In configuring the safety constraints, on the one hand, for the problem where the ACBF is too stringent leading to no feasible solution, the ADSM-based CBF constraints are configured only for the discrete time steps in the first $K_c$ range within the prediction time, and for the discrete time steps outside the range, the CDSM-based CBF constraints are configured \citep{Ma2021FeasibilityEO}.
+另一方面，针对原目标函数少障碍物距离代价项导致过于激进的控制策略的问题，通过引入松弛变量$\epsilon_k$将CBF约束软化, 其被转变为一个代价项添加到MPC的目标函数中。MPC问题被制定如下形式
+% On the other hand, to address the problem that the original objective function with less obstacle distance cost term leads to an overly aggressive control strategy, the CBF constraint is softened by introducing the slack variable $\epsilon_k$, which is transformed into a cost term to be added to the objective function of the MPC. the MPC problem is formulated as follows
+\begin{subequations}
+\begin{align}
+\label{eq.J_opt}
+&J_t^*\left(\boldsymbol{x}_t\right)=\min _{\boldsymbol{u}_{t: t+N-1 \mid t}} p\left(\mathbf{x}_{t+N \mid t}\right)+\sum_{k=0}^{N-1} q\left(\boldsymbol{x}_k, \boldsymbol{u}_k\right) + \lambda \epsilon_k^2\\
+\text { s.t.} \quad &\boldsymbol{x}_{k+1}=f(\boldsymbol{x}_{k}, \boldsymbol{u}_{k}),k=0, \ldots, N-1 \label{eq:constraint1}\\
+& \boldsymbol{x}_k \in \mathcal{X}_{tra}^k, \boldsymbol{u}_k \in \mathcal{U},k=0, \ldots, N-1 \label{eq:constraint2} \\
+& \boldsymbol{x}_{t \mid t}=\boldsymbol{x}_t \in \mathcal{X}_{tra}^t, \label{eq:constraint3} \\
+& \boldsymbol{x}_{t+N \mid t} \in \mathcal{X}_{tra}^{t+N}, \label{eq:constraint4} \\
+& \begin{aligned} 
+\Delta h_{Ad}\left(\boldsymbol{X}_k, \boldsymbol{u}_k\right)+\epsilon_k \geq-\gamma h_{Ad}\left(\boldsymbol{X}_k\right),\\
+\text { for } k=0, \ldots, K_c(N-1)-1
+\label{eq:constraint5}
+\end{aligned} \\
+& \begin{aligned} 
+\Delta h_{Cd}\left(\boldsymbol{X}_k, \boldsymbol{u}_k\right)+\epsilon_k \geq-\gamma h_{Cd}\left(\boldsymbol{X}_k\right),\\
+\text { for } k=K_c(N-1), \ldots, N-1 
+\label{eq:constraint6}
+\end{aligned} \\
+& \epsilon_k \in [0, \epsilon_{\text{max}}], \label{eq:constraint10}
+\end{align}
+\end{subequations}
+其中$\mathcal{D}_f$表示终端状态的集合，$K_c \in(0,1)$表示配置ACBF约束的离散时间步骤的范围。$\epsilon_{max}$表示可接受的最大CBF约束违反值，其可用于调整CBF约束的严格程度。特别的是当$\epsilon_{max}=0$，此时CBF表现为硬约束的形式，最为严格。
+% where $\mathcal{D}_f$ denotes the set of terminal states and $K_c \in(0,1)$ denotes the range of discrete time steps for configuring the ACBF constraints. The $\epsilon_{max}$ denotes the maximum acceptable CBF constraint violation value, which can be used to adjust the stringency of the CBF constraint. In particular, when $\epsilon_{max}=0$, then the CBF behaves in the form of a hard constraint and is the most stringent.
+在Eq.\ref{eq.J_opt}中, $p\left(\mathbf{x}_{t+N \mid t}\right):=\left\|\mathbf{x}_{t+N \mid t}-\mathbf{x}_{t+N \mid t}^d\right\|_P$表示终端成本, $q\left(\mathbf{x}_{t+N \mid t}\right):=\left\|\mathbf{x}_k-\mathbf{x}_k^d\right\|_Q+\left\|\mathbf{u}_k\right\|_R+\left\|\mathbf{u}_{k+1}-\mathbf{u}_k\right\|_S+\lambda \epsilon_k$表示阶段成本, 其中$P,Q,R,S$是对应的正对称权重系数矩阵，$\lambda$是松弛变量的权重系数。
+% In Eq.\ref{eq.J_opt}, $p\left(\mathbf{x}_{t+N \mid t}\right):=\left\|\mathbf{x}_{t+N \mid t}-\mathbf{x}_{t+N \mid t}^d\right\|_P$ denotes the terminal cost, $q \left(\mathbf{x}_{t+N \mid t}\right):=\left\|\mathbf{x}_k-\mathbf{x}_k^d\right\|_Q+\left\|\mathbf{u}_k\right\|_R+\left\|\|mathbf{u}_{ k+1}-\mathbf{u}_k\right\|_S+\lambda\\epsilon_k$ denotes the stage cost, where $P,Q,R,S$ are the corresponding positive symmetric weight coefficients matrices, and $\lambda$ is the weight coefficients of the slack variables.
+
+\begin{figure}[htp]
+\centering
+\includegraphics[width=9cm]{images/6Numerical_exp.png}
+\caption{所提出的方法针对DC约束\citep{ames2019controlBF}以及D-CBF约束\citep{jian2022dynamicCB}的一个水平基准。同时也展示了不同$tau_{scale}$参数下机器人轨迹的对比。其中轨迹上的点是仿真时间$t=2.3s$时机器人所在位置障碍物的位置。}
+% \caption{One horizon benchmark of our approach against the DC constraints\citep{ames2019controlBF} the D-CBF constraints\citep{jian2022dynamicCB}. A comparison of robot trajectories with different $tau_{scale}$ parameters is also shown. where the points on the trajectory are the locations of the barriers at the robot's location at simulation time $t=2.3s$.}
+\label{fig.6}
+\end{figure}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 5%%%%%%%%%%%%%%%%%%
+\section{Experimental and Results}
+\label{Experiments}
+
+在本节中，首先通过一个二维的数值验证实验完成了A-CBF的参数估计，并且在同一基准实验条件下对比了其他具有欧氏距离为安全约束的MPC方法。
+% In this section, the parameter estimation of A-CBF is first accomplished through a two-dimensional numerical validation experiment and other MPC methods with Euclidean distance as a safety constraint are compared under the same baseline experimental conditions.
+然后,所提出的移动机器人自主导航方法依次在具有更复杂的动态环境的虚拟以及真实场景的障碍物碰撞避免实验中对进行评估。
+% Then, the proposed autonomous robot navigation method is sequentially evaluated in obstacle collision avoidance experiments in virtual as well as real scenarios with more complex dynamic environments.
+
+\subsection{One-Horizon Benchmark}
+% One-Horizon Benchmark是在一个特定的预测时间范围内，通过设计具体的实验场景和评估指标，对算法或策略在实时系统中的性能进行基准测试的一种方法
+% 0.设计了一个简易的二维的数值验证实验 1.完成mpc-acbf的其中tau值函数参数的估计 2.所提出方法与mpc具备的规避障碍物方法的比较，这些mpc方法涉及采用各种欧式距离的安全约束
+
+在本节中, 我们完成了对公式\ref{eq.tau_func}中的参数$K_h$和公式Eq.\ref{eq.J_opt})中的参数$K_c$从0~1的估计.
+% In this section, we accomplish the estimation of the parameter $K_h$ from 0 to 1 in Eq. \ref{eq.tau_func} and the parameter $K_c$ from 0 to 1 in Eq. \ref{eq.J_opt}).
+进一步将我们方法与三种基于MPC的方法\citep{jian2022dynamicCB,Zeng2020SafetyCriticalMP,Brito2019ModelPC}进行了比较, 这些MPC方法涉及采用各种欧式距离的安全指标来评估移动机器人与障碍物的风险关系. 
+% Our method is further compared with three MPC-based methods\citep{jian2022dynamicCB,Zeng2020SafetyCriticalMP,Brito2019ModelPC}, which involve the use of various safety metrics in terms of Euclidean distances for assessing the AMR's risk relationship with obstacles. 
+我们设计了一个二维实验, 其中移动机器人的起始位置放置在$\boldsymbol{x}^{start}=[0.0m,0.0m,0.0rad]$, 然后制定一个跟踪目标位置的点跟踪任务, 其目标位置设置为$\boldsymbol{x}^{goal}=[8.0m,0.0m,0.0rad]$. 
+% We designed a two-dimensional experiment in which the starting position of the AMR is placed at $\boldsymbol{x}^{start}=[0.0m,0.0m,0.0rad]$, and then formulated a point-tracking task for tracking the target position, which is set to $\boldsymbol{x}^{goal}=[8.0m,0.0 m,0.0rad]$. 
+其中障碍物被参数化表示为半径$r_{ro}=1.0m$的圆形, 并且以$\boldsymbol{v}_{ob}=[-1.0m/s,0.0m/s]$的速度从初始位置$\boldsymbol{p}^{ob}=[8.0m,-0.5m]$运动. 
+% The obstacle is parameterized as a circle with radius $r_{ro}=1.0m$, and moves from the initial position $\boldsymbol{v}_{ob}=[-1.0m/s,0.0m/s]$ with velocity $\boldsymbol{p}^{ob}=[8.0m,-0.5m]$. 
+移动机器人最大线速度$v_{max}=1.5m/s$, 最大角速度$\omega_{max}=1.0rad/s$, 预测范围为8秒, 预测步长$N=80$, 障碍物的安全距离$d_{safe}=0.1m$以及CBF约束中系数$\gamma=0.25$。
+% The AMR has a maximum linear velocity $v_{max}=1.5m/s$, a maximum angular velocity $\omega_{max}=1.0rad/s$, a prediction range of 8 seconds, a prediction step size $N=80$, a safe distance from an obstacle $d_{safe}=0.1m$, and a coefficient in the CBF constraints $\gamma=0.25$.
+
+如Fig.\ref{fig.6}所示, 相比于基于DC约束\citep{ames2019controlBF}和基于DCBF约束\citep{jian2022dynamicCB}, 所提出方法所生成的移动机器人路径会更早地绕开障碍物, 从而保持更好的障碍物距离.
+% As shown in Fig.\ref{fig.6}, compared with the DC-based constraints\citep{ames2019controlBF} and DCBF-based constraints\citep{jian2022dynamicCB}, the AMR paths generated by the proposed method will bypass the obstacles earlier, and thus maintain a better obstacle distance.
+随着$K_h$参数增大，移动机器人会更早进行绕行的策略. 但当$K_h>0.45$时, 超前时间过大，所提出方法退化，导致产生不稳定的避障决策.
+% As the $K_h$ parameter increases, the AMR will carry out the strategy of bypassing earlier. However, when $K_h>0.45$, the lead time is too large and the proposed method degrades, resulting in unstable obstacle avoidance decisions.
+因此在所设定场景中, 超前时间比例系数$K_h \in [0.0, 0.45]$, 而且CBF约束分隔系数$K_c$为0.3.
+% Therefore, in the setup scenario, the ahead time scaling factor $K_h \in [0.0, 0.45]$, and the CBF constraint separation factor $K_c$ are 0.3.
+所有One-Horizen基准实验代码是从C++版本的优化框架CasADi执行的.
+% All One-Horizen benchmark experimental codes were executed from the C++ version of the optimization framework CasADi.
+
+\begin{figure*}[htp]
+\centering
+\includegraphics[width=13cm]{images/7gazebo-snapshoot.png}
+\caption{一个模拟环境中轨迹规划结果的快照. (a)–(b)描述了针对Env.3中4个迎面而来的障碍物获得的结果, (c)–(d)描述了针对Env.2中4个作斜向往复运动的障碍物获得的结果, (e)–(f)描述了针对6个分别迎面而来, 斜向往复运动, 纵向往复运动的障碍物获得的结果. 起点和目标点分别由蓝色和黄色五角星表示. 浅蓝色球序列描绘了障碍物的预测未来轨迹, 红色曲线表示机器人历史轨迹. 移动机器人规划从起点到目标点的轨迹, 绿色曲线表示全局路径, 橙色曲线表示局部路径.}
+% \caption{A snapshot of the trajectory planning results in a simulated environment. (a)-(b) describe the results obtained for the four oncoming obstacles in Env. 3, (c)-(d) describe the results obtained for the four obstacles in Env. 2 with obliquely reciprocating motion, and (e)-(f) describe the results obtained for the six obstacles with oncoming, obliquely reciprocating, and longitudinally reciprocating motion, respectively. (e)-(f) describe the results obtained for six obstacles with oncoming, inclined, and longitudinal reciprocating motions, respectively. The starting point and the target point are represented by blue and yellow pentagrams, respectively. The light blue ball sequence depicts the predicted future trajectories of the obstacles, and the red curve represents the historical trajectory of the robot. The AMR plans the trajectory from the starting point to the goal point, the green curve represents the global path and the orange curve represents the local path.}
+\label{fig.7}
+\end{figure*}
+
+\begin{table*}[htbp]
+  \centering
+  \fontsize{7.5}{11}\selectfont
+  \caption{Comparison results in different simulation cases.}
+    \begin{tabular}{lcccccccccccccc}
+    \hline
+    Scenario & \multicolumn{4}{c}{Env.1}     &       & \multicolumn{4}{c}{Env.2}     &       & \multicolumn{4}{c}{Env.3} \\
+    \hline
+    \multirow{2}[2]{*}{Method} & Rsuc & Dmin  & Len   & Esp   &       & Rsuc & Dmin  & Len   & Esp   &       & Rsuc & Dmin  & Len   & Esp \\
+          & (\%)  & (m)   & (m)   & (lin/ang) &       & (\%)  & (m)   & (m)   & (lin/ang) &       & (\%)  & (m)   & (m)   & (lin/ang) \\
+    \hline
+    N-CBF  & 60    & 0.18     & 20.92     & 0.14/0.25     &       & 80    & 0.29     & 23.87     & 0.34/0.47     &       & 55    & 0.17     & 21.63     & 0.18/0.58 \\
+    N-DC & 95    & 0.26     & 21.40     & 0.16/0.22     &       & 85    & 0.28     & \textbf{20.57}     & 0.09/\textbf{0.16}     &       & 70    & 0.26     & \textbf{21.26}     & 0.13/\textbf{0.33} \\
+    N-DCBF & 100    & 0.44     & 21.28     & 0.17/0.36     &       & 95    & 0.38     & 21.30     & 0.13/0.24     &       & 80    & 0.33     & 22.52     & 0.25/0.58 \\
+    N-ACBF & 100     & 0.47     & 21.33     & 0.14/0.33    &       & 100    & 0.38     & 20.95     & 0.09/0.19     &       & 90    & 0.44     & 22.74     & \textbf{0.11}/0.39 \\
+    C-ACBF & 100     & 0.43     & 21.53     & 0.18/0.32     &       & 100    & 0.39     & 20.92     & 0.10/0.21     &       & 85    & 0.39     & 21.67     & 0.14/0.45 \\
+    A-ACBF & 100     & \textbf{0.49}     & \textbf{20.84}     & \textbf{0.09}/\textbf{0.23}    &       & 100    & \textbf{0.47}     & 21.13     & \textbf{0.08}/0.22     &       & 95    & \textbf{0.47}     & 22.44     & 0.12/0.38 \\
+    \hline
+    \end{tabular}%
+  \label{tab:simulation-datas}%
+\end{table*}%
+
+
+\subsection{Simulation scenarios}
+\label{simulation-section}
+
+\textit{Experimental Setup:} 
+为了评估所提出方法的有效性, 在不同复杂度的动态环境的仿真场景中进行实验.
+% In order to evaluate the effectiveness of the proposed method, experiments are conducted in simulation scenarios of dynamic environments of different complexity.
+我们设置了3个复杂度的仿真场景: 1)简单的外走廊场景(模拟4个行人纵向运动的状态). 2)中等的工厂运输场景(模拟4个机器人斜向往返运动的状态). 3)复杂的步行街场景(模拟6个行人横向，纵向以及交叉的状态).
+% We set up three simulation scenarios with different levels of complexity: 1) a simple exterior corridor scenario (simulating four pedestrians in longitudinal motion). 2) a medium factory transportation scenario (simulating four robots in diagonal round-trip motion). 2) A medium factory transportation scenario (simulating the diagonal round-trip motion of 4 robots). 3) Complex pedestrian street scene (simulating 6 pedestrians moving horizontally, vertically and crosswise).
+如Fig.\ref{fig.7}所示, 所有障碍物都是$0.6\times0.6\times1.5m^3$的立方体盒子, 其根据固定的初始速度作直线往返运动. 
+% As shown in Fig.\ref{fig.7}, all obstacles are $0.6\times0.6\times1.5m^3$ cubic boxes, which move back and forth in a straight line with a fixed initial velocity. 
+在全局路径搜索部分, 重规划的最大路径长度为$8m$, 最大加速度为$2m/s^2$, 最大速度为$1.5m/s$, 最大角速度为$0.6rad/s$.
+% In the global path search section, the maximum path length of the reprogramming is $8m$, the maximum acceleration is $2m/s^2$, the maximum velocity is $1.5m/s$, and the maximum angular velocity is $0.6 rad/s$.
+在局部路径跟踪部分, 移动机器人最大线速度$v_{max}=1.5m/s$, 最大角速度$\omega_{max}=0.8rad/s$,预测范围为$4s$, 预测步数$N=20$, 障碍物的安全距离为$d_{safe}=0.4m$. CBF系数$\gamma=0.25$，超前时间放松系数$K_h$取0.4，CBF约束分隔系数$K_c$取0.3. 
+% In the local path tracking part, the maximum linear velocity of AMR is $v_{max}=1.5m/s$, the maximum angular velocity $\omega_{max}=0.8rad/s$, the prediction range is $4s$, the prediction number of steps $N=20$, and the safe distance to the obstacle is $d_{safe}=0.4m$. The CBF coefficient $\gamma=0.25$, the overrun time relaxation coefficient $K_h$ is taken as 0.4, and the CBF constraint separation coefficient $K_c$ is taken as 0.3. 
+将所提方法与3种其他基于MPC避障方法和2种扩展方法进行了比较: 
+% The proposed method is compared with three other MPC-based obstacle avoidance methods and two extended methods:
+
+
+\begin{itemize}
+\item {N-CBF}\citep{Zeng2020SafetyCriticalMP}: 全局规划层没考虑障碍物, 局部规划层采用基于SCBF的MPC方法, 没考虑障碍物的预测轨迹.
+\item {N-DC}\citep{Brito2019ModelPC}: 全局规划层没考虑障碍物, 局部规划层采用基于MMPC的方法, 考虑障碍物的预测轨迹.
+\item {N-DCBF}\citep{jian2022dynamicCB}: 全局规划层没考虑障碍物, 局部规划层采用基于MPC-DCBF方法.
+\item {N-ACBF}: 全局规划层没考虑障碍物, 局部规划层采用基于MPC-ACBF方法.
+\item {C-ACBF}: 全局规划层使用CDSM评估移动机器人与障碍物风险关系, 局部规划层采用基于MPC-ACBF方法. 
+\item {A-ACBF}: 全局规划层使用ADSM评估移动机器人与障碍物风险关系, 局部规划层采用基于MPC-ACBF方法.
+% \item {N-CBF}\citep{Zeng2020SafetyCriticalMP}: The global planning layer does not consider obstacles, and the local planning layer adopts the SCBF-based MPC method, which does not consider the predicted trajectories of obstacles.
+% \item {N-DC}\citep{Brito2019ModelPC}: The global planning layer does not consider obstacles, and the local planning layer adopts the MMPC-based method to consider the predicted trajectories of obstacles.
+% \item {N-DCBF}\citep{jian2022dynamicCB}: The global planning layer does not consider obstacles, and the local planning layer adopts the MPC-DCBF based method.
+% \item {N-ACBF}: The global planning layer does not consider obstacles, and the local planning layer adopts the MPC-ACBF method.
+% \item {C-ACBF}: The global planning layer uses CDSM to assess the risk relationship between AMR and obstacles, and the local planning layer uses the MPC-ACBF method. 
+% \item {A-ACBF}: The global planning layer uses ADSM to assess the risk relationship between AMR and obstacles, and the local planning layer uses the MPC-ACBF based method.
+\end{itemize}
+
+所有模拟实验均在配备了Intel Core i7-8750H CPU和16GB内存的笔记本电脑上运行. 在Gazebo的范围是$25\times8m^2$的走廊的二维世界中使用移动机器人完成了自主导航实验, 每种方法分别在三个仿真场景中实施了20次测试.
+% All simulation experiments were run on a laptop computer equipped with an Intel Core i7-8750H CPU and 16GB of RAM. Autonomous navigation experiments were accomplished using AMRs in a two-dimensional world in a corridor with a range of $25\times8m^2$ in Gazebo, and each method was implemented in three simulation scenarios for 20 tests.
+
+
+
+
+\textit{Results and discussion: }
+为了充分评估所提出方法的有效性, 除了判断机器人是否发生碰撞或阻塞, 还需要考虑以下评价指标: 最小距离, 路径长度以及速度变化量. 所使用的评价指标如下所示:
+% In order to fully evaluate the effectiveness of the proposed method, in addition to determining whether the robot has collided or blocked, the following evaluation metrics need to be taken into account: minimum distance, path length, and velocity change. The evaluation metrics used are as follows.
+\begin{itemize}
+\item 成功率(Rsuc): 成功率是导航过程中移动机器人没有发生碰撞或死锁的成功案例的比例, 表示了方法的有效性.
+\item 最小距离(Dmin): 最小距离是导航过程中移动机器人的最小障碍距离，表示了方法的安全性.
+\item 路径长度(Len): 路径长度是移动机器人从起点自主导航到达终点的路径总长度, 表示了方法的高效性. 
+\item 速度变化量(Esp): 速度变化量包含线速度方差, 角速度方差, 用于反映移动机器人在导航过程中速度的变化, 表示了方法所生成轨迹的平滑度.
+% \item Success rate(Rsuc): Success rate is the percentage of successful cases without collision or deadlock of AMR during navigation, which indicates the effectiveness of the method.
+% \item Minimum Distance(Dmin): Minimum distance is the minimum obstacle distance for AMR during navigation, indicating the safety of the method.
+% \item Path length(Len): Path length is the total length of the path that AMR navigates autonomously from the starting point to the end point, which indicates the efficiency of the method. 
+% \item Velocity variation(Esp): Velocity variation consists of linear velocity variance and angular velocity variance, which is used to reflect the variation of AMR's velocity during the navigation process, and indicates the smoothness of the trajectory generated by the method.
+\end{itemize}
+
+\begin{figure}[htp]
+\centering
+\includegraphics[width=6.5cm]{images/10runtime-graph.png}
+\caption{一个计算时间图. 展示我们提出的方法的每个组件的运行时间，当机器人遇到障碍时, MPC-ACBF的计算时间略有增加, 但仍能保证实时性.}
+% \caption{A computation time graph . Showing the running time of each component of our proposed method, the computation time of MPC-ACBF increases slightly when the robot encounters an obstacle, but still guarantees real-time performance.}
+\label{fig.10}
+\end{figure}
+
+\begin{figure*}[htp]
+\centering
+\includegraphics[width=16.5cm]{images/11figreal-shot.png}
+\caption{参考：真实世界的动态避障场景的图示-待替换成自己的图。}
+\label{fig.14}
+\end{figure*}
+
+如Fig.\ref{fig.7}显示了所提出方法分别在3个场景下2个时刻的快照.
+% As Fig.\ref{fig.7} shows the snapshots of the proposed method for 2 moments in 3 scenarios respectively.
+Tab.\ref{tab:simulation-datas}显示了所提出方法与其他基于$CD$的MPC方法的比较.
+% Tab.\ref{tab:simulation-datas} shows the comparison of the proposed method with other $CD$-based MPC methods.
+总体而言, 在所有基于CBF的MPC方法中, 所提出方法以较短的轨迹长度, 较小的速度方差以及最大的与最小平均障碍物距离, 并保持最高的成功率.
+% Overall, among all the CBF-based MPC methods, the proposed method achieves shorter trajectory lengths, smaller velocity variance, and the largest distance from the minimum average obstacle, while maintaining the highest success rate.
+由于随着场景的动态复杂性增加, 更多的障碍物, 更多样的障碍物运动模式, 基于$CD$的MPC方法的最小障碍物距离锐减, 并且在Env.3下, 它们的成功率会骤降.
+% As the dynamic complexity of the scene increases, with more obstacles and more diverse obstacle motion patterns, the minimum obstacle distances of the $CD$-based MPC methods decrease drastically, and their success rates plummet under Env. 3.
+在Env.1中移动机器人需要规避迎面而来的动态障碍物, 除了N-CBF, 其余考虑了障碍物预测轨迹的方法均保持了很高的成功率. 
+% In Env.1, AMR needs to avoid oncoming dynamic obstacles, and except for N-CBF, the rest of the methods considering obstacles to predict the trajectory maintain a high success rate. 
+在Env.2中移动机器人需要规避前方斜向往复运动的障碍物, 基于CBF的MPC方法均保持了很高的成功率. 
+% In Env.2, AMR needs to avoid the obstacles that move diagonally and reciprocally in front of it, and the MPC methods based on CBF maintain a high success rate. 
+在Env.3中机器人需要规避多样运动的障碍物, 在该复杂的动态场景下, 其它方法的成功率均出现下降. 移动机器人的最小障碍物距离均下降，与临界距离十分接近, 而且速度方差增大, 说明轨迹的平滑度下降.
+% In Env.3, the robot needs to avoid obstacles with multiple motions, and the success rates of the other methods decrease in this complex dynamic scenario. The minimum obstacle distance of AMR decreases and is very close to the critical distance, and the velocity variance increases, indicating a decrease in the smoothness of the trajectory.
+其中, 所提出A-ACBF方法要比N-ACBF，C-ACBF方法的性能好, 因为一方面, 所提出方法的全局规划层考虑了ADSM来评估移动机器人与障碍物风险关系, 可以生成一条考虑了障碍物速度信息的安全性更高的全局路径. 另一方面, 作为MPC的初始参考路径, 能更轻易求解出满足安全约束约束的局部路径.
+% Among them, the proposed A-ACBF method performs better than the N-ACBF and C-ACBF methods because, on the one hand, the global planning layer of the proposed method takes into account the ADSM to evaluate the risk relationship between AMR and obstacles, and can generate a more secure global path that takes into account the obstacle velocity information. On the other hand, as the initial reference path of MPC, the local path that satisfies the safety constraints can be solved more easily.
+
+
+
+
+
+
+
+如Fig.\ref{fig.10}显示了全局规划层和局部规划层的在场景三下所提出方法的计算时间. 
+% As Fig.\ref{fig.10} shows the computation time of the proposed method under Scenario III for the global planning layer and the local planning layer. 
+对于局部规划层, 记录了MPC在遇到和不遇到动态障碍物时的运行时间. 
+% For the local planning layer, the running time of the MPC is recorded with and without encountering dynamic obstacles. 
+通常, 当移动机器人遇到障碍物时, 即使MPC运行时间略有增加, 规划器也可以实现实时性能. 
+% In general, when AMR encounters an obstacle, the planner can achieve real-time performance even if the MPC runtime increases slightly. 
+与现有的方法相比\citep{jian2022dynamicCB}, 采取松弛变量以及为MPC提供初始估计的操作在很大程度上有助于提高优化效率. 
+% Compared with existing methods\citep{jian2022dynamicCB}, the operations of taking slack variables as well as providing initial estimates for the MPC contribute largely to the optimization efficiency. 
+对于全局规划层, 执行基于ADSM引导的Kinodynamic A*的路径搜索也只需要少量的计算时间. 
+% For the global planning layer, performing ADSM-guided Kinodynamic A*-based path search also requires only a small amount of computation time. 
+
+在Fig.\ref{fig.8}以及Fig.\ref{fig.9}中展示了移动机器人在Env.3中规避第一个障碍物的整个避障过程的行为比较.
+% In Fig.\ref{fig.8} and Fig.\ref{fig.9} a comparison of the behavior of the AMR throughout the obstacle avoidance process of avoiding the first obstacle in Env.3 is shown.
+在Fig.\ref{fig.8}中蓝色虚线左侧的区域展示了所提出方法从遇到障碍物到规避行为的过程. 
+% The zone to the left of the blue dotted line in Fig.\ref{fig.8} shows the process of the proposed method from encountering an obstacle to the avoidance behavior. 
+成功规避后, 移动机器人将回到跟踪全局路径的状态并远离障碍物. 
+% After successful avoidance, the AMR will return to tracking the global path and move away from the obstacle. 
+与目前的N-DCBF方法对比, 所提提出方法具有更大的障碍物距离.
+% Compared with the current N-DCBF method, the proposed method has a larger obstacle distance.
+而且如Fig.\ref{fig.9}所示, 所提出方法的保持距离碰撞距离更远. 
+% Moreover, as shown in Fig.\ref{fig.9}, the proposed method has a longer keep-away distance from collision. 
+通过简单地增大超前时间放松系数$K_h$以及CBF约束分隔系数$K_c$，可以提高安全性能, 但也可能使所生成的轨迹更加保守, 甚至无可行解. 
+% By simply increasing the ahead time relaxation factor $K_h$ as well as the CBF constraint separation factor $K_c$, the safety performance can be improved, but it may also make the generated trajectories more conservative, or even without feasible solutions. 
+因为随着$K_h,K_c$增大, ACBF对MPC的约束的严格程度增大. 
+% This is because as $K_h,K_c$ increases, the stringency of the ACBF constraints on the MPC increases. 
+与普通的CBF约束相比, 当由初始状态约束和运动学约束所限制的可达集一定时, 更严格的CBF安全约束, MPC所求解出可行集更小.
+% Compared with ordinary CBF constraints, when the reachable set limited by the initial state constraints and kinematic constraints is certain, the MPC solves for a smaller feasible set with stricter CBF safety constraints.
+
+
+% \begin{figure}[htp]
+% \vspace{-0.20cm}
+% \centering
+% \includegraphics[width=8cm]{fig_7.pdf}
+% \caption{实验平台概述：配备i7-8250u CPU和多个传感器，包括带16光束和SBG-Ellipse-N IMU的RS激光雷达，以及仅用于实验记录的Intel Realsense D435摄像头的松灵Scout2移动机器人底盘。算法部署在配备英特尔酷睿i7-8750H CPU和16GB内存的，安装了ROS Noetic操作系统的Ubuntu机载电脑上。}
+% \label{fig.15}
+% \end{figure}
+
+\begin{figure}[htp]
+\centering
+\includegraphics[width=7cm]{images/8dist-time-graph.png}
+\caption{一个障碍物距离-时间曲线图. 遇到未来碰撞障碍物时障碍物距离随时间的变化比较, 所提出的方法具有较大的障碍物的最小距离.}
+% \caption{A plot of obstacle distance-time. Comparing the variation of obstacle distance with time when encountering future collision obstacles, the proposed method has a larger minimum distance to the obstacle.}
+\label{fig.8}
+\end{figure}
+
+\begin{figure}[htp]
+\centering
+\includegraphics[width=8cm]{images/9dist-hist-graph.png}
+\caption{一个障碍物距离的直方图. 所提出的方法确保差速底盘移动机器人与障碍物保持安全距离.}
+% \caption{A histogram of obstacle distances. The proposed method ensures that the differential chassis AMR maintains a safe distance from obstacles.}
+\label{fig.9}
+\end{figure}
+
+
+\subsection{Real-world scenarios}
+\label{real_world-section}
+
+\textit{Experimental Setup: }
+在真实场景的实验中, 我们将运动规划方法部署在差速底盘的移动机器人上.为了验证所提出方法的鲁棒性, 在多个场景下进行多次实验. 
+% In the experiments of real scenarios, we deploy the motion planning method on an AMR with differential chassis. In order to verify the robustness of the proposed method, multiple experiments are conducted in several scenarios. 
+其中如Fig.\ref{fig.14}的实验场景中, 存在3个动态障碍物(包括2个行人和一个移动机器人).
+% For example, in the experimental scenario Fig.\ref{fig.14}, there are three dynamic obstacles (including two pedestrians and one AMR).
+% 设定起点到目标点的距离为20m, 行人和移动机器人的速度分别约为$1.0m/s$和$1.2m/s$. 
+% The distance from the starting point to the target point is set to be 20m, and the speeds of the pedestrians and AMR are about $1.0m/s$ and $1.2m/s$, respectively. 
+局部感知范围是$10\times10m$, 分辨率为$0.1m$. 移动机器人以及障碍物的预测步数$N=20$. 
+% The local sensing range is $10\times10m$, and the resolution is $0.1m$. The predicted number of steps for AMR as well as obstacles is $N=20$. 
+考虑到激光雷达的盲区, 安全距离$d_{inflate}$设置为$1.3m$. 
+% Considering the blind spot of LIDAR, the safe distance $d_{inflate}$ is set to $1.3m$. 
+CBF中的$\gamma$设置为0.25, 超前时间放松系数$K_h=0.4$，CBF约束分隔系数$K_c=0.3$. 
+% The $\gamma$ in CBF is set to 0.25, the ahead time relaxation factor $K_h=0.4$, and the CBF constraint separation factor $K_c=0.3$. 
+
+在没有任何外部定位或障碍物形状和尺寸的先验信息的情况, 在真实的动态场景下进行多次实验. 
+% Without any a priori information about the external localization or the shape and size of the obstacles, several experiments are performed in a real dynamic scene. 
+本文所提出的算法在ROS Neotic操作系统下运行. 局部感知模块运行于10～20Hz, 全局规划层运行于1Hz, 以及局部规划层运行于10Hz. 
+% The algorithm proposed in this paper runs under the ROS Neotic operating system. The local sensing module runs at 10-20 Hz, the global planning layer at 1 Hz, and the local planning layer at 10 Hz.
+
+\textit{Results and discussion: }
+如Fig.\ref{fig.14}展示了其中一个实验的快照序列, 该场景中存在两个行人, 所提出方法会考虑障碍物的预测轨迹来生成轨迹, 当行人仍在移动机器人左侧时, 所提出算法预测其在前向$N$步时间是向右的运动轨迹, 因此移动机器人采取从左侧规避的策略.
+% As Fig.\ref{fig.14} shows a snapshot sequence of one of the experiments, there are two pedestrians in the scene, the proposed method considers the predicted trajectories of the obstacles to generate the trajectories, when the pedestrians are still on the left side of the AMR, the proposed algorithm predicts that their trajectories are to the right at the time of the forward $N$-steps, so the AMR adopts a strategy of avoidance from the left side.
+这样, 移动机器人不仅可以保证导航的安全性, 而且可以在更短时间内达到目标点. 
+% In this way, the AMR can not only ensure the safety of navigation, but also reach the target point in a shorter time. 
+为了验证算法的可扩展性和鲁棒性, 在更多场景下进行了实验, 其结果可参考附件.
+% In order to verify the scalability and robustness of the algorithm, experiments are conducted in more scenarios, and the results can be found in the Appendix.
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 6%%%%%%%%%%%%%%%%%%
+\section{CONCLUSIONS}
+\label{CONCLUSIONS}
+
+在本文中，我们介绍了一种基于带有超前控制屏障函数的模型预测控制的运动规划方法, 并在计算能力有限的差速驱动的移动机器人上部署该方法, 实现了在动态环境下自主导航.
+ADSM用于表征机器人与障碍物之间的风险关系, 与普通基于欧氏距离的安全指标相比, 它提供了更全面的描述.
+ADSM被集成到全局路径搜索以及局部路径优化求解的过程中, 以得到安全可靠的局部轨迹. 
+在同一基准实验中, 通过数值实验估计了放松系数$K_h$，CBF约束分隔系数$K_c$的取值范围. 
+在Gazebo仿真实验中, 我们所提出方法与其余5种基于欧式距离或CBF的MPC方法进行了比较, 其结果表明, 我们的方法在轨迹安全性和平滑度方面优于其它方法.
+现实世界的实验进一步验证了我们提出的方法在未知动态环境中的有效性和可行性. 
+未来的研究主要有两方面: 1)ACBF约束中考虑动态感知中障碍物不确定的影响. 2)ADSM中的放松系数$K_h$考虑使用基于学习的方法来确定.
+% In this paper, we present a motion planning method based on model predictive control with an overriding control barrier function and deploy the method on a computationally limited differential-drive AMR to realize autonomous navigation in a dynamic environment. 
+% The ADSM is used to characterize the risk relationship between the robot and obstacles, which provides a more comprehensive description than the common Euclidean distance-based safety metrics.
+% ADSM is integrated into the global path search and local path optimization solving process to obtain safe and reliable local trajectories. 
+% In the One-Horizon Benchmark experiment, the range of values of the relaxation factor $K_h$ and the CBF constraint separation factor $K_c$ are estimated by numerical experiments. 
+% In the Gazebo simulation experiment, our proposed method is compared with the remaining five MPC methods based on Euclidean distance or CBF, and the results show that our method outperforms the others in terms of trajectory safety and smoothness. 
+% % Real-world experiments further validate the effectiveness and feasibility of our proposed method in unknown dynamic environments. 
+% Future research focuses on two aspects: 1) Considering the effect of obstacle uncertainty in dynamic perception in ACBF constraints. 2) The relaxation factor $K_h$ in ADSM is considered to be determined using a learning-based approach.
+
+
+% \newpage
+\bibliography{ref}
+
+% ---------------------------------------------------
+
+
+\end{document}

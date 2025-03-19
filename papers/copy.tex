@@ -1,0 +1,534 @@
+\documentclass[preprint,5p,times,twocolumn,authoryear]{elsarticle}
+% \documentclass[preprint,5p,times,twocolumn]{elsarticle}
+
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{color}
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{url}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, citecolor=blue, linkcolor=blue, urlcolor=blue}
+
+\bibliographystyle{apalike}
+\biboptions{authoryear}
+
+\usepackage{caption}
+\captionsetup[figure]{labelfont={bf}, labelformat={default}, labelsep=period, name={Fig.}}
+
+\renewcommand{\dblfloatpagefraction}{.9}
+
+
+\journal{Journal of King Saud University - Computer and Information Sciences}
+
+
+\begin{document}
+\begin{frontmatter}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\title{MPPI-CBF}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{abstract}
+\textcolor{red}{Autonomous navigation and obstacle avoidance for mobile robots is still a challenge in dynamic environments with humans and robots.} This paper presents a velocity obstacle guided motion planning method for mobile robots in environments with dynamic obstacles. The method combines the concept of velocity obstacle (VO) and the scheme of trajectory generation to negotiate dynamic obstacles automatically. First, a dynamic perception algorithm is developed to track and predict obstacles using only point cloud input. Subsequently, to obtain an initial trajectory that satisfies kinodynamic and the VO-based safety metric (VOSM), VO is applied to search the kinodynamic path to verify the safety of the extended motion primitives. Finally, the smoothness and safety of the robot trajectory are enhanced by nonlinear optimization, which incorporates the proposed safety constraints based on VO. Extensive simulation experiments in challenging environments reveal up to a 40.0\% increase in success rate and a 44.8\% improvement in trajectory smoothness compared to the obstacle distance-based method. The real-world experiments further demonstrate that our method is reliable and can safely avoid dynamic obstacles.
+\end{abstract}
+
+\begin{keyword}
+Mobile robots \sep
+Velocity obstacle \sep
+Obstacle avoidance \sep
+Trajectory optimization \sep
+Dynamic motion planning
+\end{keyword}
+
+\end{frontmatter}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 1%%%%%%%%%%%%%%%%%%
+\section{Introduction}\label{sec1}
+Mobile robots, especially unmanned vehicles and drones, have seen promising developments in the last decade thanks to the advancement of autonomous navigation technologies. 
+\textcolor{red}{Motion planning technology plays a key role in autonomous navigation and obstacle avoidance in dynamic environments (e.g., Fig. \ref{fig.1}). However, motion planning avoiding dynamic obstacles for mobile robots remains challenging due to the following aspects.} (1) Achieving both accuracy and efficiency in continuous perception and prediction for dynamic obstacles remains a challenging task for autonomous systems \textcolor{red}{\citep{schmid2023dynablox, chen2022rast}}. (2) Numerous planning methods consider the relative distances of dynamic obstacles as a safety metric and ignore the relative velocities of the obstacles, resulting in conservative and unsafe behavior \textcolor{red}{\citep{chen2022real}}. (3) In highly dynamic environments, many motion planning methods based on distance metrics tend to degrade and fail to plan safe and real-time trajectories \textcolor{red}{\citep{zeng2021safety, jian2022dynamic}.}
+
+\begin{figure}[htp]
+\centering
+\includegraphics[scale=0.17]{fig_1.pdf}
+\caption{Example of planning feasible trajectories for a wheeled mobile robot in an unknown dynamic environment.}
+\label{fig.1}
+\end{figure}
+
+To address the above issues, we develop a planning method that uses VO as a safety metric to evaluate the trajectory in dynamic environments. To generate predicted trajectories for dynamic obstacle avoidance, the obstacles are clustered and enclosed by minimal bounding spheres. The Hungarian algorithm \citep{kuhn2005hungarian} is then utilized to perform data association between obstacles and historical data, and then polynomials are fitted to represent the predicted trajectories. To provide a more accurate depiction of robot safety in dynamic environments, the \textcolor{red}{VO-based safety metric (VOSM)} using the relative distances and velocities between the robot and obstacles is proposed. The proposed method is composed of VO-guided path searching and VO-constrained trajectory optimization. In VO-guided path searching, the VOSM is used to evaluate the safety of the path and obtain an initial path by discarding motion primitives that violate the VOSM. Then, \textcolor{red}{the initial path is parameterized as a cubic uniform B-spline trajectory.} The soft constraints of VO are formulated to increase the safety of the trajectory. Gradient-based optimization is subsequently employed to refine the trajectory.
+
+
+
+
+\begin{figure*}[htp]
+\centering
+\includegraphics[scale=0.75]{fig_2.pdf}
+\caption{Overview of the system framework.
+After receiving the raw data from the IMU and lidar sensors, the state estimation module is applied to derive the localization of the robot. The dynamic perception module uses the real-time point cloud data from lidar to implement geometric parameterization through clustering to generate a polynomial prediction trajectory in the forward time domain. The predicted trajectory of the obstacles and the robot's odometry are then applied to the motion planning module to perform collision detection and activate replanning if necessary. VOSM is used as a safety metric to guide path searching to generate the initial trajectory for optimization. In addition, VO-constrained trajectory optimization further guarantees safety and smoothness. Finally, the trajectory tracking controller is applied to generate control commands based on the local trajectory to achieve autonomous navigation and obstacle avoidance.}
+\label{fig.2}
+\end{figure*}
+
+
+% \subsection{Contribution and System Framework}
+% \label{Contribution}
+
+The contributions of this paper are outlined as follows:
+
+\begin{itemize}
+
+\item A safety metric for dynamic environments based on the velocity obstacle is proposed to provide more accurate and safer collision avoidance interactions between the robot and dynamic obstacles compared to the distance metric.
+\item A proposed motion planning method based on the VOSM can generate safe and reliable trajectories in dynamic environments.
+\item Through simulation and real-world experiments, our approach is validated and compared to the distance-based method over various levels of obstacle complexity via extensive tests.
+
+\end{itemize}
+
+The system framework based on the proposed method is illustrated in Fig. \ref{fig.2}. The state estimation module based on LIO-SAM \citep{shan2020lio} is used to implement the localization of the robot. The dynamic perception module is applied to detect dynamic obstacles and predict their trajectories, which is described in Section \ref{Dynamic_Perception}. In the \ref{Velocity_Obstacle} section, the VO and VOSM formulas are derived. VO-guided path searching is described in Section \ref{Path_Searching}. The representation of the B-spline is given in Section \ref{Trajectory_Optimization}, and then the optimization function based on the VOSM is introduced. \textcolor{red}{Section \ref{related_work} provides an overview of the related works.} \textcolor{red}{In Section \ref{Experiments}, the experimental setup and comparison methods are described. Then, the results of the experiments are presented in Section \ref{Results}. Finally, the conclusion and future work are presented in Section \ref{CONCLUSIONS}.}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 2%%%%%%%%%%%%%%%%%%
+\section{Related Work}
+\label{related_work}
+Dynamic obstacle avoidance has been extensively studied and remains a challenging problem. Approaches to dynamic obstacle avoidance mainly comprise reactive methods, model predictive control (MPC)-based methods, velocity obstacle-based methods and planning-based methods. \textcolor{red}{A detailed comparison between the four different methods is shown in Table \ref{tab:relatedWork}.}
+
+\begin{table*}[htbp]
+  \vspace{-0.20cm}
+  \centering
+  \caption{\textcolor{red}{Comparison of Related works}}
+  \renewcommand{\arraystretch}{1.1}
+  \setlength{\tabcolsep}{5mm}{
+  
+    \begin{tabular}{ccccp{13em}}
+    \hline
+    \multicolumn{1}{p{4.0em}}{\textbf{Methods}} & \multicolumn{1}{p{4.0em}}{\textbf{Robustness}} & \multicolumn{1}{p{4.0em}}{\textbf{Efficiency}} & \multicolumn{1}{p{4.0em}}{\textbf{Smoothness}} & \textbf{Related Works} \\
+    \hline
+    \multicolumn{1}{c}{\multirow{4}[2]{*}{Reactive methods}} & \multicolumn{1}{c}{\multirow{4}[2]{*}{Low}} & \multicolumn{1}{c}{\multirow{4}[2]{*}{High}} & \multicolumn{1}{c}{\multirow{4}[2]{*}{Low}} & \citep{fox1997dynamic} \\
+          &       &       &       & \citep{khatib1985real} \\
+          &       &       &       & \citep{ferrer2013robot} \\
+          &       &       &       & \citep{petti2005safe} \\
+    \hline
+    \multicolumn{1}{c}{\multirow{4}[2]{*}{MPC methods}} & \multicolumn{1}{c}{\multirow{4}[2]{*}{Medium}} & \multicolumn{1}{c}{\multirow{4}[2]{*}{Low}} & \multicolumn{1}{c}{\multirow{4}[2]{*}{High}} & \citep{jian2022dynamic} \\
+          &       &       &       & \citep{zhu2019chance}  \\
+          &       &       &       & \citep{poonganam2020reactive}  \\
+          &       &       &       & \citep{wang2022velocity} \\
+    \hline
+    \multicolumn{1}{c}{\multirow{5}[2]{*}{VO methods}} & \multicolumn{1}{c}{\multirow{5}[2]{*}{Low}} & \multicolumn{1}{c}{\multirow{5}[2]{*}{High}} & \multicolumn{1}{c}{\multirow{5}[2]{*}{Low}} & \citep{chen2021velocity} \\
+          &       &       &       & \citep{han2022reinforcement} \\
+          &       &       &       & \citep{roelofsen2015reciprocal} \\
+          &       &       &       & \citep{xu2020collision} \\
+          &       &       &       & \citep{van2008reciprocal} \\
+    \hline
+    \multicolumn{1}{c}{\multirow{4}[2]{*}{Planning methods}} & \multicolumn{1}{c}{\multirow{4}[2]{*}{High}} & \multicolumn{1}{c}{\multirow{4}[2]{*}{Low}} & \multicolumn{1}{c}{\multirow{4}[2]{*}{High}} & \citep{chen2023risk},  \\
+          &       &       &       & \citep{wang2021autonomous},  \\
+          &       &       &       & \citep{tordesillas2021mader} \\
+          &       &       &       & \citep{tordesillas2022panther} \\
+    \hline
+    \end{tabular}%
+    }
+  \label{tab:relatedWork}%
+\end{table*}%
+
+
+Reactive methods are a type of control method that enables single-step control decisions by only examining the current condition of dynamic obstacles. Four common reactive methods include the dynamic window approach method (DWA) \citep{fox1997dynamic}, artificial potential fields method (APF) \citep{khatib1985real}, social forces method \citep{ferrer2013robot}, and inevitable collision states method (ICS) \citep{petti2005safe}. However, these methods may cause conservative or oscillatory behavior when the obstacles demonstrate nonlinear motion or the environment is too complex. MPC-based methods \citep{jian2022dynamic, zhu2019chance, poonganam2020reactive, wang2022velocity} formulate trajectory planning problems as non-linear optimal control problems with safety constraints that ensure obstacle avoidance. Compared to reactive methods, MPC-based methods produce trajectories that are more consistent with robot dynamics and address the reactive methods’ short-sightedness issues. However, solving the nonlinear dynamic obstacle constraints may result in convergence to a local minimum if an appropriate initial guess is unavailable.
+
+As a subset of reactive methods, the velocity obstacle (VO) \citep{fiorini1998motion} method can be adopted to produce a sequence of collision-free actions and is widely adopted in multi-agent navigation and dynamic obstacle avoidance. The velocity obstacle represents the region of potential collision between a robot and obstacles and is determined based on their relative velocities and distances. By choosing a velocity external to the VO area, the robot can achieve the task of collision avoidance effectively. The method based on VO and its variants has been widely adopted for mobile robots that traverse in dynamic environment \citep{chen2021velocity, han2022reinforcement, roelofsen2015reciprocal, xu2020collision}. \cite{roelofsen2015reciprocal} apply the ORCA \citep{van2008reciprocal} method to a quadrotor to avoid dynamic obstacles by utilizing solely a limited field of view camera sensor. Additionally, \cite{xu2020collision} introduce a maximum-speed aware VO (MVO) method for a drone and a car-like robot to avoid dynamic obstacles at high speed. However, the majority of VO-based approaches tend to be conservative and short-sighted, which inevitably reduces both the efficiency and the quality of trajectory.
+
+In dynamic environments, planning-based methods tend to be more robust and safer than reactive methods because the predicted information of the dynamic obstacles is utilized to evaluate the safety of the planned trajectories in a future time domain. \cite{chen2023risk} plan the local trajectory by sampling motion primitives on a dual-structure particle-based (DSP) dynamic occupancy map \citep{chen2022continuous}; however, the DSP map is time-consuming and only applicable to linear dynamic obstacles. Many other works \citep{wang2021autonomous, tordesillas2022panther, tordesillas2021mader} parameterize dynamic obstacles as geometries (polytopes or ellipsoids), search motion primitives to obtain feasible paths, and then solve for a nonlinear optimization problem to obtain trajectories. However, most planning-based methods consider only the future position of obstacles when planning the trajectory and ignore the velocity of obstacles, which is insufficient to ensure robot safety in highly nonlinear dynamic scenarios. In this paper, our method accounts for both obstacle positions and velocities for planning collision-free trajectories in dynamic environments. The target of the proposed method is to combine the advantages of both VO-based methods and planning-based methods to enhance the safety and quality of robot trajectories in complex dynamic scenarios.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 3%%%%%%%%%%%%%%%%%%
+\section{Method and Implementation}
+\label{Implementation}
+
+\subsection{Dynamic Perception}
+\label{Dynamic_Perception}
+The voxel grid filter is first applied to decrease the density of point cloud from the onboard sensors. Next, after creating a KD-tree representation of the filtered points, the density-based clustering algorithm (DBSCAN) \citep{nasibov2009robustness} is used to generate a set of clusters $A_{obs}=\{C_1,C_2,...,C_n\}$, where each cluster $C_i$ corresponds to an obstacle. The minimum enclosing sphere is calculated based on the centroid and the size of $C_i$. Subsequently, a specific tracking track (trajectory) is assigned to $C_i$ by the Hungarian \citep{kuhn2005hungarian} algorithm to minimize the assignment cost formulated as the Euclidean distance $d_s$ between the centroid of the cluster and the predicted trajectory. If $d_s$ exceeds a set threshold $D_{\max}$, a new track for the cluster will be created. The history track (trajectory) of each obstacle $C_i$ is stored in the corresponding sliding window $W_i^{t} = \{C_i^{t-n \bigtriangleup t},...,C^{t-\bigtriangleup t}_i, C_i^{t}\}$. Finally, the position of the history track is fitted by a quadratic polynomial to obtain the predicted trajectory, which is then used in the motion planning module.
+
+\subsection{Velocity Obstacle}
+\label{Velocity_Obstacle}
+
+This section presents a representation of the velocity obstacle that can be utilized in both path searching and trajectory optimization. A mobile robot and a dynamic obstacle, represented by disk shapes with radii $R$ and $R_b$, respectively, are shown in Fig. \ref{fig.3}. The relative collision cone (RCC) of each obstacle acting on the robot is determined by the following equation:
+\begin{equation}
+\label{eq.vo1}
+\text{RCC}_{a,b} = \{ \bm{V}_\text{a,b} \mid  \lambda(\bm{P}, \bm{V}_\text{a,b}) \cap B' \neq \emptyset \},
+\end{equation}
+where $\lambda(\textbf{P}, \textbf{V})$ denotes the ray that emanates from $\bm{P}$ and extends in the direction of $\bm{V}$. $B'$ denotes the disc-shaped obstacle, which has been inflated by the radius of the robot. $\bm{V}_\text{a,b}$ refers to the relative velocity. The robot and obstacle will collide when $\bm{V}_\text{a,b}$ is bounded by $\text{RCC}_{a,b}$. Under 2D conditions, the shape of an RCC is a pinch, while under 3D conditions, it is a cone.
+
+\begin{figure}[htp]
+\centering
+\includegraphics[scale=0.75]{fig_3.pdf}
+\caption{An illustration of the velocity obstacle in 2D and 3D cases. \textcolor{red}{The radii of the robot is $R$.} The obstacles are assumed to be stationary while the robot moves toward each obstacle with a relative velocity. The relative velocity $V_{a,d}$ between robot A and dynamic obstacle D is bounded by $\text{RCC}_{a,d}$, indicating that the state of $V_{a,d}$ is in collision. Moreover, since the relative velocity $V_{a,c}$ is equivalent to the velocity of the robot itself, the state of $V_{a,c}$ is also in collision.}
+\label{fig.3}
+\end{figure}
+
+In the case of multiple obstacles, establishing a prioritization scheme is essential. The obstacles that are on the verge of collision must be assigned higher priority than those that have a longer time to collision. To this end, $\text{RCC}_F$ is defined as the RCC formed by ignoring obstacles with collision time exceeding $T_f$, i.e., $\text{RCC}_F$ is defined as:
+\begin{equation}
+\label{eq.vo2}
+\text{RCC}_F = \{\bm{V}_\text{a,b} \mid \bm{V}_\text{a,b} \in \text{RCC} , \Vert \bm{V}_\text{a,b} \Vert_2 \ge d_m/T_f \},
+\end{equation}
+where $d_m$ is the minimum distance between the robot and the obstacle. $T_f$ is the minimum collision time threshold.
+
+% To facilitate the implementation of VO in subsequent path searching and trajectory optimization, inspired by \cite{poonganam2020reactive}, the formulas for determining the state that violates the VOSM are given as:
+
+\textcolor{red}{The geometric relationship between the robot and the obstacle is applied to determine if the relative velocity between the robot and the obstacle lies in the limits of the RCC. Referring to \citep{poonganam2020reactive} , the robot states violating the VOSM are identified by the following formulations.}
+\begin{equation}
+\label{eq.vo3}
+\begin{aligned}
+    & F^k_{vo} = \zeta f^k_{vo} > 0, & \\
+    & f^k_{vo} = (\bm{l}_k^\top \bm{v}_k)^2 + (R_k'^2 - \Vert \bm{l}_k \Vert_2^2) \Vert \bm{v}_k \Vert_2^2   , & \\
+    & \zeta = \textbf{softmax}(-\cos{\theta}), & \\
+    & \bm{l}_k = \bm{p}_t - \prescript{o}{k}{\bm{p}}_t, & \\
+    & \bm{v}_k = \overset{.}{\bm{p}_t}  - \prescript{o}{k}{\overset{.}{\bm{p}}_t}, & \\
+    & R_k' = \prescript{o}{k}{R} + R + R_{safe}, &
+\end{aligned}
+\end{equation}
+where $\bm{p}_t$ and $\prescript{o}{k}{\bm{p}}_t$ denote the positions of the robot and the $k^{th}$ obstacle at time $t$, respectively. The radius of the robot and the $k^{th}$ obstacle are, respectively denoted as $R$ and $\prescript{o}{k}{R}$, and $R_{safe}$ represents the safety inflation radius. The angle between $\bm{l}_k$ and $\bm{v}_k$ is denoted as $\theta$. The function \textbf{softmax}() is applied to map $-\cos\theta$ to 0 or 1. The VO relationship between the robot and the $k^{th}$ obstacle is within the RCC if and only if $F^k_{vo}>0$ ($\cos{\theta} < 0$ and $f^k_{vo}>0$), i.e., violating the VOSM.
+
+The equation for the collision time is further given as:
+\begin{equation}
+\label{eq.vo4}
+\tau_k = \frac{d_m}{\Vert \bm{v}_k cos\theta \Vert_2} = \frac{ \Vert \bm{l}_k \Vert_2^2 - \Vert \bm{l}_k \Vert_2 R_k'}{\mid \bm{l}_k^\top \bm{v}_k \mid}.
+\end{equation}
+
+In Section \ref{Path_Searching}, Eq. \ref{eq.vo3} is encoded as $\textbf{CheckVO}(\cdot)$ for path searching, and Eq. \ref{eq.vo3} and Eq. \ref{eq.vo4} are used to construct the VO-constraint optimization formulas in Section \ref{Trajectory_Optimization}.
+
+\subsection{VO-Guided Path Searching}
+\label{Path_Searching}
+
+\begin{figure}[htp]
+\centering
+\includegraphics[scale=0.9]{fig_4.pdf}
+\caption{An illustration of the VO-guided path searching algorithm. The solid line indicates the path of the motion primitive that satisfies the VOSM, and the dashed line indicates that it violates the VOSM. The red arrows indicate the relative velocity between the motion primitive and the dynamic obstacle at the corresponding moment. To account for the size of the robot, the obstacles have been inflated based on the robot radius in the figure.}
+\label{fig.4}
+\end{figure}
+
+The proposed path searching method is inspired by the kinodynamic path searching algorithm \citep{liu2018search, zhou2019robust}. As shown in Alg. \ref{algorithm.1} and Fig. \ref{fig.4}, after expanding the motion primitives, the motion primitive paths are sampled to obtain the sampled points that are verified with VO safety. If one of the sampled points violates the VOSM, the motion primitive path is ignored. Therefore, a kinodynamic path that strictly satisfies the VOSM can be obtained.
+
+
+
+\textcolor{red}{The open set $O_s$ is used to store the expanding nodes. The close set $C_s$ is used to prevent a dead loop in searching.} Subsequently, \textcolor{red}{the function $\textbf{PopMin}(\cdot)$ pops an element with the minimun $f_s$ cost of the open set $C_s$.} $\textbf{CheckVO}(\cdot)$ is given by Eq. \ref{eq.vo3}, and the motion primitive expansion $\textbf{GetNeighbour}(\cdot)$ is achieved by sampling the acceleration $\bm{u}_i$ and the duration time $T_i$. \textcolor{red}{$\textbf{EdgeCost}(\cdot)$ represents the process cost of the  primitives. To minimise the overall energy cost as well as the trajectory time of the primitives, $\textbf{EdgeCost}(\cdot)$ is defined as follows:}
+\begin{equation}
+\label{eq.kino1}
+J(T)=\int_{0}^{T}\Vert \bm{u}(t)\Vert_2^2dt+\rho T.
+\end{equation}
+
+\begin{algorithm}
+\caption{VO-Guided Path Searching.}\label{algorithm.1}
+\begin{algorithmic}[1]
+\STATE $\textbf{Initialize}(O_s,C_s)$;\;
+\STATE $\textbf{Add}(O_s,S_\text{start})$;\;
+\WHILE{${\textbf{Size}}(O_s) > 0$}
+\STATE $S_\text{curr} = \textbf{PopMin}(O_s), \textbf{Add}(C_s,S_\text{curr})$;\;
+\IF{${\textbf{NearGoal}}(S_\emph{curr})$}
+\RETURN{${\textbf{RetrievePath}}(S_\text{curr})$};
+\ENDIF
+\STATE $P_{near} = \textbf{GetNeighbour}(S_\text{curr})$;\;
+\FOR{$p_i \in P_{near}$}
+\STATE $safe = \textbf{CheckVO}(p_i)$;\;
+\IF{$ p_i \notin C_s \wedge safe $}
+\STATE $g_{temp} = S_\text{curr}.g_s+\textbf{EdgeCost}(p_i) $;\;
+\ENDIF
+\IF{$g_{temp} > p_i.g_s$}
+\STATE $\textbf{continue}$;\;
+\ENDIF
+\STATE $p_i.pre = S_\text{curr}, p_i.g_s = g_{temp}$;\;
+\STATE $p_i.f_s = p_i.g_s+\textbf{Heuristic}(p_i)$;\;
+\STATE \textcolor{red}{$\textbf{Add}(O_s, p_i)$};\;
+\ENDFOR
+\ENDWHILE
+\end{algorithmic}
+\end{algorithm}
+
+\textcolor{red}{Moreover, the actual cost for the $n^{th}$ motion primitive from the start point to the current point is $g_s = \sum_{j = 1}^{n} ( \Vert \bm{u}_{j} \Vert_2^2 \tau_j + \rho \tau_j )$, where $\tau_j$ is the duration of each motion primitive.} $\textbf{Heuristic}(\cdot)$ represents the minimum cost $J_{\min}$ from the current state to the target state, obtained by solving a two-point boundary-value problem (TPBVP) \citep{bryson2018applied}.
+
+\subsection{VO-Constrained Optimization}
+\label{Trajectory_Optimization}
+
+B-spline has been widely applied in trajectory optimization \citep{xu2022vision, usenko2017real, zhou2020ego} because of its local control characteristic and convex hull property. A cubic uniform B-spline is a segmented polynomial uniquely determined by its $N$ control points and knot vector $\textbf{s}(t)$. The position $\textbf{Q}_i(t) \in \mathbb{R}^{dim}$ of the trajectory is represented by B-spline control points:
+\begin{equation}
+\label{eq.bspline1}
+\begin{aligned}
+    & \textbf{Q}_i(t)=\textbf{s}(t)\textbf{M}\textbf{P}_i, &\\
+    & \textbf{s}(t) = [1,t,t^2,t^3], &\\
+    & \textbf{M} = \frac{1}{6}\left[\begin{array}{cccc}
+        1 & 4 & 1 & 0 \\
+        -3 & 0 & 3 & 0 \\
+        3 & -6 & 3 & 0 \\
+        -1 & 3 & -3 & 1
+        \end{array}\right],&\\
+\end{aligned}
+\end{equation}
+where $\textbf{P}_i \in \mathbb{R}^{4 \times dim} = [\textbf{p}_{i},\textbf{p}_{i+1},\textbf{p}_{i+2},\textbf{p}_{i+3}]^\top$ is a set of control points that determine the $i^{th}$ segmented B-spline. $dim$ is the dimension of the B-spline. In this paper, $dim$ is set to 3 or 2 for the three-dimensional and two-dimensional cases, respectively. $\textbf{M}$ is a constant matrix \citep{piegl1996nurbs} determined by the order of the B-spline. $t \in [0,1)$ is the local parameter in each segment of the B-spline. $\delta T$ is the knot span.
+
+Moreover, the velocity $\bm{\rho}_i(t)$ of the trajectory can be represented by control points $\textbf{P}_i$ as follows:
+\begin{equation}
+\label{eq.bspline2}
+\begin{aligned}
+    & \bm{\rho}_i(t)=\frac{1}{\delta T} \textbf{h}(t) \textbf{M} \textbf{P}_i, &\\
+    & \textbf{h}(t) = \overset{.}{\textbf{s}}(t) = [0,1,2t,3t^2]. &\\
+\end{aligned}
+\end{equation}
+
+The derivative of the B-spline can be expressed using another B-spline, and then the control points $\textbf{V}_i$, $\textbf{A}_i$ and $\textbf{J}_i$ can be determined:
+\begin{equation}
+\label{eq.bspline3}
+\begin{aligned}
+    & \textbf{V}_i = \frac{\textbf{p}_{i+1}-\textbf{p}_{i}}{\delta T}, &\\
+    & \textbf{A}_i = \frac{\textbf{V}_{i+1}-\textbf{V}_{i}}{\delta T}, &\\
+    & \textbf{J}_i = \frac{\textbf{A}_{i+1}-\textbf{A}_{i}}{\delta T}. &\\
+\end{aligned}
+\end{equation}
+
+\begin{figure*}[htp]
+\vspace{-1em}
+\centering
+\setlength{\abovecaptionskip}{0.cm}
+\setlength{\belowcaptionskip}{-0.cm}
+\includegraphics[scale=0.21]{fig_5.jpg}
+\caption{Snapshots of the trajectory planning results in the simulation environment. (a)-(c) depict the results obtained for 10 obstacles, (d)-(f) for 20 obstacles, and (g)-(i) for 30 obstacles. The start and target points are represented by blue and yellow pentagrams, respectively. \textcolor{red}{The light blue ball sequences depict the predicted future trajectories of obstacles, and the red arrows indicate the speed of the obstacle.} A flight robot plans its trajectory from the starting point to the target point. The blue curve shows the path searched during planning, while the red curve represents the optimized trajectory obtained.}
+\label{fig.5}
+\end{figure*}
+
+\textcolor{red}{The path obtained by path searching is parameterized using a cubic uniform B-spline to obtain an initial trajectory that satisfies both the robot's kinodynamics and VOSM. Subsequently, the trajectory optimization problem is defined as an unconstrained optimization problem formulated as follows:}
+\begin{equation}
+\label{eq.bspline4}
+    \mathop {\min S}\limits_{\textbf{P}} = \lambda_{e} S_e + \lambda_{v}S_{v} + \lambda_{a}S_{a} + \lambda_{d}S_{d},
+\end{equation}
+where $S_e$, $S_v$, $S_a$ and $S_d$ denote the smoothness cost, maximum velocity penalty, maximum acceleration penalty and VO safety penalty of the trajectory, respectively. The weights for each cost are denoted by $\lambda_e$, $\lambda_v$, $\lambda_a$ and $\lambda_d$, respectively.
+
+The optimization cost terms $S_e$, $S_v$ and $S_a$ are defined as follows:
+\begin{equation}
+\label{eq.bspline5}
+\begin{aligned}
+    & S_e = \sum_{i=1}^{N-3}\Vert{\textbf{J}_i}\Vert_2^2, &\\
+    & S_v = \sum_{i=1}^{N-1}\eta(\Vert{\textbf{V}_i}\Vert_2^2 - v_{max}^2 ), &\\
+    & S_a = \sum_{i=1}^{N-2}\eta(\Vert{\textbf{A}_i}\Vert_2^2 - a_{max}^2 ), &\\
+\end{aligned}
+\end{equation}
+where $\eta(x)=\max(0,x)^3$ is a cubic segmentation function to represent the penalty. $S_e$ represents the $L^2$-norm of the jerk control points. $v_{max}$ and $a_{max}$ denote the maximum velocity and acceleration thresholds, respectively.
+
+\begin{table*}[htbp]
+\vspace{-0.15cm}
+  \centering
+  \caption{Computation time in different simulation cases.}
+  \renewcommand{\arraystretch}{1.3}
+  \setlength{\tabcolsep}{5mm}{
+    \begin{tabular}{cccc}
+    % \toprule
+    \hline
+    \multicolumn{1}{c}{\multirow{2}[2]{*}{Scenario}} & \multicolumn{3}{c}{Searched time / Opimization time / Total time (ms)} \\
+% \cmidrule{2-4}
+\cline{2-4}
+\multicolumn{1}{c}{} & \multicolumn{1}{c}{$N_c = 10$} & \multicolumn{1}{c}{$N_c = 20$} & \multicolumn{1}{c}{$N_c = 30$} \\
+    % \midrule
+    \hline
+    \multicolumn{4}{c}{Obstacle max velocity $v = 1.2 m/s$} \\
+    % \midrule
+    \hline
+    \multicolumn{1}{c}{DIS-DIS} & \multicolumn{1}{c}{4.18/\textbf{6.37}/\textbf{10.55}} & \multicolumn{1}{c}{6.17/\textbf{6.34}/\textbf{12.51}} & \multicolumn{1}{c}{8.74/\textbf{7.81}/\textbf{16.55}} \\
+    % \midrule
+    % \hline
+    \multicolumn{1}{c}{Proposed} & \multicolumn{1}{c}{\textbf{4.07}/6.98/11.04} & \multicolumn{1}{c}{\textbf{5.37}/10.01/15.47} & \multicolumn{1}{c}{\textbf{7.03}/13.04/20.07} \\
+    % \midrule
+    \hline
+    \multicolumn{4}{c}{Obstacle max velocity $v = 2.0 m/s$} \\
+    % \midrule
+    \hline
+    \multicolumn{1}{c}{DIS-DIS} & \multicolumn{1}{c}{4.23/\textbf{5.92}/\textbf{10.18}} & \multicolumn{1}{c}{6.00/\textbf{6.47}/\textbf{12.47}} & \multicolumn{1}{c}{9.24/\textbf{7.01}/\textbf{16.25}} \\
+    % \midrule
+    % \hline
+    \multicolumn{1}{c}{Proposed} & \multicolumn{1}{c}{\textbf{4.16}/6.56/10.72} & \multicolumn{1}{c}{\textbf{5.20}/10.10/15.15} & \multicolumn{1}{c}{\textbf{6.82}/12.68/19.50} \\
+    % \midrule
+    \hline
+    \multicolumn{4}{c}{ } \\
+          &       &       &  \\
+    \end{tabular}%
+    }
+  \label{tab:calc_time}%
+\end{table*}
+
+\begin{table*}[htbp]
+\vspace{-3.0em}
+  \centering
+  \caption{Comparison results in different simulation cases.}
+  \renewcommand{\arraystretch}{1.3}
+  \setlength{\tabcolsep}{3mm}{
+    \begin{tabular}{ccccccccccc}
+    % \toprule
+    \hline
+    \multicolumn{1}{c}{\multirow{4}[1]{*}{Scenario}} & \multirow{1}[1]{*}[0.3ex]{ } & \multicolumn{3}{c}{\multirow{1}[1]{*}[0.3ex]{Low complexity}} & \multicolumn{3}{c}{\multirow{1}[1]{*}[0.3ex]{Medium complexity}} & \multicolumn{3}{c}{\multirow{1}[1]{*}[0.3ex]{High complexity} } \\
+    & \multicolumn{1}{c}{} & \multicolumn{3}{c}{\multirow{1}[1]{*}[0.3ex]{$N_c = 10$}} & \multicolumn{3}{c}{\multirow{1}[1]{*}[0.3ex]{$N_c = 20$}} & \multicolumn{3}{c}{\multirow{1}[1]{*}[0.3ex]{$N_c = 30$}}\\
+
+\cline{2-11}    
+& \multirow{2}[1]{*}{Method} & \multicolumn{1}{c}{\multirow{1}[1]{*}{$\Psi_{succ}$}} & \multicolumn{1}{c}{\multirow{1}[1]{*}{$L_{traj}$}} & \multicolumn{1}{c}{\multirow{1}[1]{*}{$E_{jerk}$}} & \multicolumn{1}{c}{\multirow{1}[1]{*}{$\Psi_{succ}$}} & \multicolumn{1}{c}{\multirow{1}[1]{*}{$L_{traj}$}} & \multicolumn{1}{c}{\multirow{1}[1]{*}{$E_{jerk}$}} & \multicolumn{1}{c}{\multirow{1}[1]{*}{$\Psi_{succ}$}} & \multicolumn{1}{c}{\multirow{1}[1]{*}{$L_{traj}$}} & \multicolumn{1}{c}{\multirow{1}[1]{*}{$E_{jerk}$}} \\
+& \multicolumn{1}{c}{} & $(\%)$ & $(m)$ & $(m^2/s^5)$ & $(\%)$ & $(m)$ &  $(m^2/s^5)$ &  $(\%)$ &  $(m)$ & $(m^2/s^5)$ \\
+    % \midrule
+    \hline
+    \multicolumn{1}{c}{\multirow{4}[1]{*}{$v = 1.2m/s$}} & DIS-DIS & 95  & \textbf{20.44} & 18.22  & 85  & 20.71 & 27.75  & 70  & 21.26 & 39.65 \\
+          & VO-DIS & 90  & 20.78 & 18.67  & 55  & 21.47 & 24.42  & 40  & 23.05 & 31.33 \\
+          & DIS-VO & 100 & 20.49 & 42.41  & 95  & 20.81 & 76.14  & 85  & \textbf{21.06} & 98.18 \\
+          & Proposed & \textbf{100} & 20.46 & \textbf{15.50}  & \textbf{100} & \textbf{20.57} & \textbf{17.19}  & \textbf{95}  & 21.31 & \textbf{27.32} \\
+    % \midrule
+    \hline
+    \multicolumn{1}{c}{\multirow{4}[1]{*}{$v = 2.0m/s$}} & DIS-DIS & 95  & 20.50  & 19.16   & 70  & 21.39 & 31.12  & 50  & 21.51 & 41.83 \\
+          & VO-DIS & 75  & 20.65 & 18.41  & 50  & 22.38 & 30.34  & 35  & 23.58 & 35.10 \\
+          & DIS-VO & 100 & 20.50  & 40.31  & 95  & \textbf{20.68} & 52.03  & 80  & 21.15 & 82.00 \\
+          & Proposed & \textbf{100} & \textbf{20.38} & \textbf{15.14}  & \textbf{100} & 20.88 & \textbf{22.80}  & \textbf{90}  & \textbf{21.04} & \textbf{23.07} \\
+    % \bottomrule
+    \hline
+    \end{tabular}%
+    }
+  \label{tab:results}%
+\end{table*}%
+
+
+To reduce the conservativeness of VO, $\text{RCC}_F$ is used instead of $\text{RCC}$ to depict the VO safety of the trajectory. Therefore, Eq. \ref{eq.bspline1} and Eq. \ref{eq.bspline2} are substituted into Eq. \ref{eq.vo3} to obtain the $\text{RCC}$ of the trajectory. We consider the part of the collision time $\tau_k \leq T_f$ to obtain $\text{RCC}_F$. $S_d$ represents the VO safety penalty of the trajectory:
+\begin{equation}
+\label{eq.bspline6}
+\begin{aligned}
+    & S_d = \sum_{i=1}^{N}\sum_{j=1}^{N_s}\sum_{k=1}^{N_c}\eta(F^{ijk}_{vo}), &\\
+\end{aligned}
+\end{equation}
+\textcolor{red}{where $N_s$ is the number of sampling points for each segment of the B-spline.} $F^{ijk}_{vo}$ is defined as the trajectory state bounded by $\text{RCC}_F$, and $F^{ijk}_{vo}$ is a segmentation function:
+\begin{equation}
+\label{eq.bspline7}
+F^{ijk}_{vo} = \begin{cases}
+f^{ijk}_{vo} &  \cos{\theta_{ijk}} <0 \vee \tau_{ijk} < T_f, \\
+0 & \text{others},
+\end{cases}
+\end{equation}
+where $\cos{\theta_{ijk}} < 0 \vee \tau_{ijk} < T_f$ denotes the obstacle that violates the VOSM and ignores the part of the collision time greater than $T_f$. Eq. \ref{eq.bspline1} and Eq. \ref{eq.bspline2} are substituted into Eq. \ref{eq.vo3} to obtain:
+\begin{equation}
+\label{eq.bspline8}
+\begin{aligned}
+    & f^{ijk}_{vo} = \eta((\bm{l}_{ijk}^\top \bm{v}_{ijk})^2 + ( R_k'^2 - \Vert \bm{l}_{ijk} \Vert_2^2 ) \Vert \bm{v}_{ijk} \Vert_2^2), &\\
+    & \bm{l}_{ijk} = \textbf{s}_j^{N_s} \textbf{M}\textbf{P}_i - \bm{C}_k^{o}(\tau), &\\
+    & \bm{v}_{ijk} = \frac{1}{\delta T} \textbf{h}_j^{N_s} \textbf{M}\textbf{P}_i - \overset{.}{\bm{C}_k^{o}}(\tau), &\\
+    & \tau = (i-1+\frac{j-1}{N_s})\delta T, &\\
+    & R_k' = R_{robot} + R_{obs}^k + R_{safe} , &\\
+\end{aligned}
+\end{equation}
+\textcolor{red}{where $\tau$ denotes the time of the $i^{th}$ segment of the B-spline at the $j^{th}$ sampling point.} $\textbf{s}_j^{N_s}$ denotes $\textbf{s}(t)$ at the $j^{th}$ sampling point, and $\textbf{h}_j^{N_s}$ denotes $\textbf{h}(t)$ at the $j^{th}$ sampling point. $N_c$ is the number of obstacles, and ${\bm{C}_k^{o}}$ is the predicted trajectory of the $k^{th}$ obstacle. The $R_k'$ parameter specifies the inflation radius of the $k^{th}$ obstacle, while an additional safety radius $R_{safe}$ is also utilized.
+
+The optimization formula Eq. \ref{eq.bspline4} represents an unconstrained optimization problem, which can be solved by the L-BFGS \citep{liu1989limited} algorithm. \textcolor{red}{While the optimization results may be sub-optimal, the sufficient experiments presented in Section \ref{Experiments} demonstrate that Eq. \ref{eq.bspline4} is feasible.}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 4%%%%%%%%%%%%%%%%%%
+\section{Experimental Setup}
+\label{Experiments}
+
+\textcolor{red}{
+The experiments are conducted in both simulation and the real world. In addition, a flying robot and a ground robot are applied separately to evaluate the applicability of the proposed method to different types of robots. The flying robot is capable of moving freely in three-dimensional space and exhibits three-dimensional motion capabilities. The movement of ground robot is typically confined to a two-dimensional plane. In the simulation experiments, the planning method is set to three-dimensions ($dim = 3$) and applied to a flying robot. For the real experiments, the planning method is adapted to two-dimensions ($dim = 2$) and applied to a ground robot.
+}
+
+All simulation tests are conducted on a laptop equipped with an Intel Core i7-8750H CPU and 16 GB memory. The planning method is set to 3D, and a flight robot is used for trajectory tracking and execution in Gazebo.
+
+\textcolor{red}{
+The proposed method is compared with the baseline method DIS-DIS\citep{wang2021autonomous} and two extended methods (VO-DIS and DIS-VO):}
+
+\begin{itemize}
+\item \textcolor{red}{
+DIS-DIS\citep{wang2021autonomous}: The method considers the obstacles distance as the safety metric, which is used for both path searching and trajectory optimization.}
+
+\item \textcolor{red}{
+VO-DIS: The method employs the VOSM for path searching, while the distance metric is utilized for trajectory optimization.}
+
+\item \textcolor{red}{
+DIS-VO: The method employs the distance metric for path searching, while the VOSM is utilized for trajectory optimization.}
+
+\end{itemize}
+
+\begin{figure*}[htp]
+\vspace{-0.15cm}
+\centering
+\includegraphics[scale=0.26]{fig_6.pdf}
+\caption{Real-world dynamic obstacle avoidance experiments. The platform is required to navigate autonomously while avoiding a pedestrian and a moving ground robot. The top figure illustrates the predicted trajectory of dynamic obstacles (masked in orange), along with the visualization of trajectory planning. The bottom figure depicts the actual trajectory of the platform.}
+\label{fig.7}
+\end{figure*}
+
+\begin{figure}[htp]
+\vspace{-0.20cm}
+\centering
+\includegraphics[scale=0.30]{fig_7.pdf}
+\caption{Overview of the experimental platform. A four-wheel differential-drive robot Scout 2.0 equipped with an onboard computer with an i7-8250u CPU and multiple sensors including the RS lidar with 16-beam and SBG-Ellipse-N IMU, and an Intel Realsense D435 camera for experimental recording only. The algorithmic framework depicted in Fig. \ref{fig.2} is executed on the onboard computer.}
+\label{fig.6}
+\end{figure}
+
+\begin{figure}[htp]
+\vspace{-0.05cm}
+\centering
+\includegraphics[scale=0.30]{fig_8.pdf}
+\caption{Relative Distances to moving obstacles. The positions of the obstacles are measured by our dynamic perception method. Any distance above the dashed line ensures a safe distance between the robot and the obstacles.}
+\label{fig.8}
+\end{figure}
+
+
+To assess the effectiveness of our method, we conducted comparisons in simulation environments with varying densities of dynamic obstacles, as depicted in Fig. \ref{fig.5}. In the simulation environment, all dynamic obstacles are cube boxes of size $0.8\times0.8\times0.8 m^3$, following a trefoil-knot trajectory \citep{tordesillas2022panther} with a random initial position. The maximum velocity and acceleration of the trajectory are established as $v_{max}=2.0m/s$ and $a_{max}=1.5m/s^2$, respectively. In trajectory optimization, the weights $\lambda_{e}$, $\lambda_{v}$, $\lambda_{a}$ and $\lambda_{d}$ are set as 10.0, 0.1, 0.1 and 50.0, respectively. The knot span of the B-spline is set to $\delta{T}=0.4s$. The number of sampling points is set as $N_d=3$. In addition, the safety radius and minimum collision time are $R_{safe}=0.5m$ and $T_f=2s$, respectively.
+
+The experimental scenarios are divided into 6 cases according to the number $N_c$ and maximum velocity $v$ of all obstacles. The starting point is set to (0, 0, 1), and the target point is set to (20, 0, 1). The flight space of the flight robot is limited to a corridor of $20\times4\times2 m^3$. \textcolor{red}{Twenty tests are implemented in each simulation environment with each method.}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 5%%%%%%%%%%%%%%%%%%
+\section{Results and Discussion}
+\label{Results}
+
+\textcolor{red}{The effectiveness of the motion planning method can be measured by the three metrics (robustness, efficiency and smoothness as shown in Table \ref{tab:relatedWork}) which is indicated by four evaluation indicators: computation time, success rate, trajectory length and trajectory smoothness as follows:}
+
+\begin{itemize}
+\item \textcolor{red}{
+\textbf{Computation time} - The computation time refers to the total time required to generate the trajectory, including both the search time and the optimization time, used to measure the computational efficiency of the methods.}
+
+\item \textcolor{red}{
+\textbf{Success rate $\Psi_{succ}$} - The success rate is a ratio of successful cases without collisions or getting stuck during navigation, which describes the ability of the method to avoid collisions.}
+
+\item \textcolor{red}{
+\textbf{Trajectory length $L_{traj}$} - The trajectory length is the average length of the travel trajectory, used to measure the travel efficiency of the methods.}
+
+\item \textcolor{red}{
+\textbf{Trajectory smoothness} - The trajectory smoothness is used to measure the performance of trajectory continuity and suitability for robot execution. We use the integral of the square jerk $E_{jerk}$ to measure the smoothness of the trajectory.}
+
+\end{itemize}
+
+\textcolor{red}{
+From the trajectory generation results shown in Fig. \ref{fig.5}, the proposed method can plan safe and smooth robot trajectories under different obstacle densities. A highly manoeuvrable trajectory is illustrated in Fig. \ref{fig.5}(d)-(f), demonstrating that our method can maintain trajectory flexibility and reliability in dynamic environments.}
+
+The computation time of the proposed method and DIS-DIS method is presented in Table \ref{tab:calc_time}. Even for the most complex scenario ($v=2.0m/s$ with the number of obstacles $N_c=30$), the total computation time is only 19.50 ms. Although the proposed method is more time-consuming in terms of total computation and optimization time compared to DIS-DIS, our method is faster in terms of path searching.
+
+According to Table \ref{tab:results}, the navigation success rates $\Psi_{succ}$ of both the DIS-DIS and VO-DIS methods are significantly reduced in the experimental environment. In contrast, our method consistently maintains a success rate $\Psi_{succ}$ above $90\%$, exhibiting an increase of $40.0\%$ compared to the DIS-DIS method. Similarly, the DIS-VO method maintains a success rate $\Psi_{succ}$ above $80\%$. Moreover, our method generates smoother trajectories compared to the other approaches, exhibiting an improvement of $44.8\%$ over the DIS-DIS method. Further, our method outperforms the other methods in terms of navigation success rate and trajectory smoothness. \textcolor{red}{Overall, these results show that our VOSM-based method outperforms other distance-based methods in highly dynamic environments, based on improvements in success rate, trajectory length and trajectory smoothness. Therefore, our method exhibits superior performance compared to the other three methods.}
+
+%These results demonstrate the superior performance of the proposed VOSM for dynamic obstacle avoidance, in addition to exceeding the distance-based safety metric.}
+% \subsection{Real-world experiment results}
+% \label{Real-world_experiment_results}
+
+In real-world experiments, the planning method is set to 2D and deployed on a wheeled mobile robot, as illustrated in Fig. \ref{fig.6}. To match the robot platform, we set the maximum velocity $v_{max}=1m/s$, the maximum acceleration $a_{max}=0.5m/s^2$ and the safety radius $R_{safe}=0.6m$. The minimum collision time is set to $T_f=4s$, while the remaining parameters are kept the same as Section \ref{Experiments}.
+
+Several experiments are performed in dynamic environments without any external positioning or prior knowledge of the shape and size of the obstacles. Fig. \ref{fig.7} shows a sequence of snapshots of one such experiment, where the platform successfully avoided a walking person and a ground robot moving at velocities of approximately $0.7m/s$ and $0.5m/s$, respectively.
+
+In this experiment, Fig. \ref{fig.8} illustrates the relative distance between the robot and the obstacle. This distance is determined as the minimum separation between the robot's position and the obstacle sphere. Notably, all observed obstacles maintain a relative distance greater than the established safety threshold of $0.6m$, ensuring the safety of both the robot and the obstacles.
+
+As shown in the attached video, the proposed method achieves safe and reliable autonomous navigation in highly dynamic environments with real-time performance.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%section 6%%%%%%%%%%%%%%%%%%
+\section{CONCLUSIONS}
+\label{CONCLUSIONS}
+
+In this paper, we present a velocity obstacle-guided motion planning method that facilitates autonomous navigation for mobile robots in dynamic environments. The VOSM is employed to characterize the collision relationship between the robot and obstacles, and provides a superior description compared to distance-based safety metrics. The VOSM is integrated into path searching and trajectory optimization processes to derive safe and reliable local trajectories. In simulation experiments, the performance of our proposed method is compared with that of the DIS-DIS, VO-DIS, and DIS-VO methods in terms of trajectory generation. The results demonstrate that our method outperforms the others in trajectory smoothness and success rate. Real-world experiments further validate the effectiveness and feasibility of our proposed approach in unknown dynamic environments. Future research will address the uncertainty of dynamic obstacles in dynamic perception and VOSM to enhance the robustness of our method in highly dynamic environments, such as dense crowds.
+
+
+% \bibliographystyle{elsarticle-harv}
+% \bibliographystyle{plainnat}
+
+
+\bibliography{ref}
+
+
+\end{document}

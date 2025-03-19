@@ -1,0 +1,35 @@
+- Initial Pose [m & Rad]: '[0.01,0.01,0.707]'
+- Desired Pose [m & Rad]: '[12.0,12.0,0.0]'
+- Max linear Velocity: '1.2'
+- Max Angular Velocity: '1.5'
+- Parameters: SG Filter
+  Window Length: '51'
+  Poly. Order: '3'
+- 'Distibution Type (0: Normal, 1: Normal & Log-Normal, 2: ODIA)': 0
+  'CBF Type (0: CE, 1: COS_E, 2: PJ_E, 3: DC, 4: Ellispe )': 0
+- Control Parameters: MPPI/log-MPPI
+  Time Horizon [s]: '3'
+  Sampling Rate [Hz]: '10.0'
+  Num of Trajectories: 2496
+  Weights: '[2.5 2.5 2.  0.  0. ]'
+  R: '[3.575 3.575]'
+  Sigma_du: '[0.0256 0.0256]'
+  Exploration Variance: '1200.0'
+  Lambda: '0.572'
+- slack_weight: '100'
+  std_n_sla: '0.1'
+  atau: '0.15'
+  beta_1: '0.6'
+  beta_2: '0.6'
+  beta_3: '0.4'
+  check_dist: '6.0'
+- Traveled Distance [m]: '17.583501714468'
+- velocity_var [m2/s2]: '[0.053980578, 0.027444312]'
+- velocity_average [m/s]: '1.0241584'
+- Min distance [m]: '0.22103509763290918'
+- Average MPPI Excution Time [ms]: '2.255232710587351'
+- Once sys run Time [s]: '0.5223381519317627'
+- Once robot run Time [s]: '17.2'
+- Real Time MPPI: true
+- Reach Local Minima: true
+- Violate Ctrl Constraints: true

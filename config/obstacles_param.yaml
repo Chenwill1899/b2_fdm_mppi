@@ -1,0 +1,40 @@
+obstacle_params:
+  #- {x: 3.0, y: 0.0, z: 0.75, offset: 3.14, slower: 5.0, scale_x: 0.0, scale_y: 6.0, scale_z: 0.0}
+  #- {x: 7.0, y: 0.1, z: 0.75, offset: -3.14, slower: 5.0, scale_x: 6.0, scale_y: 0.0, scale_z: 0.0}
+  
+  #- {x: 7.0, y: 0.0, z: 0.75, offset: 0.0, slower: 5.0, scale_x: 0.0, scale_y: 6.0, scale_z: 0.0}
+  #- {x: 9.0, y: 0.0, z: 0.75, offset: -3.14, slower: 5.0, scale_x: 0.0, scale_y: 6.0, scale_z: 0.0}
+  #- {x: 11.0, y: 0.0, z: 0.75, offset: -3.14, slower: 5.0, scale_x: 0.0, scale_y: 6.0, scale_z: 0.0}
+  #- {x: 13.0, y: 0.0, z: 0.75, offset: -3.14, slower: 5.0, scale_x: 0.0, scale_y: 6.0, scale_z: 0.0}
+  #- {x: 15.0, y: 0.0, z: 0.75, offset: 0.0, slower: 5.0, scale_x: 0.0, scale_y: 6.0, scale_z: 0.0}
+  #- {x: 15.0, y: -0.1, z: 0.75, offset: 0.0, slower: 5.0, scale_x: 12.0, scale_y: 0.0, scale_z: 0.0}
+  #- {x: 19.0, y: 0.0, z: 0.75, offset: 0.0, slower: 5.0, scale_x: 0.0, scale_y: 6.0, scale_z: 0.0}
+
+  - {x: 5.0, y: 0.0, z: 0.75, offset: 0.0, slower: 5.0, scale_x: 0.0, scale_y: 15.0, scale_z: 0.0}
+  #- {x: 7.5, y: 0.0, z: 0.75, offset: -3.14, slower: 5.0, scale_x: 0.0, scale_y: 12.0, scale_z: 0.0}
+  #- {x: 12.5, y: 0.0, z: 0.75, offset: -3.14, slower: 5.0, scale_x: 0.0, scale_y: 12.0, scale_z: 0.0}
+  #- {x: 7.5, y: 2.0, z: 0.75, offset: -3.14, slower: 5.0, scale_x: 0.0, scale_y: 6.0, scale_z: 0.0}
+  #- {x: 12.5, y: 2.0, z: 0.75, offset: -3.14, slower: 5.0, scale_x: 0.0, scale_y: 6.0, scale_z: 0.0}
+  - {x: 10.0, y: 0.0, z: 0.75, offset: -3.14, slower: 5.0, scale_x: 0.0, scale_y: 15.0, scale_z: 0.0}
+  - {x: 7.5, y: -1.2, z: 0.75, offset: 0.0, slower: 5.0, scale_x: 15.0, scale_y: 0.0, scale_z: 0.0}
+  - {x: 12.5, y: 1.2, z: 0.75, offset: 0.0, slower: 5.0, scale_x: 15.0, scale_y: 0.0, scale_z: 0.0}
+  - {x: 15.0, y: 0.0, z: 0.75, offset: 0.0, slower: 5.0, scale_x: 0.0, scale_y: 15.0, scale_z: 0.0}
+
+static_obs_params:
+  - {x: 10.0, y: 0.0, r: 0.5}
+
+
+# Define moving obstacles as list of tuples (ax,bx,ay,by,radius)
+# where each obstacle follows a linear trajectory x=ax*t+bx, y=ay*t+by
+
+
+moving_obs_params:
+  - {x: 10.0, y: 10.0, r: 0.5, dx: 0.0 , dy: -1.0}
+
+obstacle_state_num: 7
+
+IF_static_obs: false # 静态障碍
+IF_moving_obs: true # 动态障碍
+
+
+default_r: 0.40163666009902954
