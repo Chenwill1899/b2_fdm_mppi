@@ -33,6 +33,8 @@ def save_results(
                 "theta": state[2],
                 "vx": state[3],
                 "vy": state[4],
+                "dx": state[3],
+                "dy": state[4],
                 "x_des": target[0],
                 "y_des": target[1],
                 "theta_des": target[2],

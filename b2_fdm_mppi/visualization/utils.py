@@ -12,7 +12,7 @@ import csv
 
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
-from matplotlib.animation import FuncAnimation, ImageMagickWriter
+from matplotlib.animation import FuncAnimation, PillowWriter
 import matplotlib.patches as patches
 from pathlib import Path
 import matplotlib.cm as cm
@@ -447,7 +447,7 @@ def animate_simulation(dt ,ob_num_max, safety_dist, robot_r, atau, targets ,resu
         print(f"创建文件夹 {folder_path} 时出错：{error}")
     # plt.show()
     save_path = results_rootpath + '/animation.gif'
-    anim.save(save_path, writer=ImageMagickWriter(fps=5))
+    anim.save(save_path, writer=PillowWriter(fps=5))
     print("-----------------------------")
     print("---------GIF保存完毕-----------")
     print("-----------------------------")

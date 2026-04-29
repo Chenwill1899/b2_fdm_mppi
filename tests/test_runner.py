@@ -33,3 +33,20 @@ def test_runner_advances_internal_simulation_with_injected_controller(tmp_path):
     assert runner.state_history[-1][0] > runner.state_history[0][0]
     assert (summary.results_path / "results.csv").exists()
     assert (summary.results_path / "obs_results.csv").exists()
+
+
+def test_runner_results_keep_legacy_velocity_column_names(tmp_path):
+    config = load_config("config/fdm_mppi.yaml")
+    config["simulation"]["max_steps"] = 1
+    config["simulation"]["time_horizon"] = 0.3
+    config["mppi"]["draw_num_traj"] = 2
+    config["mppi"]["std_normal"] = [0.1, 0.1]
+    config["results"]["root"] = str(tmp_path)
+    config["results"]["enable_plots"] = False
+
+    runner = MppiSimulationRunner(config, controller_factory=lambda *_args, **_kwargs: FakeController())
+    summary = runner.run()
+
+    header = (summary.results_path / "results.csv").read_text(encoding="utf-8").splitlines()[0]
+    assert "dx" in header.split(",")
+    assert "dy" in header.split(",")

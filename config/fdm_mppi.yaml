@@ -49,7 +49,7 @@ cbf:
 
 obstacles:
   num_max: 5
-  static_enabled: false
+  static_enabled: true
   virtual:
     - [10.0, -0.6, 0.4, 0.0, 0.0, -0.5, 0.0]
 

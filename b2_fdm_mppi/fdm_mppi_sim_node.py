@@ -23,6 +23,7 @@ class FdmMppiSimNode(Node):
         self.runner = MppiSimulationRunner(self.config, logger=self.get_logger())
         self.steps = 0
         self.max_steps = int(self.config["simulation"]["max_steps"])
+        self.finished = False
         period = 1.0 / float(self.config["simulation"]["sampling_rate"])
         self.timer = self.create_timer(period, self._on_timer)
         self.get_logger().info(f"FDM MPPI internal simulation started with {config_path}")
@@ -42,6 +43,9 @@ class FdmMppiSimNode(Node):
             self._finish()
 
     def _finish(self) -> None:
+        if self.finished:
+            return
+        self.finished = True
         if self.timer is not None:
             self.timer.cancel()
             self.timer = None
@@ -52,7 +56,6 @@ class FdmMppiSimNode(Node):
             f"FDM MPPI internal simulation finished after {self.steps} steps; "
             f"results: {self.runner.results_path}"
         )
-        rclpy.shutdown()
 
     def _resolve_config_path(self, value: str) -> Path:
         if value:
@@ -66,7 +69,13 @@ class FdmMppiSimNode(Node):
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = FdmMppiSimNode()
-    rclpy.spin(node)
+    try:
+        while rclpy.ok() and not node.finished:
+            rclpy.spin_once(node)
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
