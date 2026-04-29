@@ -73,6 +73,29 @@ python3 -m pytest -q --junitxml=results/test_reports/20260429_221105/pytest.xml
   - `results/test_reports/20260429_221105/pytest.xml`
 - Note: `results/` is ignored by Git, so these artifacts are local verification outputs rather than versioned source files.
 
+### 2026-04-29: Saved GIF Smoke Run
+
+- Goal: save an actual `animation.gif` artifact for user visual inspection.
+- Run type: CPU smoke run with injected controller, not a real PyCUDA MPPI performance run.
+- Local result directory:
+
+```text
+results/sim_results/2026-04-29_22-12-26/
+```
+
+- Key artifacts:
+  - `results/sim_results/2026-04-29_22-12-26/animation.gif` (`118352` bytes)
+  - `results/sim_results/2026-04-29_22-12-26/test_summary.yaml`
+  - `results/sim_results/2026-04-29_22-12-26/results.csv`
+  - `results/sim_results/2026-04-29_22-12-26/path.png`
+- Summary:
+  - `steps: 20`
+  - `failed: false`
+  - `final_distance: 8.990005493164062`
+  - `path_length: 1.0000001192092896`
+  - `mean_mppi_time_ms: 0.028455257415771484`
+- Note: this run verifies result saving and GIF generation. It is not a Stage 0 baseline acceptance run because it uses an injected smoke controller instead of the real MPPI controller.
+
 ## Next Baseline Experiment
 
 Planned command:
