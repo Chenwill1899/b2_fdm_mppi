@@ -139,3 +139,19 @@ def test_runner_summary_contains_stage0_metrics(tmp_path):
     assert summary_data["path_length"] > 0.0
     assert summary_data["mean_mppi_time_ms"] >= 0.0
     assert summary_data["max_mppi_time_ms"] >= summary_data["mean_mppi_time_ms"]
+
+
+def test_runner_keeps_static_virtual_obstacle_stationary(tmp_path):
+    config = load_config("config/fdm_mppi_baseline_straight_obstacle.yaml")
+    config["simulation"]["max_steps"] = 1
+    config["simulation"]["time_horizon"] = 0.3
+    config["mppi"]["draw_num_traj"] = 2
+    config["mppi"]["std_normal"] = [0.1, 0.1]
+    config["results"]["root"] = str(tmp_path)
+    config["results"]["enable_plots"] = False
+
+    runner = MppiSimulationRunner(config, controller_factory=lambda *_args, **_kwargs: FakeController())
+    initial_obstacle = np.copy(runner.obstacle.virtual_ob_state[0])
+    runner.step()
+
+    assert runner.obstacle.virtual_ob_state[0] == pytest.approx(initial_obstacle)

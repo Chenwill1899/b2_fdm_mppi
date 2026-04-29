@@ -208,7 +208,8 @@ class MppiSimulationRunner:
             return u
 
         self.state = self.robot.update_state(self.state, u)
-        self.obstacle.update_cur_state_virtual(self.obstacle.virtual_ob_state)
+        if not self.config["obstacles"].get("static_enabled", False):
+            self.obstacle.update_cur_state_virtual(self.obstacle.virtual_ob_state)
         return u
 
     def _update_obstacles(self) -> None:

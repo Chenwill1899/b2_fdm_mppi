@@ -29,7 +29,8 @@ git branch
 - `f6bb68d docs: record saved test report`
 - `61a148a docs: record saved gif artifact`
 - `74afe85 config: add short-goal baseline`
-- Pending: `config: add straight obstacle baseline`
+- `7f4be5d config: add straight obstacle baseline`
+- Pending: `fix: keep static obstacles stationary`
 
 ## Suggested Commit For This Startup Task
 

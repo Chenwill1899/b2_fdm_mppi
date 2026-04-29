@@ -159,7 +159,7 @@ results/sim_results/2026-04-29_22-16-38/
 
 ### 2026-04-29: S0-007 Straight Static Obstacle Scene
 
-- Goal: test fixed map limits with target `[8, 0]` and one static obstacle at `[4, 0]`.
+- Goal: test fixed map limits with target `[18, 0]` and one static obstacle at `[10, 0]`.
 - Config:
 
 ```text
@@ -167,37 +167,41 @@ config/fdm_mppi_baseline_straight_obstacle.yaml
 ```
 
 - Map limits:
-  - `xlim: [-10, 10]`
+  - `xlim: [0, 20]`
   - `ylim: [-10, 10]`
 - Pytest report:
-  - `results/test_reports/20260429_221950/pytest.log`
-  - `results/test_reports/20260429_221950/pytest.xml`
-  - result: `15 passed in 1.05s`
+  - `results/test_reports/20260429_222401/pytest.log`
+  - `results/test_reports/20260429_222401/pytest.xml`
+  - result: `16 passed in 1.03s`
 - Real MPPI result directory:
 
 ```text
-results/sim_results/2026-04-29_22-20-03/
+results/sim_results/2026-04-29_22-24-13/
 ```
 
 - Key artifacts:
-  - `results/sim_results/2026-04-29_22-20-03/animation.gif` (`308860` bytes)
-  - `results/sim_results/2026-04-29_22-20-03/path.png`
-  - `results/sim_results/2026-04-29_22-20-03/test_summary.yaml`
-  - `results/sim_results/2026-04-29_22-20-03/results.csv`
-  - `results/sim_results/2026-04-29_22-20-03/obs_results.csv`
-  - `results/sim_results/2026-04-29_22-20-03/time_results.csv`
+  - `results/sim_results/2026-04-29_22-24-13/animation.gif` (`429871` bytes)
+  - `results/sim_results/2026-04-29_22-24-13/path.png`
+  - `results/sim_results/2026-04-29_22-24-13/test_summary.yaml`
+  - `results/sim_results/2026-04-29_22-24-13/results.csv`
+  - `results/sim_results/2026-04-29_22-24-13/obs_results.csv`
+  - `results/sim_results/2026-04-29_22-24-13/time_results.csv`
 - Metrics:
   - `success: true`
   - `failed: false`
-  - `steps: 346`
-  - `final_distance: 0.37658464908599854`
-  - `arrival_time: 34.6`
-  - `path_length: 22.91684341430664`
-  - `mean_mppi_time_ms: 1.193389038130038`
-  - `max_mppi_time_ms: 1.7497539520263672`
-  - `min_center_dist_to_obstacle: 1.1954317267638908`
-  - `min_clearance_to_obstacle_surface_minus_robot_radius: 0.19543172676389076`
-- Conclusion: target and compute-time Stage 0 criteria passed in this scene, but obstacle clearance is below `safety_dist=0.3 m`; next tuning should improve clearance.
+  - `steps: 180`
+  - `final_distance: 0.39142125844955444`
+  - `arrival_time: 18.0`
+  - `path_length: 18.364532470703125`
+  - `mean_mppi_time_ms: 1.2182156244913738`
+  - `max_mppi_time_ms: 1.8024444580078125`
+  - `obstacle_x_minmax: [10.0, 10.0]`
+  - `obstacle_y_minmax: [0.0, 0.0]`
+  - `obstacle_dx_unique: [0.0]`
+  - `obstacle_dy_unique: [0.0]`
+  - `min_center_dist_to_obstacle: 1.2819332598406246`
+  - `min_clearance_to_obstacle_surface_minus_robot_radius: 0.28193325984062456`
+- Conclusion: target and compute-time Stage 0 criteria passed; obstacle is verified stationary. Clearance is still slightly below `safety_dist=0.3 m`, so next tuning should improve clearance.
 
 ## Next Baseline Experiment
 

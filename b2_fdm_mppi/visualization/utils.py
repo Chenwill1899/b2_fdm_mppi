@@ -21,7 +21,7 @@ from casadi import *
 
 
 def map_axis_limits():
-    return (-10.0, 10.0), (-10.0, 10.0)
+    return (0.0, 20.0), (-10.0, 10.0)
 
 
 def animation_axis_limits(targets):

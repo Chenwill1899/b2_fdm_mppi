@@ -6,7 +6,7 @@ b2_fdm_mppi:
 simulation:
   sampling_rate: 10.0
   time_horizon: 2.0
-  goal: [8.0, 0.0, 0.0, 0.0, 0.0]
+  goal: [18.0, 0.0, 0.0, 0.0, 0.0]
   initial_state: [0.01, 0.01, 0.0, 0.0, 0.0]
   minimum_distance: 0.5
   max_steps: 400
@@ -52,7 +52,7 @@ obstacles:
   num_max: 5
   static_enabled: true
   virtual:
-    - [4.0, 0.0, 0.4, 0.0, 0.0, 0.0, 0.0]
+    - [10.0, 0.0, 0.4, 0.0, 0.0, 0.0, 0.0]
 
 results:
   root: "./results/sim_results"
