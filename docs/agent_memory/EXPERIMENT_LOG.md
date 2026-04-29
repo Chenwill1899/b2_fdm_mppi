@@ -245,6 +245,48 @@ results/sim_results/2026-04-29_22-27-37/
   - `min_clearance_all: 0.3174117563467942`
 - Conclusion: Stage 0 straight double-obstacle scene meets target distance, compute-time, saved-artifact, and clearance criteria.
 
+### 2026-04-29: S0-008 Harder Double Static Obstacle Scene
+
+- Goal: test target `[18, 0]` with two stationary obstacles at `[6, 0.5]` and `[12, -1]`.
+- Config:
+
+```text
+config/fdm_mppi_baseline_straight_obstacle.yaml
+```
+
+- Pytest report:
+  - `results/test_reports/20260429_223033/pytest.log`
+  - `results/test_reports/20260429_223033/pytest.xml`
+  - result: `16 passed in 1.06s`
+- Real MPPI result directory:
+
+```text
+results/sim_results/2026-04-29_22-30-49/
+```
+
+- Key artifacts:
+  - `results/sim_results/2026-04-29_22-30-49/animation.gif` (`311376` bytes)
+  - `results/sim_results/2026-04-29_22-30-49/path.png`
+  - `results/sim_results/2026-04-29_22-30-49/test_summary.yaml`
+  - `results/sim_results/2026-04-29_22-30-49/results.csv`
+  - `results/sim_results/2026-04-29_22-30-49/obs_results.csv`
+  - `results/sim_results/2026-04-29_22-30-49/time_results.csv`
+- Metrics:
+  - `success: false`
+  - `failed: false`
+  - `steps: 400`
+  - `final_distance: 7.511897087097168`
+  - `path_length: 11.018898010253906`
+  - `mean_mppi_time_ms: 1.2540578842163086`
+  - `max_mppi_time_ms: 1.7654895782470703`
+  - `obs0_position: [6.0, 0.5]`, `obs0_velocity: [0.0, 0.0]`
+  - `obs1_position: [12.0, -1.0]`, `obs1_velocity: [0.0, 0.0]`
+  - `obs0_min_clearance: 0.2870425901433238`
+  - `obs1_min_clearance: 0.44173382387842`
+  - `min_clearance_all: 0.2870425901433238`
+  - `final_xy: [10.544911, -0.9266779]`
+- Conclusion: obstacles are stationary and artifacts are saved, but this harder layout fails Stage 0 target-distance and clearance criteria. Next task is tuning this scene.
+
 ## Next Baseline Experiment
 
 Planned command:

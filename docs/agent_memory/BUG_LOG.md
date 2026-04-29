@@ -13,6 +13,7 @@ Last updated: 2026-04-29
 | B-005 | open | Short-goal real MPPI baseline does not reach target | First short-goal run overshot and ended at `final_distance=1.2289 m` after 400 steps | Tune Stage 0 config: increase goal attraction, adjust heading/yaw handling, control costs, and sampling noise one small change at a time. |
 | B-006 | fixed | Straight-obstacle scene passed goal but got too close to obstacle | Single-obstacle run reached target but min clearance was `0.2819 m`, below `safety_dist=0.3 m` | Double-obstacle scene with obstacles at `[6, 1]` and `[12, 1.5]` reached min clearance `0.3174 m`. Verified on 2026-04-29. |
 | B-007 | fixed | Static obstacle moved toward robot despite zero velocity in config | `Obstacle.update_cur_state_virtual()` decreased obstacle `dx` every step and runner called it even when `static_enabled: true` | Runner now skips virtual obstacle state updates when `obstacles.static_enabled` is true. Verified by pytest and obs CSV on 2026-04-29. |
+| B-008 | open | Harder double-obstacle scene does not reach goal | Obstacles `[6, 0.5]` and `[12, -1]` create a tighter path; first run stopped near `[10.54, -0.93]` with `final_distance=7.5119 m` | Tune MPPI parameters for this scene without breaking static obstacle behavior or GIF outputs. |
 
 ## Fixed Bugs
 

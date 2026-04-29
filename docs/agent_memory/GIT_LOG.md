@@ -31,7 +31,8 @@ git branch
 - `74afe85 config: add short-goal baseline`
 - `7f4be5d config: add straight obstacle baseline`
 - `e7866b1 fix: keep static obstacles stationary`
-- Pending: `config: set double static obstacle scene`
+- `e890487 config: set double static obstacle scene`
+- Pending: `config: update double obstacle positions`
 
 ## Suggested Commit For This Startup Task
 
