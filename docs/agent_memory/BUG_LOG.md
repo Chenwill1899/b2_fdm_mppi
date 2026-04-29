@@ -10,6 +10,7 @@ Last updated: 2026-04-29
 | B-002 | open | Real MPPI controller may fail to import/run | PyCUDA/NVIDIA runtime unavailable | Keep fake-controller tests as CPU smoke coverage; verify GPU separately. |
 | B-003 | fixed | Summary lacked Stage 0 acceptance metrics | Previous `test_summary.yaml` only stored init, goal, steps, failed, average time | Added success, final distance, path length, arrival/run time, and mean/max MPPI time. Verified by pytest on 2026-04-29. |
 | B-004 | fixed | `animation.gif` y-axis too short for baseline inspection | Animation used `plt.ylim(-1, targets[1] + 1)`, which becomes `[-1, 1]` for target y=0 | Added `animation_axis_limits()` and set animation y-axis to `[-10, 10]`. Verified by pytest on 2026-04-29. |
+| B-005 | open | Short-goal real MPPI baseline does not reach target | First short-goal run overshot and ended at `final_distance=1.2289 m` after 400 steps | Tune Stage 0 config: increase goal attraction, adjust heading/yaw handling, control costs, and sampling noise one small change at a time. |
 
 ## Fixed Bugs
 

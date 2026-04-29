@@ -15,6 +15,17 @@ def test_default_config_loads_required_groups():
     assert config["results"]["enable_animation"] is True
 
 
+def test_short_goal_baseline_config_loads_stage0_parameters():
+    config = load_config(Path("config/fdm_mppi_baseline_short.yaml"))
+
+    assert config["simulation"]["goal"] == [3.0, 3.0, 0.0, 0.0, 0.0]
+    assert config["simulation"]["max_steps"] == 400
+    assert config["simulation"]["time_horizon"] == pytest.approx(2.0)
+    assert config["mppi"]["num_trajectories"] == 1024
+    assert config["mppi"]["lambda"] == pytest.approx(0.5)
+    assert config["results"]["enable_animation"] is True
+
+
 def test_validate_config_rejects_bad_goal_length():
     config = load_config(Path("config/fdm_mppi.yaml"))
     config["simulation"]["goal"] = [1.0, 2.0]

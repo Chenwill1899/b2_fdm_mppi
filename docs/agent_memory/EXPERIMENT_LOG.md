@@ -96,6 +96,67 @@ results/sim_results/2026-04-29_22-12-26/
   - `mean_mppi_time_ms: 0.028455257415771484`
 - Note: this run verifies result saving and GIF generation. It is not a Stage 0 baseline acceptance run because it uses an injected smoke controller instead of the real MPPI controller.
 
+### 2026-04-29: S0-003/S0-004 Short-Goal Baseline
+
+- Goal: create and run a short-goal baseline config for Stage 0 tuning.
+- Config:
+
+```text
+config/fdm_mppi_baseline_short.yaml
+```
+
+- Verification command:
+
+```bash
+python3 -m pytest -q
+```
+
+- Verification result: `13 passed in 2.10s`.
+- Saved pytest report:
+  - `results/test_reports/20260429_221616/pytest.log`
+  - `results/test_reports/20260429_221616/pytest.xml`
+- Real MPPI run command:
+
+```bash
+timeout 180s python3 - <<'PY'
+from b2_fdm_mppi.config import load_config
+from b2_fdm_mppi.simulation.runner import MppiSimulationRunner
+
+config = load_config('config/fdm_mppi_baseline_short.yaml')
+runner = MppiSimulationRunner(config)
+summary = runner.run()
+print(f'results_path={summary.results_path}')
+print(f'steps={summary.steps}')
+print(f'reached_goal={summary.reached_goal}')
+print(f'failed={summary.failed}')
+print(f'run_time={summary.run_time}')
+print(f'animation={summary.results_path / "animation.gif"}')
+PY
+```
+
+- Result directory:
+
+```text
+results/sim_results/2026-04-29_22-16-38/
+```
+
+- Key artifacts:
+  - `results/sim_results/2026-04-29_22-16-38/animation.gif` (`116558` bytes)
+  - `results/sim_results/2026-04-29_22-16-38/test_summary.yaml`
+  - `results/sim_results/2026-04-29_22-16-38/results.csv`
+  - `results/sim_results/2026-04-29_22-16-38/time_results.csv`
+  - `results/sim_results/2026-04-29_22-16-38/path.png`
+- Metrics:
+  - `steps: 400`
+  - `success: false`
+  - `failed: false`
+  - `final_distance: 1.2289246320724487`
+  - `path_length: 7.043788433074951`
+  - `run_time: 40.0`
+  - `mean_mppi_time_ms: 1.1695504188537598`
+  - `max_mppi_time_ms: 1.8770694732666016`
+- Conclusion: compute time is well below the `<20 ms` threshold and result artifacts are saved, but Stage 0 acceptance fails because `final_distance` is greater than `0.4 m`. Next task is parameter tuning.
+
 ## Next Baseline Experiment
 
 Planned command:
