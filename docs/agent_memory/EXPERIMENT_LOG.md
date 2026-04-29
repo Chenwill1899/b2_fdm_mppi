@@ -310,6 +310,30 @@ results/sim_results/2026-04-29_22-30-49/
   - 6D/3D config validation
 - Conclusion: nominal B2 omni dynamics are validated in isolation. Next step is a separate NumPy omni MPPI controller; the existing CUDA controller remains differential-drive and should not be mutated in place.
 
+### 2026-04-29: S1-003 NumPy Omni MPPI Controller
+
+- Goal: add a CPU NumPy MPPI controller for the B2 omnidirectional nominal model before tuning the full scenario.
+- Added:
+  - `b2_fdm_mppi/controllers/mppi_omni_numpy.py`
+  - `tests/test_mppi_omni_numpy.py`
+- Controller behavior:
+  - samples candidate control sequences with shape `[K, H, 3]`
+  - clips controls to `vx=1.5`, `vy=0.5`, `wz=1.0`
+  - rolls out candidates with `OmniB2`
+  - scores goal, yaw, control, and obstacle clearance costs
+  - performs MPPI weighted update and shifts the nominal control sequence
+- Pytest report:
+  - `results/test_reports/20260429_230911/pytest.log`
+  - `results/test_reports/20260429_230911/pytest.xml`
+  - result: `25 passed in 3.63s`
+- Tests covered:
+  - 3D control output and limits
+  - forward motion toward an unobstructed goal
+  - obstacle cost prefers lateral clearance
+  - controller creation from `config/b2_omni_nominal.yaml`
+  - closed-loop smoke motion with `OmniB2`
+- Conclusion: NumPy omni MPPI core is validated in isolation. Next step is a scenario runner/logger to save CSV, PNG, GIF, and summary for the `[18,0]` double-obstacle scene.
+
 ## Next Baseline Experiment
 
 Planned command:

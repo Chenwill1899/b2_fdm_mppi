@@ -36,7 +36,8 @@ git branch
 - `3baeb81 feat: add b2 omni nominal model`
 - `9b7bdce docs: add pr log for b2 omni model`
 - `c1fe15b docs: record b2 omni pr push blocker`
-- Pending: `docs: record b2 omni pr created`
+- `084d236 docs: record b2 omni pr created`
+- Pending: `feat: add numpy omni mppi controller`
 
 ## Push Blockers
 

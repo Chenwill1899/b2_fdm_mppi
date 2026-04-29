@@ -158,3 +158,22 @@ max_wz = 1.0
 - `2026-04-29`: push blocked by missing local GitHub HTTPS credentials.
 - `2026-04-29`: push succeeded after `gh` was restored.
 - `2026-04-29`: PR #1 opened at `https://github.com/Chenwill1899/b2_fdm_mppi/pull/1`.
+
+## PR Candidate: NumPy Omni MPPI
+
+- Repository: `Chenwill1899/b2_fdm_mppi`
+- Base branch: `feature/b2-omni-model`
+- Head branch: `feature/omni-mppi-numpy`
+- Title: `[MPPI] feat: add NumPy omnidirectional MPPI controller`
+- Current verification:
+
+```text
+results/test_reports/20260429_230911/pytest.log
+results/test_reports/20260429_230911/pytest.xml
+25 passed in 3.63s
+```
+
+- Scope:
+  - Add `b2_fdm_mppi/controllers/mppi_omni_numpy.py`
+  - Add tests for control limits, goal progress, obstacle cost, config construction, and closed-loop smoke behavior.
+  - Keep existing CUDA differential MPPI unchanged.
