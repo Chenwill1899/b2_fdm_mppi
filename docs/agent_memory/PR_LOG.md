@@ -2,36 +2,39 @@
 
 Last updated: 2026-04-29
 
-## Current PR Candidate
+## PR #1: B2 Omni Nominal Model
 
 - Repository: `Chenwill1899/b2_fdm_mppi`
+- PR: `https://github.com/Chenwill1899/b2_fdm_mppi/pull/1`
+- State: `OPEN`
 - Base branch: `fdm`
 - Head branch: `feature/b2-omni-model`
 - Title: `[B2-Omni] feat: add SE(2) omnidirectional B2 model`
 - Local commits:
+  - `c1fe15b docs: record b2 omni pr push blocker`
   - `9b7bdce docs: add pr log for b2 omni model`
   - `3baeb81 feat: add b2 omni nominal model`
-- Push status: blocked by local GitHub HTTPS authentication.
-- Push error:
+- Upload status: pushed and PR created after `gh` authentication was restored.
+
+## Upload History
+
+- `2026-04-29`: first push attempt failed because local GitHub HTTPS credentials were unavailable:
 
 ```text
 fatal: could not read Username for 'https://github.com': 没有那个设备或地址
 ```
 
-## Upload Commands
-
-After GitHub authentication is available locally, run:
+- `2026-04-29`: `gh auth status` passed as user `Chenwill1899`.
+- `2026-04-29`: branch pushed:
 
 ```bash
 git push -u origin feature/b2-omni-model
 ```
 
-Then create a PR:
+- `2026-04-29`: PR created:
 
 ```text
-base: fdm
-head: feature/b2-omni-model
-title: [B2-Omni] feat: add SE(2) omnidirectional B2 model
+https://github.com/Chenwill1899/b2_fdm_mppi/pull/1
 ```
 
 ## PR Body
@@ -153,3 +156,5 @@ max_wz = 1.0
 - `2026-04-29`: local branch `feature/b2-omni-model` created.
 - `2026-04-29`: push attempted with `git push -u origin feature/b2-omni-model`.
 - `2026-04-29`: push blocked by missing local GitHub HTTPS credentials.
+- `2026-04-29`: push succeeded after `gh` was restored.
+- `2026-04-29`: PR #1 opened at `https://github.com/Chenwill1899/b2_fdm_mppi/pull/1`.

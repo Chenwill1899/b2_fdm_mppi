@@ -35,7 +35,8 @@ git branch
 - `0aa3dba config: update double obstacle positions`
 - `3baeb81 feat: add b2 omni nominal model`
 - `9b7bdce docs: add pr log for b2 omni model`
-- Pending: `docs: record b2 omni pr push blocker`
+- `c1fe15b docs: record b2 omni pr push blocker`
+- Pending: `docs: record b2 omni pr created`
 
 ## Push Blockers
 
@@ -43,6 +44,12 @@ git branch
 
 ```text
 fatal: could not read Username for 'https://github.com': 没有那个设备或地址
+```
+
+- `2026-04-29`: blocker resolved after `gh` authentication was restored. Branch `feature/b2-omni-model` was pushed and PR #1 was created:
+
+```text
+https://github.com/Chenwill1899/b2_fdm_mppi/pull/1
 ```
 
 ## Suggested Commit For This Startup Task
