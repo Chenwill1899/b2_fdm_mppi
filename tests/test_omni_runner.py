@@ -79,3 +79,28 @@ def test_omni_runner_draws_sampled_and_optimized_rollouts(tmp_path):
     runner._draw_predicted_rollouts(ax, np.zeros(6, dtype=np.float32), frame=0)
 
     assert ax.plot_calls == 3
+
+
+def test_omni_runner_can_overwrite_named_results_directory(tmp_path):
+    config = make_config(tmp_path)
+    config["results"]["run_name"] = "latest"
+    config["results"]["overwrite"] = True
+
+    first = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    first_summary = first.run()
+    stale_file = first_summary.results_path / "stale.txt"
+    stale_file.write_text("old", encoding="utf-8")
+
+    second = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    second_summary = second.run()
+
+    assert first_summary.results_path == tmp_path / "latest"
+    assert second_summary.results_path == tmp_path / "latest"
+    assert not stale_file.exists()
+    assert (second_summary.results_path / "summary.json").exists()

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as _dt
 import json
 import time
 from dataclasses import dataclass
@@ -15,6 +14,7 @@ import yaml
 
 from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
 from b2_fdm_mppi.core.omni_b2 import OmniB2
+from b2_fdm_mppi.simulation.results_path import create_results_path
 from b2_fdm_mppi.visualization.utils import map_axis_limits
 
 
@@ -64,7 +64,7 @@ class OmniMppiSimulationRunner:
             config=config,
             runner=self,
         )
-        self.results_path = self._create_results_path(config["results"]["root"])
+        self.results_path = create_results_path(config["results"])
         self.state_history: list[np.ndarray] = []
         self.control_history: list[np.ndarray] = []
         self.mppi_time_history: list[float] = []
@@ -325,8 +325,3 @@ class OmniMppiSimulationRunner:
 
     def _default_controller_factory(self, *, config: dict, runner: "OmniMppiSimulationRunner") -> object:
         return MppiOmniNumpy.from_config(config, seed=123)
-
-    def _create_results_path(self, root: str) -> Path:
-        path = Path(root) / _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        path.mkdir(parents=True, exist_ok=True)
-        return path

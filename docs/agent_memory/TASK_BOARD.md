@@ -32,7 +32,8 @@ Stage 1: B2 omnidirectional SE(2) nominal model.
 | S1-002 | P0 | done | Add B2 omni nominal config | Added `config/b2_omni_nominal.yaml`; config validation now supports state/control dimensions from config. |
 | S1-003 | P0 | done | Add NumPy omni MPPI rollout/controller | Added `controllers/mppi_omni_numpy.py`; supports 3D controls, config factory, obstacle cost, and closed-loop smoke test. Verified by pytest. |
 | S1-004 | P0 | done | Run and tune B2 omni baseline | Added omni runner/logger, restored candidate and optimal rollout GIF drawing, tuned `obstacle_weight=800`, `safety_dist=0.4`, `smooth_weight=1.0`. Verified final run `results/sim_results/2026-04-29_23-27-26/`: success, final distance `0.3634 m`, mean MPPI `6.3741 ms`, GIF saved. |
-| S1-005 | P0 | todo | Review/merge Stage 1 PR stack | PR #1, #2, and runner PR should be reviewed before Stage 2 oracle residual world work. |
+| S1-005 | P0 | done | Fix formal result directory clutter | Formal omni run now overwrites `results/sim_results/b2_omni_nominal_latest/` instead of creating a new timestamped directory each run. Verified by pytest and real GIF run. |
+| S1-006 | P0 | todo | Review/merge Stage 1 PR stack | PR #1, #2, and runner PR should be reviewed before Stage 2 oracle residual world work. |
 
 ## Later Stages
 

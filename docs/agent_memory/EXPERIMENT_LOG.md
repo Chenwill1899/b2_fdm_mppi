@@ -401,3 +401,48 @@ results/sim_results/2026-04-29_23-27-26/
   - `min_obstacle_clearance: 0.38778746128082275`
   - control mean absolute deltas: `vx=0.080398`, `vy=0.168291`, `wz=0.282473`
 - Conclusion: Stage 1 omni nominal MPPI reaches the target in the harder double-obstacle scene, stays under the 20 ms mean compute target, saves summary/CSV/PNG/GIF, and restores candidate rollout visualization in GIF. Next stage after PR review is Oracle Residual World.
+
+### 2026-04-29: S1-004 Result Directory Save Fix
+
+- Issue: parameter tuning created many timestamped directories under `results/sim_results`, making it hard to identify the result the user should inspect.
+- Fix:
+  - Added `b2_fdm_mppi/simulation/results_path.py`.
+  - Both legacy runner and omni runner now support `results.run_name` and `results.overwrite`.
+  - `config/b2_omni_nominal.yaml` uses:
+
+```yaml
+results:
+  root: "./results/sim_results"
+  run_name: "b2_omni_nominal_latest"
+  overwrite: true
+```
+
+- Formal run command:
+
+```bash
+python3 tools/run_omni_mppi.py --config config/b2_omni_nominal.yaml --seed 123
+```
+
+- Result directory:
+
+```text
+results/sim_results/b2_omni_nominal_latest/
+```
+
+- Key artifacts:
+  - `animation.gif` (`695306` bytes)
+  - `summary.json`
+  - `trajectory.csv`
+  - `controls.csv`
+  - `trajectory.png`
+- Metrics:
+  - `success: true`
+  - `final_distance: 0.36341118812561035`
+  - `mean_mppi_time_ms: 5.523462793720302`
+  - `max_mppi_time_ms: 8.809804916381836`
+  - `min_obstacle_clearance: 0.38778746128082275`
+- Pytest report:
+  - `results/test_reports/20260429_233404/pytest.log`
+  - `results/test_reports/20260429_233404/pytest.xml`
+  - result: `34 passed in 1.97s`
+- Conclusion: formal omni result output is now one stable overwriteable directory for user inspection. Old timestamped directories remain untouched.

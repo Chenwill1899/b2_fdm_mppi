@@ -192,20 +192,20 @@ results/test_reports/20260429_230911/pytest.xml
 - Current verification:
 
 ```text
-results/test_reports/20260429_232717/pytest.log
-results/test_reports/20260429_232717/pytest.xml
-33 passed in 1.99s
+results/test_reports/20260429_233404/pytest.log
+results/test_reports/20260429_233404/pytest.xml
+34 passed in 1.97s
 ```
 
 - Real run:
 
 ```text
-results/sim_results/2026-04-29_23-27-26/
+results/sim_results/b2_omni_nominal_latest/
 success: true
 final_distance: 0.36341118812561035
-mean_mppi_time_ms: 6.374088685903976
+mean_mppi_time_ms: 5.523462793720302
 min_obstacle_clearance: 0.38778746128082275
-animation.gif: saved, 680K
+animation.gif: saved, 695306 bytes
 ```
 
 - Scope:
@@ -213,4 +213,5 @@ animation.gif: saved, 680K
   - Save `summary.json`, `test_summary.yaml`, `trajectory.csv`, `controls.csv`, `obs_results.csv`, `time_results.csv`, `costs.csv`, `trajectory.png`, and `animation.gif`.
   - Restore sampled candidate rollout and optimized rollout display in GIF.
   - Tune harder double-obstacle scene with `obstacle_weight=800`, `safety_dist=0.4`, and `smooth_weight=1.0`.
+  - Add named overwriteable result directory support so formal runs update one stable latest result directory.
 - Body file: `docs/agent_memory/PR_3_OMNI_RUNNER_BODY.md`

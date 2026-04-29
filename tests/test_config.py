@@ -55,6 +55,8 @@ def test_b2_omni_nominal_config_loads_stage1_parameters():
     assert config["robot"]["max_vy"] == pytest.approx(0.5)
     assert config["robot"]["max_wz"] == pytest.approx(1.0)
     assert config["robot"]["safety_dist"] == pytest.approx(0.4)
+    assert config["results"]["run_name"] == "b2_omni_nominal_latest"
+    assert config["results"]["overwrite"] is True
 
 
 def test_validate_config_rejects_bad_goal_length():

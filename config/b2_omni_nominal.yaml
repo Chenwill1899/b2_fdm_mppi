@@ -61,5 +61,7 @@ obstacles:
 
 results:
   root: "./results/sim_results"
+  run_name: "b2_omni_nominal_latest"
+  overwrite: true
   enable_plots: true
   enable_animation: true

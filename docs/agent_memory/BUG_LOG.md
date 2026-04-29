@@ -16,6 +16,7 @@ Last updated: 2026-04-29
 | B-008 | open | Harder double-obstacle scene does not reach goal | Obstacles `[6, 0.5]` and `[12, -1]` create a tighter path; first run stopped near `[10.54, -0.93]` with `final_distance=7.5119 m` | Tune MPPI parameters for this scene without breaking static obstacle behavior or GIF outputs. |
 | B-009 | fixed | Omni runner GIF did not show MPPI sampled/candidate paths | New omni runner used a local animation implementation that only drew executed trajectory | Added per-frame sampled rollout drawing and optimized rollout drawing in `omni_runner.py`. Verified by `test_omni_runner_draws_sampled_and_optimized_rollouts` and saved GIF `results/sim_results/2026-04-29_23-27-26/animation.gif`. |
 | B-010 | fixed | Omni trajectory appeared jagged in GIF | Omni MPPI cost penalized control magnitude but not control jumps, especially first control jump from the previous executed command | Added `smooth_weight` and previous-control smoothness cost. Tuned `smooth_weight=1.0`; final run reached target with `final_distance=0.3634 m`, `mean_mppi_time_ms=6.3741`, `min_obstacle_clearance=0.3878`. |
+| B-011 | fixed | Formal result checks were cluttered by many timestamped result folders | Parameter tuning instantiated and ran multiple simulations, and default result naming created a new timestamped folder for every run | Added named overwriteable result directories. `config/b2_omni_nominal.yaml` now writes to `results/sim_results/b2_omni_nominal_latest/` with `overwrite: true`. Verified one named directory and saved GIF on 2026-04-29. |
 
 ## Fixed Bugs
 
@@ -25,3 +26,4 @@ Last updated: 2026-04-29
 - B-006: double static obstacle scene clears `safety_dist=0.3 m`.
 - B-009: omni GIF now includes sampled and optimized rollout paths.
 - B-010: omni MPPI now includes smoothness cost for adjacent controls and first-step control jump.
+- B-011: formal B2 omni nominal result output now overwrites one fixed latest directory instead of creating many timestamped directories.
