@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as _dt
 import math
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -287,18 +288,25 @@ class MppiSimulationRunner:
             self.config["obstacles"].get("static_enabled", False),
         )
         if self.config["results"].get("enable_animation", True):
-            utils.animate_simulation(
-                self.dt,
-                obs_num,
-                self.safety_dist,
-                self.robot_radius,
-                self.config["cbf"]["atau"],
-                self.targets,
-                str(self.results_path),
-                self.sample_u_history,
-                optimal_us=self.optimal_u_history,
-                cbf_type=self.config["cbf"]["type"],
-            )
+            try:
+                utils.animate_simulation(
+                    self.dt,
+                    obs_num,
+                    self.safety_dist,
+                    self.robot_radius,
+                    self.config["cbf"]["atau"],
+                    self.targets,
+                    str(self.results_path),
+                    self.sample_u_history,
+                    optimal_us=self.optimal_u_history,
+                    cbf_type=self.config["cbf"]["type"],
+                )
+            except Exception as exc:
+                warnings.warn(
+                    f"Animation failed; continuing without animation: {exc}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
 
     def _default_controller_factory(self, *, config: dict, robot: Jackal, obstacle: Obstacle, runner: "MppiSimulationRunner") -> object:
         from b2_fdm_mppi.controllers.mppi_cbf import MPPI_Controller

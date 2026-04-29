@@ -56,4 +56,4 @@ obstacles:
 results:
   root: "./results/sim_results"
   enable_plots: true
-  enable_animation: true
+  enable_animation: false

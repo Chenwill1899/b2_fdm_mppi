@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from b2_fdm_mppi.config import load_config
 from b2_fdm_mppi.simulation.runner import MppiSimulationRunner
@@ -50,3 +51,36 @@ def test_runner_results_keep_legacy_velocity_column_names(tmp_path):
     header = (summary.results_path / "results.csv").read_text(encoding="utf-8").splitlines()[0]
     assert "dx" in header.split(",")
     assert "dy" in header.split(",")
+
+
+def test_runner_continues_when_animation_fails(tmp_path, monkeypatch):
+    config = load_config("config/fdm_mppi.yaml")
+    config["simulation"]["max_steps"] = 1
+    config["simulation"]["time_horizon"] = 0.3
+    config["mppi"]["draw_num_traj"] = 2
+    config["mppi"]["std_normal"] = [0.1, 0.1]
+    config["results"]["root"] = str(tmp_path)
+    config["results"]["enable_plots"] = True
+    config["results"]["enable_animation"] = True
+
+    from b2_fdm_mppi.visualization import utils
+
+    monkeypatch.setattr(utils, "statePlotting", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(utils, "controlPlotting", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(utils, "costPlotting", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(utils, "pathPlotting", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(utils, "plot_cbf", lambda *_args, **_kwargs: None)
+
+    def fail_animation(*_args, **_kwargs):
+        raise RuntimeError("animation writer unavailable")
+
+    monkeypatch.setattr(utils, "animate_simulation", fail_animation)
+
+    runner = MppiSimulationRunner(config, controller_factory=lambda *_args, **_kwargs: FakeController())
+
+    with pytest.warns(RuntimeWarning, match="Animation failed"):
+        summary = runner.run()
+
+    assert summary.steps == 1
+    assert not summary.failed
+    assert (summary.results_path / "results.csv").exists()
