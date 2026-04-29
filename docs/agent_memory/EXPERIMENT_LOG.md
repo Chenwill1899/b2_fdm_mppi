@@ -44,6 +44,20 @@ python3 -m pytest -q
 - Result: targeted animation tests passed; full regression result `10 passed in 2.09s`.
 - Decision: `config/fdm_mppi.yaml` keeps `results.enable_animation: true`; runner still catches animation exceptions so missing writers do not abort the simulation.
 
+### 2026-04-29: S0-002 Summary Metrics And GIF Axis
+
+- Goal: add Stage 0 baseline summary metrics and widen `animation.gif` y-axis for visual inspection.
+- Commands:
+
+```bash
+python3 -m pytest tests/test_runner.py::test_runner_summary_contains_stage0_metrics tests/test_visualization.py::test_animation_axis_limits_keep_wide_y_view_for_goal_on_x_axis -q
+python3 -m pytest -q
+```
+
+- Result: targeted tests passed; full regression result `12 passed in 2.10s`.
+- Summary file: `test_summary.yaml` now contains `success`, `final_distance`, `path_length`, `arrival_time`, `run_time`, `mean_mppi_time_ms`, and `max_mppi_time_ms`.
+- Visualization: animation y-axis is fixed to `[-10, 10]`; default x-axis remains `[-1, target_x + 1]`.
+
 ## Next Baseline Experiment
 
 Planned command:

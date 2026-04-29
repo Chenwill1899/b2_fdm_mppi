@@ -18,6 +18,12 @@ from pathlib import Path
 import matplotlib.cm as cm
 import seaborn as sns
 from casadi import *
+
+
+def animation_axis_limits(targets):
+    return (-1.0, float(targets[0]) + 1.0), (-10.0, 10.0)
+
+
 #动图
 def animate_simulation(dt ,ob_num_max, safety_dist, robot_r, atau, targets ,results_rootpath, sampled_us=[], optimal_us=None, cbf_type=0):
 
@@ -216,8 +222,9 @@ def animate_simulation(dt ,ob_num_max, safety_dist, robot_r, atau, targets ,resu
         # plt.xlim(-1, targets[0]+1)
         # plt.ylim(targets[1]-5, targets[1]+5)
 
-        plt.xlim(-1, targets[0]+1)
-        plt.ylim(-1, targets[1]+1)
+        xlim, ylim = animation_axis_limits(targets)
+        plt.xlim(*xlim)
+        plt.ylim(*ylim)
         
         # Set aspect ratio to be equal, so each cell will be square-shaped
         plt.gca().set_aspect('equal', adjustable='box')

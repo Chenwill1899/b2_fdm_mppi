@@ -243,6 +243,35 @@ class MppiSimulationRunner:
     def _heading_angle(self, current_state: np.ndarray, desired_state: np.ndarray) -> float:
         return math.atan2(desired_state[1] - current_state[1], desired_state[0] - current_state[0])
 
+    def _path_length(self) -> float:
+        if not self.state_history:
+            return 0.0
+        positions = [state[:2] for state in self.state_history]
+        positions.append(self.state[:2])
+        deltas = np.diff(np.asarray(positions, dtype=np.float32), axis=0)
+        return float(np.sum(np.linalg.norm(deltas, axis=1)))
+
+    def _summary_metrics(self) -> dict:
+        final_distance = float(np.linalg.norm(self.desired_pose[:2] - self.state[:2]))
+        mean_mppi_time = float(np.mean(self.mppi_time_history)) if self.mppi_time_history else 0.0
+        max_mppi_time = float(np.max(self.mppi_time_history)) if self.mppi_time_history else 0.0
+        success = goal_reached(self.state, self.desired_pose, self.minimum_distance)
+        return {
+            "init_pose": self.init_pose.tolist(),
+            "goal": self.desired_pose.tolist(),
+            "steps": len(self.state_history),
+            "success": success,
+            "reached_goal": success,
+            "failed": self.failed,
+            "final_distance": final_distance,
+            "path_length": self._path_length(),
+            "arrival_time": len(self.state_history) * self.dt if success else None,
+            "run_time": len(self.state_history) * self.dt,
+            "mean_mppi_time_ms": mean_mppi_time,
+            "max_mppi_time_ms": max_mppi_time,
+            "average_mppi_time_ms": mean_mppi_time,
+        }
+
     def _save_results(self) -> None:
         result_io.save_results(
             self.state_history,
@@ -254,16 +283,7 @@ class MppiSimulationRunner:
         )
         result_io.save_obs_results(self.ob_num_max, self.results_path, self.ob_state_history)
         result_io.save_time_results(self.results_path, self.mppi_time_history)
-        result_io.save_summary(
-            self.results_path,
-            {
-                "init_pose": self.init_pose.tolist(),
-                "goal": self.desired_pose.tolist(),
-                "steps": len(self.state_history),
-                "failed": self.failed,
-                "average_mppi_time_ms": float(np.mean(self.mppi_time_history)) if self.mppi_time_history else 0.0,
-            },
-        )
+        result_io.save_summary(self.results_path, self._summary_metrics())
 
     def _plot_results(self) -> None:
         from b2_fdm_mppi.visualization import utils

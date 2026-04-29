@@ -21,6 +21,12 @@ git status
 git branch
 ```
 
+## Recent Commits
+
+- `8be8e73 fix: make animation non-fatal`
+- `c8d73e1 config: save baseline animation gif`
+- Pending: `feat: add baseline summary metrics`
+
 ## Suggested Commit For This Startup Task
 
 ```bash
@@ -38,4 +44,3 @@ Planned tags:
 - `v0.4-fdm-dataset`
 - `v0.5-learned-fdm`
 - `v0.6-fdm-mppi`
-

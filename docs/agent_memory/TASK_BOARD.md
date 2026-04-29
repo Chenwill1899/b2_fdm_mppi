@@ -20,10 +20,10 @@ Stage 0: Baseline tuning and stabilization.
 | ID | Priority | Status | Task | Notes |
 | --- | --- | --- | --- | --- |
 | S0-001 | P0 | done | Save GIF and make animation failure non-fatal | Default animation enabled for `animation.gif`; runner catches animation exceptions and continues with a warning. Verified by pytest. |
-| S0-002 | P0 | todo | Add baseline summary metrics | Need final distance, success, path length, mean/max MPPI time. |
+| S0-002 | P0 | done | Add baseline summary metrics | `test_summary.yaml` includes success, final distance, path length, arrival/run time, mean/max MPPI time. Verified by pytest. |
 | S0-003 | P0 | todo | Create short-goal baseline config | Recommended target `[3.0, 3.0]`, 400 steps, 2.0 s horizon. |
 | S0-004 | P1 | todo | Run baseline with real controller | Requires CUDA/PyCUDA runtime. |
-| S0-005 | P1 | todo | Save trajectory/control/time plots and GIF reliably | Existing plot hooks are present; verify CSV, PNG, and `animation.gif` outputs. |
+| S0-005 | P1 | todo | Save trajectory/control/time plots and GIF reliably | Existing plot hooks are present; verify CSV, PNG, and `animation.gif` outputs. GIF y-axis is fixed to `[-10, 10]` for baseline inspection. |
 
 ## Later Stages
 

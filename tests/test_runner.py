@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import yaml
 from pathlib import Path
 
 from b2_fdm_mppi.config import load_config
@@ -115,3 +116,26 @@ def test_runner_saves_gif_when_animation_is_enabled(tmp_path, monkeypatch):
     summary = runner.run()
 
     assert (summary.results_path / "animation.gif").exists()
+
+
+def test_runner_summary_contains_stage0_metrics(tmp_path):
+    config = load_config("config/fdm_mppi.yaml")
+    config["simulation"]["max_steps"] = 3
+    config["simulation"]["time_horizon"] = 0.3
+    config["mppi"]["draw_num_traj"] = 2
+    config["mppi"]["std_normal"] = [0.1, 0.1]
+    config["results"]["root"] = str(tmp_path)
+    config["results"]["enable_plots"] = False
+
+    runner = MppiSimulationRunner(config, controller_factory=lambda *_args, **_kwargs: FakeController())
+    summary = runner.run()
+
+    summary_data = yaml.safe_load((summary.results_path / "test_summary.yaml").read_text())
+
+    assert summary_data["success"] is summary.reached_goal
+    assert summary_data["final_distance"] == pytest.approx(
+        np.linalg.norm(runner.desired_pose[:2] - runner.state[:2])
+    )
+    assert summary_data["path_length"] > 0.0
+    assert summary_data["mean_mppi_time_ms"] >= 0.0
+    assert summary_data["max_mppi_time_ms"] >= summary_data["mean_mppi_time_ms"]
