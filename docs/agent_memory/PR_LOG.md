@@ -162,6 +162,8 @@ max_wz = 1.0
 ## PR Candidate: NumPy Omni MPPI
 
 - Repository: `Chenwill1899/b2_fdm_mppi`
+- PR: `https://github.com/Chenwill1899/b2_fdm_mppi/pull/2`
+- State: `OPEN`
 - Base branch: `feature/b2-omni-model`
 - Head branch: `feature/omni-mppi-numpy`
 - Title: `[MPPI] feat: add NumPy omnidirectional MPPI controller`
@@ -177,3 +179,4 @@ results/test_reports/20260429_230911/pytest.xml
   - Add `b2_fdm_mppi/controllers/mppi_omni_numpy.py`
   - Add tests for control limits, goal progress, obstacle cost, config construction, and closed-loop smoke behavior.
   - Keep existing CUDA differential MPPI unchanged.
+- Body file: `docs/agent_memory/PR_2_OMNI_MPPI_BODY.md`
