@@ -34,7 +34,16 @@ git branch
 - `e890487 config: set double static obstacle scene`
 - `0aa3dba config: update double obstacle positions`
 - `3baeb81 feat: add b2 omni nominal model`
-- Pending: `docs: add pr log for b2 omni model`
+- `9b7bdce docs: add pr log for b2 omni model`
+- Pending: `docs: record b2 omni pr push blocker`
+
+## Push Blockers
+
+- `2026-04-29`: `git push -u origin feature/b2-omni-model` failed because local GitHub HTTPS credentials were unavailable:
+
+```text
+fatal: could not read Username for 'https://github.com': 没有那个设备或地址
+```
 
 ## Suggested Commit For This Startup Task
 

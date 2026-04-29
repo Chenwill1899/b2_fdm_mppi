@@ -9,7 +9,30 @@ Last updated: 2026-04-29
 - Head branch: `feature/b2-omni-model`
 - Title: `[B2-Omni] feat: add SE(2) omnidirectional B2 model`
 - Local commits:
+  - `9b7bdce docs: add pr log for b2 omni model`
   - `3baeb81 feat: add b2 omni nominal model`
+- Push status: blocked by local GitHub HTTPS authentication.
+- Push error:
+
+```text
+fatal: could not read Username for 'https://github.com': 没有那个设备或地址
+```
+
+## Upload Commands
+
+After GitHub authentication is available locally, run:
+
+```bash
+git push -u origin feature/b2-omni-model
+```
+
+Then create a PR:
+
+```text
+base: fdm
+head: feature/b2-omni-model
+title: [B2-Omni] feat: add SE(2) omnidirectional B2 model
+```
 
 ## PR Body
 
@@ -125,3 +148,8 @@ max_wz = 1.0
 - `results/test_reports/20260429_223738/pytest.log`
 - `results/test_reports/20260429_223738/pytest.xml`
 
+## PR Upload Status
+
+- `2026-04-29`: local branch `feature/b2-omni-model` created.
+- `2026-04-29`: push attempted with `git push -u origin feature/b2-omni-model`.
+- `2026-04-29`: push blocked by missing local GitHub HTTPS credentials.
