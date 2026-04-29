@@ -203,6 +203,48 @@ results/sim_results/2026-04-29_22-24-13/
   - `min_clearance_to_obstacle_surface_minus_robot_radius: 0.28193325984062456`
 - Conclusion: target and compute-time Stage 0 criteria passed; obstacle is verified stationary. Clearance is still slightly below `safety_dist=0.3 m`, so next tuning should improve clearance.
 
+### 2026-04-29: S0-008 Double Static Obstacle Scene
+
+- Goal: test target `[18, 0]` with two stationary obstacles at `[6, 1]` and `[12, 1.5]`.
+- Config:
+
+```text
+config/fdm_mppi_baseline_straight_obstacle.yaml
+```
+
+- Pytest report:
+  - `results/test_reports/20260429_222723/pytest.log`
+  - `results/test_reports/20260429_222723/pytest.xml`
+  - result: `16 passed in 1.06s`
+- Real MPPI result directory:
+
+```text
+results/sim_results/2026-04-29_22-27-37/
+```
+
+- Key artifacts:
+  - `results/sim_results/2026-04-29_22-27-37/animation.gif` (`470769` bytes)
+  - `results/sim_results/2026-04-29_22-27-37/path.png`
+  - `results/sim_results/2026-04-29_22-27-37/test_summary.yaml`
+  - `results/sim_results/2026-04-29_22-27-37/results.csv`
+  - `results/sim_results/2026-04-29_22-27-37/obs_results.csv`
+  - `results/sim_results/2026-04-29_22-27-37/time_results.csv`
+- Metrics:
+  - `success: true`
+  - `failed: false`
+  - `steps: 168`
+  - `final_distance: 0.36382970213890076`
+  - `arrival_time: 16.8`
+  - `path_length: 17.662694931030273`
+  - `mean_mppi_time_ms: 1.2644728024800618`
+  - `max_mppi_time_ms: 1.735687255859375`
+  - `obs0_position: [6.0, 1.0]`, `obs0_velocity: [0.0, 0.0]`
+  - `obs1_position: [12.0, 1.5]`, `obs1_velocity: [0.0, 0.0]`
+  - `obs0_min_clearance: 0.3174117563467942`
+  - `obs1_min_clearance: 0.9285765019226636`
+  - `min_clearance_all: 0.3174117563467942`
+- Conclusion: Stage 0 straight double-obstacle scene meets target distance, compute-time, saved-artifact, and clearance criteria.
+
 ## Next Baseline Experiment
 
 Planned command:

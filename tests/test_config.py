@@ -33,7 +33,10 @@ def test_straight_obstacle_baseline_config_loads_stage0_parameters():
     assert config["simulation"]["max_steps"] == 400
     assert config["simulation"]["time_horizon"] == pytest.approx(2.0)
     assert config["obstacles"]["static_enabled"] is True
-    assert config["obstacles"]["virtual"] == [[10.0, 0.0, 0.4, 0.0, 0.0, 0.0, 0.0]]
+    assert config["obstacles"]["virtual"] == [
+        [6.0, 1.0, 0.4, 0.0, 0.0, 0.0, 0.0],
+        [12.0, 1.5, 0.4, 0.0, 0.0, 0.0, 0.0],
+    ]
     assert config["results"]["enable_animation"] is True
 
 

@@ -26,8 +26,8 @@ Stage 0: Baseline tuning and stabilization.
 | S0-004 | P1 | done | Run baseline with real controller | Real PyCUDA MPPI ran and saved GIF under `results/sim_results/2026-04-29_22-16-38/`; acceptance failed with `final_distance=1.2289 m`. |
 | S0-005 | P1 | todo | Save trajectory/control/time plots and GIF reliably | Existing plot hooks are present; verify CSV, PNG, and `animation.gif` outputs. GIF y-axis is fixed to `[-10, 10]` for baseline inspection. |
 | S0-006 | P0 | todo | Tune short-goal baseline to reach target | Need reduce `final_distance` from `1.2289 m` to `<0.4 m` while keeping mean MPPI time `<20 ms`. |
-| S0-007 | P0 | done | Add straight-obstacle Stage 0 scene | Updated target `[18, 0]`, static obstacle `[10, 0]`, fixed map limits `x=[0, 20], y=[-10, 10]`. Real MPPI reached goal with `final_distance=0.3914 m`; obstacle verified stationary. |
-| S0-008 | P0 | todo | Improve obstacle clearance in straight scene | Need raise min clearance from `0.2819 m` to at least `0.3 m` while preserving `final_distance <0.4 m`. |
+| S0-007 | P0 | done | Add straight-obstacle Stage 0 scene | Updated target `[18, 0]`, static obstacles `[6, 1]` and `[12, 1.5]`, fixed map limits `x=[0, 20], y=[-10, 10]`. Obstacles verified stationary. |
+| S0-008 | P0 | done | Improve obstacle clearance in straight scene | Double-obstacle run reached `final_distance=0.3638 m`, mean MPPI `1.2645 ms`, min clearance `0.3174 m`. |
 
 ## Later Stages
 

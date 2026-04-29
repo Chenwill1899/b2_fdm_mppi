@@ -52,7 +52,8 @@ obstacles:
   num_max: 5
   static_enabled: true
   virtual:
-    - [10.0, 0.0, 0.4, 0.0, 0.0, 0.0, 0.0]
+    - [6.0, 1.0, 0.4, 0.0, 0.0, 0.0, 0.0]
+    - [12.0, 1.5, 0.4, 0.0, 0.0, 0.0, 0.0]
 
 results:
   root: "./results/sim_results"

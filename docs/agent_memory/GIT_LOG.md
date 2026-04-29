@@ -30,7 +30,8 @@ git branch
 - `61a148a docs: record saved gif artifact`
 - `74afe85 config: add short-goal baseline`
 - `7f4be5d config: add straight obstacle baseline`
-- Pending: `fix: keep static obstacles stationary`
+- `e7866b1 fix: keep static obstacles stationary`
+- Pending: `config: set double static obstacle scene`
 
 ## Suggested Commit For This Startup Task
 
