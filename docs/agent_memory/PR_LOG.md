@@ -181,9 +181,11 @@ results/test_reports/20260429_230911/pytest.xml
   - Keep existing CUDA differential MPPI unchanged.
 - Body file: `docs/agent_memory/PR_2_OMNI_MPPI_BODY.md`
 
-## PR Candidate: Omni MPPI Runner and Tuned Scene
+## PR #3: Omni MPPI Runner and Tuned Scene
 
 - Repository: `Chenwill1899/b2_fdm_mppi`
+- PR: `https://github.com/Chenwill1899/b2_fdm_mppi/pull/3`
+- State: `OPEN`
 - Base branch: `feature/omni-mppi-numpy`
 - Head branch: `feature/omni-mppi-runner`
 - Title: `[MPPI] feat: add omni MPPI runner and tuning outputs`

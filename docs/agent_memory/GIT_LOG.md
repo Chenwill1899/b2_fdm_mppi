@@ -47,7 +47,8 @@ git branch
   - `https://github.com/Chenwill1899/b2_fdm_mppi/pull/1`
 - PR #2: `feature/omni-mppi-numpy` -> `feature/b2-omni-model`
   - `https://github.com/Chenwill1899/b2_fdm_mppi/pull/2`
-- PR #3 candidate: `feature/omni-mppi-runner` -> `feature/omni-mppi-numpy`
+- PR #3: `feature/omni-mppi-runner` -> `feature/omni-mppi-numpy`
+  - `https://github.com/Chenwill1899/b2_fdm_mppi/pull/3`
   - local commit: `feat: add omni mppi runner`
   - verified by `results/test_reports/20260429_232717/`
   - real run: `results/sim_results/2026-04-29_23-27-26/`
