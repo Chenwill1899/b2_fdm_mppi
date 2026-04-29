@@ -20,8 +20,12 @@ import seaborn as sns
 from casadi import *
 
 
+def map_axis_limits():
+    return (-10.0, 10.0), (-10.0, 10.0)
+
+
 def animation_axis_limits(targets):
-    return (-1.0, float(targets[0]) + 1.0), (-10.0, 10.0)
+    return map_axis_limits()
 
 
 #动图
@@ -514,8 +518,9 @@ def pathPlotting(ob_num_max, robot_r, targets ,results_rootpath):
     plt.tight_layout()
 
 
-    plt.xlim(-1.2, targets[0]+1.2)
-    plt.ylim(-5.2, targets[1]+5.2)
+    xlim, ylim = map_axis_limits()
+    plt.xlim(*xlim)
+    plt.ylim(*ylim)
     ax.set_aspect('equal', adjustable='box')  # 保持比例同时锁定坐标范
    # 机器人初始位置
     ax.plot(0.0, 0.0, 'r.', label="Initial position")

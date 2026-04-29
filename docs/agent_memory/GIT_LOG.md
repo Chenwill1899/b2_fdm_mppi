@@ -28,7 +28,8 @@ git branch
 - `7242e23 feat: add baseline summary metrics`
 - `f6bb68d docs: record saved test report`
 - `61a148a docs: record saved gif artifact`
-- Pending: `config: add short-goal baseline`
+- `74afe85 config: add short-goal baseline`
+- Pending: `config: add straight obstacle baseline`
 
 ## Suggested Commit For This Startup Task
 
