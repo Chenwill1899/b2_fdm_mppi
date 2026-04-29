@@ -33,7 +33,8 @@ git branch
 - `e7866b1 fix: keep static obstacles stationary`
 - `e890487 config: set double static obstacle scene`
 - `0aa3dba config: update double obstacle positions`
-- Pending: `feat: add b2 omni nominal model`
+- `3baeb81 feat: add b2 omni nominal model`
+- Pending: `docs: add pr log for b2 omni model`
 
 ## Suggested Commit For This Startup Task
 
