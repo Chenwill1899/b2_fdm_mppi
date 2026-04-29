@@ -38,7 +38,19 @@ git branch
 - `c1fe15b docs: record b2 omni pr push blocker`
 - `084d236 docs: record b2 omni pr created`
 - `8e2b14e feat: add numpy omni mppi controller`
-- Pending: `docs: add pr2 body for numpy omni mppi`
+- `d8895ee docs: add pr2 body for numpy omni mppi`
+- `feat: add omni mppi runner` on `feature/omni-mppi-runner`
+
+## Current PR Stack
+
+- PR #1: `feature/b2-omni-model` -> `fdm`
+  - `https://github.com/Chenwill1899/b2_fdm_mppi/pull/1`
+- PR #2: `feature/omni-mppi-numpy` -> `feature/b2-omni-model`
+  - `https://github.com/Chenwill1899/b2_fdm_mppi/pull/2`
+- PR #3 candidate: `feature/omni-mppi-runner` -> `feature/omni-mppi-numpy`
+  - local commit: `feat: add omni mppi runner`
+  - verified by `results/test_reports/20260429_232717/`
+  - real run: `results/sim_results/2026-04-29_23-27-26/`
 
 ## Push Blockers
 

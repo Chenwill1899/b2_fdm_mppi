@@ -180,3 +180,35 @@ results/test_reports/20260429_230911/pytest.xml
   - Add tests for control limits, goal progress, obstacle cost, config construction, and closed-loop smoke behavior.
   - Keep existing CUDA differential MPPI unchanged.
 - Body file: `docs/agent_memory/PR_2_OMNI_MPPI_BODY.md`
+
+## PR Candidate: Omni MPPI Runner and Tuned Scene
+
+- Repository: `Chenwill1899/b2_fdm_mppi`
+- Base branch: `feature/omni-mppi-numpy`
+- Head branch: `feature/omni-mppi-runner`
+- Title: `[MPPI] feat: add omni MPPI runner and tuning outputs`
+- Current verification:
+
+```text
+results/test_reports/20260429_232717/pytest.log
+results/test_reports/20260429_232717/pytest.xml
+33 passed in 1.99s
+```
+
+- Real run:
+
+```text
+results/sim_results/2026-04-29_23-27-26/
+success: true
+final_distance: 0.36341118812561035
+mean_mppi_time_ms: 6.374088685903976
+min_obstacle_clearance: 0.38778746128082275
+animation.gif: saved, 680K
+```
+
+- Scope:
+  - Add B2 omni simulation runner and CLI.
+  - Save `summary.json`, `test_summary.yaml`, `trajectory.csv`, `controls.csv`, `obs_results.csv`, `time_results.csv`, `costs.csv`, `trajectory.png`, and `animation.gif`.
+  - Restore sampled candidate rollout and optimized rollout display in GIF.
+  - Tune harder double-obstacle scene with `obstacle_weight=800`, `safety_dist=0.4`, and `smooth_weight=1.0`.
+- Body file: `docs/agent_memory/PR_3_OMNI_RUNNER_BODY.md`

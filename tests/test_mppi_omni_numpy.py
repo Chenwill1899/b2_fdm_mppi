@@ -19,6 +19,7 @@ def make_controller(seed=1, num_samples=64, horizon_steps=8):
         goal_xy_weight=8.0,
         yaw_weight=0.2,
         control_weight=0.01,
+        smooth_weight=0.2,
         obstacle_weight=25.0,
         robot_radius=0.6,
         safety_dist=0.3,
@@ -72,6 +73,57 @@ def test_omni_mppi_obstacle_cost_prefers_lateral_clearance():
     assert lateral_cost < straight_cost
 
 
+def test_omni_mppi_smooth_cost_penalizes_control_jumps():
+    controller = make_controller(seed=7, num_samples=8, horizon_steps=6)
+    smooth = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    smooth[:, 0] = 0.8
+    jerky = smooth.copy()
+    jerky[1::2, 1] = 0.5
+    jerky[::2, 1] = -0.5
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([2.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    smooth_cost = controller.trajectory_cost(state, smooth, goal, obstacles)
+    jerky_cost = controller.trajectory_cost(state, jerky, goal, obstacles)
+
+    assert jerky_cost > smooth_cost
+
+
+def test_omni_mppi_smooth_cost_penalizes_first_control_jump():
+    controller = make_controller(seed=8, num_samples=8, horizon_steps=4)
+    controller.previous_control = np.array([0.8, 0.0, 0.0], dtype=np.float32)
+    continuous = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    continuous[:, 0] = 0.8
+    jump = continuous.copy()
+    jump[0, 0] = -0.8
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([2.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    continuous_cost = controller.trajectory_cost(state, continuous, goal, obstacles)
+    jump_cost = controller.trajectory_cost(state, jump, goal, obstacles)
+
+    assert jump_cost > continuous_cost
+
+
+def test_omni_mppi_batch_cost_matches_scalar_costs():
+    controller = make_controller(seed=6, num_samples=4, horizon_steps=5)
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([2.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    obstacles = np.array([[0.8, 0.0, 0.4, 0.0, 0.0, 0.0, 0.0]], dtype=np.float32)
+    controls = np.zeros((4, controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, 0] = np.linspace(0.2, 1.2, 4)[:, None]
+    controls[:, :, 1] = np.linspace(-0.2, 0.2, 4)[:, None]
+
+    batch_costs = controller.trajectory_cost_batch(state, controls, goal, obstacles)
+    scalar_costs = np.array(
+        [controller.trajectory_cost(state, control, goal, obstacles) for control in controls]
+    )
+
+    assert batch_costs == pytest.approx(scalar_costs, rel=1e-5)
+
+
 def test_omni_mppi_can_be_created_from_config():
     config = load_config("config/b2_omni_nominal.yaml")
 
@@ -80,6 +132,22 @@ def test_omni_mppi_can_be_created_from_config():
     assert controller.horizon_steps == 20
     assert controller.num_samples == 1024
     assert controller.max_control.tolist() == pytest.approx([1.5, 0.5, 1.0])
+
+
+def test_omni_mppi_from_config_accepts_tuning_overrides():
+    config = load_config("config/b2_omni_nominal.yaml")
+
+    controller = MppiOmniNumpy.from_config(config, seed=4, obstacle_weight=100.0)
+
+    assert controller.obstacle_weight == pytest.approx(100.0)
+
+
+def test_omni_mppi_from_config_loads_smooth_weight():
+    config = load_config("config/b2_omni_nominal.yaml")
+
+    controller = MppiOmniNumpy.from_config(config, seed=4)
+
+    assert controller.smooth_weight == pytest.approx(1.0)
 
 
 def test_omni_mppi_closed_loop_moves_toward_unobstructed_goal():

@@ -24,6 +24,9 @@ mppi:
   std_normal: [0.25, 0.15, 0.25]
   std_slack: 0.1
   lambda: 0.5
+  obstacle_weight: 800.0
+  control_weight: 0.01
+  smooth_weight: 1.0
   beta_1: 0.5
   beta_2: 0.8
   beta_3: 0.5
@@ -37,7 +40,7 @@ robot:
   max_vy: 0.5
   max_wz: 1.0
   radius: 0.6
-  safety_dist: 0.3
+  safety_dist: 0.4
   obstacle_state_num: 7
 
 cbf:

@@ -48,9 +48,13 @@ def test_b2_omni_nominal_config_loads_stage1_parameters():
     assert config["mppi"]["state_dim"] == 6
     assert config["mppi"]["control_dim"] == 3
     assert config["mppi"]["std_normal"] == [0.25, 0.15, 0.25]
+    assert config["mppi"]["obstacle_weight"] == pytest.approx(800.0)
+    assert config["mppi"]["control_weight"] == pytest.approx(0.01)
+    assert config["mppi"]["smooth_weight"] == pytest.approx(1.0)
     assert config["robot"]["max_vx"] == pytest.approx(1.5)
     assert config["robot"]["max_vy"] == pytest.approx(0.5)
     assert config["robot"]["max_wz"] == pytest.approx(1.0)
+    assert config["robot"]["safety_dist"] == pytest.approx(0.4)
 
 
 def test_validate_config_rejects_bad_goal_length():

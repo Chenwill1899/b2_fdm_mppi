@@ -355,3 +355,49 @@ Expected Stage 0 outputs:
 - `results/sim_results/<timestamp>/time_results.csv`
 - `results/sim_results/<timestamp>/test_summary.yaml`
 - Plot images when plotting is enabled.
+
+### 2026-04-29: S1-004 Omni MPPI Runner and Tuned Double-Obstacle Scene
+
+- Goal: run the B2 omni SE(2) nominal MPPI in the fixed map `x=[0,20]`, `y=[-10,10]` with target `[18,0]` and static obstacles `[6,0.5]`, `[12,-1]`.
+- Added:
+  - `b2_fdm_mppi/simulation/omni_runner.py`
+  - `tools/run_omni_mppi.py`
+  - `tests/test_omni_runner.py`
+- Controller updates:
+  - vectorized candidate rollout and obstacle cost
+  - configurable `obstacle_weight`, `control_weight`, `smooth_weight`
+  - smoothness cost includes the previous executed control and adjacent controls
+- Visualization update:
+  - `animation.gif` now draws sampled candidate rollouts in black and optimized rollout in orange.
+- Tuned config:
+  - `mppi.obstacle_weight: 800.0`
+  - `mppi.control_weight: 0.01`
+  - `mppi.smooth_weight: 1.0`
+  - `robot.safety_dist: 0.4`
+- Pytest report:
+  - `results/test_reports/20260429_232717/pytest.log`
+  - `results/test_reports/20260429_232717/pytest.xml`
+  - result: `33 passed in 1.99s`
+- Real omni MPPI result directory:
+
+```text
+results/sim_results/2026-04-29_23-27-26/
+```
+
+- Key artifacts:
+  - `results/sim_results/2026-04-29_23-27-26/animation.gif` (`680K`)
+  - `results/sim_results/2026-04-29_23-27-26/trajectory.png`
+  - `results/sim_results/2026-04-29_23-27-26/summary.json`
+  - `results/sim_results/2026-04-29_23-27-26/trajectory.csv`
+  - `results/sim_results/2026-04-29_23-27-26/controls.csv`
+- Metrics:
+  - `success: true`
+  - `steps: 134`
+  - `final_distance: 0.36341118812561035`
+  - `path_length: 18.1884765625`
+  - `arrival_time: 13.4`
+  - `mean_mppi_time_ms: 6.374088685903976`
+  - `max_mppi_time_ms: 18.85843276977539`
+  - `min_obstacle_clearance: 0.38778746128082275`
+  - control mean absolute deltas: `vx=0.080398`, `vy=0.168291`, `wz=0.282473`
+- Conclusion: Stage 1 omni nominal MPPI reaches the target in the harder double-obstacle scene, stays under the 20 ms mean compute target, saves summary/CSV/PNG/GIF, and restores candidate rollout visualization in GIF. Next stage after PR review is Oracle Residual World.
