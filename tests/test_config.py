@@ -40,6 +40,19 @@ def test_straight_obstacle_baseline_config_loads_stage0_parameters():
     assert config["results"]["enable_animation"] is True
 
 
+def test_b2_omni_nominal_config_loads_stage1_parameters():
+    config = load_config(Path("config/b2_omni_nominal.yaml"))
+
+    assert config["simulation"]["goal"] == [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    assert config["simulation"]["initial_state"] == [0.01, 0.01, 0.0, 0.0, 0.0, 0.0]
+    assert config["mppi"]["state_dim"] == 6
+    assert config["mppi"]["control_dim"] == 3
+    assert config["mppi"]["std_normal"] == [0.25, 0.15, 0.25]
+    assert config["robot"]["max_vx"] == pytest.approx(1.5)
+    assert config["robot"]["max_vy"] == pytest.approx(0.5)
+    assert config["robot"]["max_wz"] == pytest.approx(1.0)
+
+
 def test_validate_config_rejects_bad_goal_length():
     config = load_config(Path("config/fdm_mppi.yaml"))
     config["simulation"]["goal"] = [1.0, 2.0]

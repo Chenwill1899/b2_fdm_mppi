@@ -32,7 +32,8 @@ git branch
 - `7f4be5d config: add straight obstacle baseline`
 - `e7866b1 fix: keep static obstacles stationary`
 - `e890487 config: set double static obstacle scene`
-- Pending: `config: update double obstacle positions`
+- `0aa3dba config: update double obstacle positions`
+- Pending: `feat: add b2 omni nominal model`
 
 ## Suggested Commit For This Startup Task
 

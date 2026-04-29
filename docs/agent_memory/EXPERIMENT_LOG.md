@@ -287,6 +287,29 @@ results/sim_results/2026-04-29_22-30-49/
   - `final_xy: [10.544911, -0.9266779]`
 - Conclusion: obstacles are stationary and artifacts are saved, but this harder layout fails Stage 0 target-distance and clearance criteria. Next task is tuning this scene.
 
+### 2026-04-29: S1-001 B2 Omni Model Unit Tests
+
+- Goal: add the nominal B2 omnidirectional SE(2) model before replacing the MPPI rollout model.
+- Added:
+  - `b2_fdm_mppi/core/omni_b2.py`
+  - `config/b2_omni_nominal.yaml`
+- Model:
+  - state: `[x, y, theta, vx_real, vy_real, wz_real]`
+  - control: `[vx_cmd, vy_cmd, wz_cmd]`
+  - limits: `max_vx=1.5`, `max_vy=0.5`, `max_wz=1.0`
+- Pytest report:
+  - `results/test_reports/20260429_223738/pytest.log`
+  - `results/test_reports/20260429_223738/pytest.xml`
+  - result: `20 passed in 1.03s`
+- Tests covered:
+  - forward `vx` integration
+  - lateral `vy` integration
+  - yaw `wz` integration
+  - body-frame velocity rotated into world frame
+  - control clipping
+  - 6D/3D config validation
+- Conclusion: nominal B2 omni dynamics are validated in isolation. Next step is a separate NumPy omni MPPI controller; the existing CUDA controller remains differential-drive and should not be mutated in place.
+
 ## Next Baseline Experiment
 
 Planned command:

@@ -4,7 +4,7 @@ Last updated: 2026-04-29
 
 ## Current Stage
 
-Stage 0: Baseline tuning and stabilization.
+Stage 1: B2 omnidirectional SE(2) nominal model.
 
 ## Stage 0 Acceptance Criteria
 
@@ -28,6 +28,10 @@ Stage 0: Baseline tuning and stabilization.
 | S0-006 | P0 | todo | Tune short-goal baseline to reach target | Need reduce `final_distance` from `1.2289 m` to `<0.4 m` while keeping mean MPPI time `<20 ms`. |
 | S0-007 | P0 | done | Add straight-obstacle Stage 0 scene | Updated target `[18, 0]`, static obstacles `[6, 0.5]` and `[12, -1]`, fixed map limits `x=[0, 20], y=[-10, 10]`. Obstacles verified stationary. |
 | S0-008 | P0 | todo | Tune harder double-obstacle scene | Current run failed with `final_distance=7.5119 m`; min clearance `0.2870 m`; mean MPPI `1.2541 ms`. Need reach target and keep clearance >= 0.3 m. |
+| S1-001 | P0 | done | Add B2 omnidirectional SE(2) nominal model | Added `core/omni_b2.py` with state `[x,y,theta,vx,vy,wz]`, control `[vx,vy,wz]`, and limits `1.5/0.5/1.0`. Verified by pytest. |
+| S1-002 | P0 | done | Add B2 omni nominal config | Added `config/b2_omni_nominal.yaml`; config validation now supports state/control dimensions from config. |
+| S1-003 | P0 | todo | Add NumPy omni MPPI rollout/controller | Existing CUDA MPPI is differential `[v,w]`; need separate NumPy omni controller before tuning. |
+| S1-004 | P0 | todo | Run and tune B2 omni baseline | Use target `[18,0]`, static obstacles `[6,0.5]` and `[12,-1]`, and velocity limits `vx=1.5`, `vy=0.5`, `wz=1.0`. |
 
 ## Later Stages
 
