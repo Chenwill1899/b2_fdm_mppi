@@ -9,6 +9,8 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+install/
+log/
 develop-eggs/
 dist/
 downloads/
@@ -50,6 +52,9 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+
+# Runtime simulation outputs
+results/
 
 # Translations
 *.mo
