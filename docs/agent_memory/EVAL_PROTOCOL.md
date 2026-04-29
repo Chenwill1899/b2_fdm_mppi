@@ -44,6 +44,7 @@ results/<experiment_name>/
   trajectory.png
   residual_plot.png
   cost_plot.png
+  animation.gif
 ```
 
 ## Minimum `summary.json`
@@ -68,5 +69,5 @@ results/<experiment_name>/
 - Final distance to goal `< 0.4 m`.
 - Average MPPI computation time `< 20 ms`.
 - Summary, CSV, and PNG outputs are saved.
+- `animation.gif` is saved when animation is enabled.
 - Animation failure does not affect the main flow.
-

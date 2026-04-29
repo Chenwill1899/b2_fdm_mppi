@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from pathlib import Path
 
 from b2_fdm_mppi.config import load_config
 from b2_fdm_mppi.simulation.runner import MppiSimulationRunner
@@ -84,3 +85,33 @@ def test_runner_continues_when_animation_fails(tmp_path, monkeypatch):
     assert summary.steps == 1
     assert not summary.failed
     assert (summary.results_path / "results.csv").exists()
+
+
+def test_runner_saves_gif_when_animation_is_enabled(tmp_path, monkeypatch):
+    config = load_config("config/fdm_mppi.yaml")
+    config["simulation"]["max_steps"] = 1
+    config["simulation"]["time_horizon"] = 0.3
+    config["mppi"]["draw_num_traj"] = 2
+    config["mppi"]["std_normal"] = [0.1, 0.1]
+    config["results"]["root"] = str(tmp_path)
+    config["results"]["enable_plots"] = True
+    config["results"]["enable_animation"] = True
+
+    from b2_fdm_mppi.visualization import utils
+
+    monkeypatch.setattr(utils, "statePlotting", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(utils, "controlPlotting", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(utils, "costPlotting", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(utils, "pathPlotting", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(utils, "plot_cbf", lambda *_args, **_kwargs: None)
+
+    def save_fake_animation(*args, **_kwargs):
+        results_path = args[6]
+        (Path(results_path) / "animation.gif").write_bytes(b"GIF89a")
+
+    monkeypatch.setattr(utils, "animate_simulation", save_fake_animation)
+
+    runner = MppiSimulationRunner(config, controller_factory=lambda *_args, **_kwargs: FakeController())
+    summary = runner.run()
+
+    assert (summary.results_path / "animation.gif").exists()

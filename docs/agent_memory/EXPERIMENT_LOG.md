@@ -31,6 +31,19 @@ python3 -m pytest -q
 
 - Full regression result: `9 passed in 2.08s`.
 
+### 2026-04-29: S0-001 GIF Output Requirement
+
+- Goal: keep `animation.gif` as a default stage artifact while preserving non-fatal animation failures.
+- Commands:
+
+```bash
+python3 -m pytest tests/test_config.py::test_default_config_loads_required_groups tests/test_runner.py::test_runner_saves_gif_when_animation_is_enabled tests/test_runner.py::test_runner_continues_when_animation_fails -q
+python3 -m pytest -q
+```
+
+- Result: targeted animation tests passed; full regression result `10 passed in 2.09s`.
+- Decision: `config/fdm_mppi.yaml` keeps `results.enable_animation: true`; runner still catches animation exceptions so missing writers do not abort the simulation.
+
 ## Next Baseline Experiment
 
 Planned command:

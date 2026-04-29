@@ -12,17 +12,18 @@ Stage 0: Baseline tuning and stabilization.
 - Final distance to goal `< 0.4 m`.
 - Average MPPI computation time `< 20 ms`.
 - Summary, CSV, and PNG outputs are saved.
+- `animation.gif` is saved for stage inspection when animation is enabled.
 - Animation failure must not break the main simulation flow.
 
 ## Immediate Tasks
 
 | ID | Priority | Status | Task | Notes |
 | --- | --- | --- | --- | --- |
-| S0-001 | P0 | done | Disable animation or make animation failure non-fatal | Default animation disabled; runner catches animation exceptions and continues with a warning. Verified by pytest. |
+| S0-001 | P0 | done | Save GIF and make animation failure non-fatal | Default animation enabled for `animation.gif`; runner catches animation exceptions and continues with a warning. Verified by pytest. |
 | S0-002 | P0 | todo | Add baseline summary metrics | Need final distance, success, path length, mean/max MPPI time. |
 | S0-003 | P0 | todo | Create short-goal baseline config | Recommended target `[3.0, 3.0]`, 400 steps, 2.0 s horizon. |
 | S0-004 | P1 | todo | Run baseline with real controller | Requires CUDA/PyCUDA runtime. |
-| S0-005 | P1 | todo | Save trajectory/control/time plots reliably | Existing plot hooks are present; verify output files. |
+| S0-005 | P1 | todo | Save trajectory/control/time plots and GIF reliably | Existing plot hooks are present; verify CSV, PNG, and `animation.gif` outputs. |
 
 ## Later Stages
 

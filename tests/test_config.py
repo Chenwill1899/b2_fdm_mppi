@@ -12,6 +12,7 @@ def test_default_config_loads_required_groups():
     assert config["mppi"]["num_trajectories"] == 2496
     assert config["robot"]["state_dim"] == 5
     assert config["results"]["root"] == "./results/sim_results"
+    assert config["results"]["enable_animation"] is True
 
 
 def test_validate_config_rejects_bad_goal_length():
