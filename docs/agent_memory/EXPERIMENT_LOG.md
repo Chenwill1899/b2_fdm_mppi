@@ -58,6 +58,21 @@ python3 -m pytest -q
 - Summary file: `test_summary.yaml` now contains `success`, `final_distance`, `path_length`, `arrival_time`, `run_time`, `mean_mppi_time_ms`, and `max_mppi_time_ms`.
 - Visualization: animation y-axis is fixed to `[-10, 10]`; default x-axis remains `[-1, target_x + 1]`.
 
+### 2026-04-29: Saved Pytest Report
+
+- Goal: save test output artifacts for user verification.
+- Command:
+
+```bash
+python3 -m pytest -q --junitxml=results/test_reports/20260429_221105/pytest.xml
+```
+
+- Result: `12 passed in 2.10s`.
+- Local artifacts:
+  - `results/test_reports/20260429_221105/pytest.log`
+  - `results/test_reports/20260429_221105/pytest.xml`
+- Note: `results/` is ignored by Git, so these artifacts are local verification outputs rather than versioned source files.
+
 ## Next Baseline Experiment
 
 Planned command:

@@ -25,7 +25,8 @@ git branch
 
 - `8be8e73 fix: make animation non-fatal`
 - `c8d73e1 config: save baseline animation gif`
-- Pending: `feat: add baseline summary metrics`
+- `7242e23 feat: add baseline summary metrics`
+- Pending: `docs: record saved test report`
 
 ## Suggested Commit For This Startup Task
 

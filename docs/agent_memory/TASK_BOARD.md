@@ -13,6 +13,7 @@ Stage 0: Baseline tuning and stabilization.
 - Average MPPI computation time `< 20 ms`.
 - Summary, CSV, and PNG outputs are saved.
 - `animation.gif` is saved for stage inspection when animation is enabled.
+- Test reports are saved under `results/test_reports/<timestamp>/` for user verification.
 - Animation failure must not break the main simulation flow.
 
 ## Immediate Tasks
