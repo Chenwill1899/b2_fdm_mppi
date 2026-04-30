@@ -1,19 +1,23 @@
 # Git Log
 
-Last updated: 2026-04-29
+Last updated: 2026-04-30
 
 ## Branch Policy
 
-- `main`: stable version.
-- `fdm`: current algorithm development branch.
-- `b2-omni-fdm`: B2 omnidirectional and FDM development branch.
-- `experiment/*`: concrete experiment branches.
-- `fix/*`: bug fix branches.
+- User rule: all assistant code changes must happen on `dev` only.
+- Push completed verified work to `origin/dev`; the user will merge.
+- Do not create or continue feature branches unless explicitly requested.
+- Check the current branch before editing:
+
+```bash
+git branch --show-current
+git status --short --branch
+```
 
 ## Startup State
 
-- Current branch: `fdm`
-- Tracking branch: `origin/fdm`
+- Expected current branch for work: `dev`
+- Tracking branch: `origin/dev`
 - Working tree status should be checked before every task:
 
 ```bash
@@ -23,6 +27,8 @@ git branch
 
 ## Recent Commits
 
+- `feat: add kinodynamic omni rollout` on `dev`.
+- `2a085a8 feat: refine static obstacle MPPI smoothness metrics` cherry-picked onto `dev` from the accidental feature branch.
 - `8be8e73 fix: make animation non-fatal`
 - `c8d73e1 config: save baseline animation gif`
 - `7242e23 feat: add baseline summary metrics`

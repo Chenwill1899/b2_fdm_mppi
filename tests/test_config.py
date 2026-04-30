@@ -48,18 +48,30 @@ def test_b2_omni_nominal_config_loads_stage1_parameters():
     assert config["mppi"]["state_dim"] == 6
     assert config["mppi"]["control_dim"] == 3
     assert config["mppi"]["backend"] == "cuda"
-    assert config["mppi"]["std_normal"] == [0.2, 0.1, 0.15]
-    assert config["mppi"]["obstacle_weight"] == pytest.approx(800.0)
-    assert config["mppi"]["cbf_weight"] == pytest.approx(500.0)
+    assert config["mppi"]["std_normal"] == [0.20, 0.12, 0.14]
+    assert config["mppi"]["lambda"] == pytest.approx(0.6)
+    assert config["mppi"]["obstacle_weight"] == pytest.approx(300.0)
+    assert config["mppi"]["cbf_weight"] == pytest.approx(0.0)
     assert config["mppi"]["control_weight"] == pytest.approx(0.02)
-    assert config["mppi"]["smooth_weight"] == pytest.approx(2.0)
+    assert config["mppi"]["smooth_weight"] == pytest.approx(1.2)
+    assert config["mppi"]["lateral_weight"] == pytest.approx(0.2)
+    assert config["mppi"]["yaw_rate_weight"] == pytest.approx(0.05)
+    assert config["mppi"]["accel_weight"] == pytest.approx(0.5)
+    assert config["cbf"]["enabled"] is False
+    assert config["cbf"]["type"] == 0
     assert config["robot"]["max_vx"] == pytest.approx(1.5)
     assert config["robot"]["max_vy"] == pytest.approx(0.5)
     assert config["robot"]["max_wz"] == pytest.approx(1.0)
-    assert config["robot"]["safety_dist"] == pytest.approx(0.4)
+    assert config["robot"]["max_ax"] == pytest.approx(0.8)
+    assert config["robot"]["max_ay"] == pytest.approx(0.5)
+    assert config["robot"]["max_awz"] == pytest.approx(1.2)
+    assert config["robot"]["velocity_lag_beta"] == pytest.approx(0.35)
+    assert config["robot"]["safety_dist"] == pytest.approx(0.5)
     assert config["results"]["run_name"] == "b2_omni_nominal"
     assert config["results"]["timestamp_suffix"] is True
     assert config["results"]["overwrite"] is False
+    assert config["execution"]["filter_enabled"] is True
+    assert config["execution"]["filter_alpha"] == pytest.approx(0.6)
 
 
 def test_validate_config_rejects_bad_goal_length():

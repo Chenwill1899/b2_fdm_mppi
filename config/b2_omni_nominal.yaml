@@ -5,7 +5,7 @@ b2_fdm_mppi:
 
 simulation:
   sampling_rate: 10.0
-  time_horizon: 2.0
+  time_horizon: 2.5
   goal: [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]
   initial_state: [0.01, 0.01, 0.0, 0.0, 0.0, 0.0]
   minimum_distance: 0.45
@@ -22,13 +22,16 @@ mppi:
   exploration_variance: 1200.0
   weights: [2.5, 2.5, 0.5, 0.0, 0.0, 0.0]
   dist_type: 2
-  std_normal: [0.2, 0.1, 0.15]
+  std_normal: [0.20, 0.12, 0.14]
   std_slack: 0.1
-  lambda: 0.5
-  obstacle_weight: 800.0
-  cbf_weight: 500.0
+  lambda: 0.6
+  obstacle_weight: 300.0
+  cbf_weight: 0.0
   control_weight: 0.02
-  smooth_weight: 2.0
+  smooth_weight: 1.2
+  lateral_weight: 0.2
+  yaw_rate_weight: 0.05
+  accel_weight: 0.5
   beta_1: 0.5
   beta_2: 0.8
   beta_3: 0.5
@@ -41,12 +44,17 @@ robot:
   max_vx: 1.5
   max_vy: 0.5
   max_wz: 1.0
+  max_ax: 0.8
+  max_ay: 0.5
+  max_awz: 1.2
+  velocity_lag_beta: 0.35
   radius: 0.6
-  safety_dist: 0.4
+  safety_dist: 0.5
   obstacle_state_num: 7
 
 cbf:
-  type: 1
+  enabled: false
+  type: 0
   dcbf_alpha: 0.1
   dcbf_weight: 1000000.0
   slack_weight: 100.0
@@ -68,3 +76,7 @@ results:
   overwrite: false
   enable_plots: true
   enable_animation: true
+
+execution:
+  filter_enabled: true
+  filter_alpha: 0.6

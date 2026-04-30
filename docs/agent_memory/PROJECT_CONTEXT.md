@@ -1,13 +1,20 @@
 # B2-FDM-MPPI Project Context
 
-Last updated: 2026-04-29
+Last updated: 2026-04-30
 
 ## Repository
 
 - Path: `/home/mexxiie/prj/py-mppi`
-- Current branch at startup: `fdm`
+- Active development branch: `dev`
 - Package: ROS 2 Humble `ament_python` package `b2_fdm_mppi`
 - Current baseline structure: PyCUDA MPPI/CBF internal simulation with Jackal-style differential drive model.
+
+## User Workflow Rule
+
+- Always make code changes on the local `dev` branch only.
+- Do not create or continue feature branches unless the user explicitly asks for one.
+- After completing and verifying changes, push `dev`; the user will handle merging.
+- Before any code edit, check the branch with `git branch --show-current` and switch to `dev` if needed.
 
 ## Research Goal
 
@@ -35,4 +42,3 @@ Core chain:
 - Default plots and animation are enabled.
 - Results currently save CSV files and `test_summary.yaml` under `results/sim_results/<timestamp>/`.
 - Existing tests use a fake controller for non-GPU runner coverage.
-
