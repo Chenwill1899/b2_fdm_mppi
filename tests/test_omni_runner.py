@@ -150,6 +150,26 @@ def test_omni_runner_predict_trajectory_uses_kinodynamic_rollout(tmp_path):
     assert predicted[1, 0] == pytest.approx(0.008, abs=1e-7)
 
 
+def test_omni_runner_predict_trajectory_rotates_body_frame_velocity_by_heading(tmp_path):
+    config = make_config(tmp_path)
+    config["execution"] = {"filter_enabled": False, "filter_alpha": 0.0}
+    config["robot"]["max_ax"] = 1000.0
+    config["robot"]["max_ay"] = 1000.0
+    config["robot"]["max_awz"] = 1000.0
+    config["robot"]["velocity_lag_beta"] = 0.0
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    state = np.array([2.0, 3.0, np.pi / 2.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    controls = np.array([[[1.0, 0.0, 0.0]]], dtype=np.float32)[0]
+
+    predicted = runner._predict_trajectory(state, controls)
+
+    assert predicted[1, 0] == pytest.approx(2.0, abs=1e-6)
+    assert predicted[1, 1] == pytest.approx(3.1, abs=1e-6)
+
+
 def test_omni_runner_applies_execution_low_pass_filter(tmp_path):
     config = make_config(tmp_path, max_steps=2)
     config["execution"] = {"filter_enabled": True, "filter_alpha": 0.5}
@@ -190,6 +210,22 @@ def test_omni_runner_draws_sampled_and_optimized_rollouts(tmp_path):
     runner._draw_predicted_rollouts(ax, np.zeros(6, dtype=np.float32), frame=0)
 
     assert ax.plot_calls == 3
+
+
+def test_omni_runner_oracle_animation_legend_describes_nominal_rollouts(tmp_path):
+    runner = OmniMppiSimulationRunner(
+        make_config(tmp_path),
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    labels = [handle.get_label() for handle in runner._animation_legend_handles(is_oracle=True)]
+
+    assert "terrain risk" in labels
+    assert "nominal sampled rollouts" in labels
+    assert "nominal optimal rollout" in labels
+    assert "actual heading" in labels
+    assert "u_cmd" in labels
+    assert "u_real" in labels
 
 
 def test_omni_runner_can_overwrite_named_results_directory(tmp_path):

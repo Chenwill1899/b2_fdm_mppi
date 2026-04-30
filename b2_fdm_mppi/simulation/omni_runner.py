@@ -439,13 +439,39 @@ class OmniMppiSimulationRunner:
                     self._draw_oracle_velocity_arrows(ax, states, frame)
                 else:
                     ax.plot(states[: frame + 1, 0], states[: frame + 1, 1], color="tab:blue")
+                self._draw_robot_heading(ax, states[frame])
                 ax.scatter([states[frame, 0]], [states[frame, 1]], color="red", zorder=6)
-            ax.legend(loc="upper right")
+            ax.legend(handles=self._animation_legend_handles(self.world_mode == "oracle"), loc="upper right", fontsize=7)
 
         frames = max(1, len(states))
         animation = FuncAnimation(fig, update, frames=frames, interval=100, blit=False)
         animation.save(self.results_path / "animation.gif", writer=PillowWriter(fps=5))
         plt.close(fig)
+
+    def _animation_legend_handles(self, is_oracle: bool):
+        from matplotlib.lines import Line2D
+        from matplotlib.patches import Patch
+
+        handles = [
+            Line2D([0], [0], marker="o", color="none", markerfacecolor="green", markersize=6, label="start"),
+            Line2D([0], [0], marker="*", color="none", markerfacecolor="purple", markersize=10, label="goal"),
+            Line2D([0], [0], marker="o", color="none", markerfacecolor="red", markersize=6, label="current state"),
+            Line2D([0], [0], color="tab:cyan", linewidth=1.6, label="actual heading"),
+            Line2D([0], [0], color="black", alpha=0.25, linewidth=1.0, label="nominal sampled rollouts"),
+            Line2D([0], [0], color="orange", linewidth=1.4, label="nominal optimal rollout"),
+        ]
+        if is_oracle:
+            handles.extend(
+                [
+                    Patch(facecolor="tab:red", alpha=0.25, label="terrain risk"),
+                    Line2D([0], [0], marker="o", color="none", markerfacecolor="tab:green", markersize=5, label="residual path"),
+                    Line2D([0], [0], color="white", linestyle="--", linewidth=1.6, label="u_cmd"),
+                    Line2D([0], [0], color="black", linewidth=1.6, label="u_real"),
+                ]
+            )
+        else:
+            handles.append(Line2D([0], [0], color="tab:blue", linewidth=1.6, label="executed path"))
+        return handles
 
     def _terrain_risk_grid(self, xlim: tuple[float, float], ylim: tuple[float, float]) -> np.ndarray:
         grid_x = np.linspace(xlim[0], xlim[1], 80)
@@ -504,6 +530,21 @@ class OmniMppiSimulationRunner:
             zorder=8,
         )
 
+    def _draw_robot_heading(self, ax, state: np.ndarray) -> None:
+        x, y, theta = state[:3]
+        length = 0.65
+        ax.arrow(
+            float(x),
+            float(y),
+            length * float(np.cos(theta)),
+            length * float(np.sin(theta)),
+            color="tab:cyan",
+            width=0.01,
+            length_includes_head=True,
+            alpha=0.95,
+            zorder=9,
+        )
+
     def _draw_predicted_rollouts(self, ax, state: np.ndarray, frame: int) -> None:
         if frame < len(self.sample_u_history):
             sampled_controls = self.sample_u_history[frame]
@@ -519,7 +560,7 @@ class OmniMppiSimulationRunner:
                 color="orange",
                 alpha=0.75,
                 linewidth=1.4,
-                label="optimized rollout",
+                label="nominal optimal rollout",
             )
 
     def _predict_trajectory(self, state: np.ndarray, controls: np.ndarray) -> np.ndarray:
