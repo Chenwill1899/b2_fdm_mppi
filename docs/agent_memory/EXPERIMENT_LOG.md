@@ -653,3 +653,37 @@ results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
   - `sample_terminal_spread_mean: 0.15318969119647644`
   - `sample_terminal_x_range_mean: 0.5618406619232986`
 - Conclusion: Kinodynamic remains within acceptance thresholds, removes execution-side double low-pass filtering, improves smoothness over Pure SE2, and increases sampled terminal spread for less concentrated prediction rollouts.
+
+### 2026-04-30: Stage 1.5 Jitter and Over-Conservative Clearance Retune
+
+- User observation: Kinodynamic trajectory looked shaky and stayed visually too far outside obstacle red safety circles.
+- Diagnosis:
+  - Prior Kinodynamic run `results/sim_results/b2_omni_kinodynamic_2026-04-30_16-27-08/` had `min_obstacle_clearance=1.3028 m`.
+  - Red safety circle boundary corresponds to `clearance ~= safety_dist = 0.5 m`, so the trajectory was about `0.80 m` outside the red circle.
+  - Control was acceleration-limited but still had high-frequency sign changes, so a rollout-internal jerk cost was added as an available tuning term.
+- Final retuned run:
+  - Result: `results/sim_results/b2_omni_kinodynamic_2026-04-30_16-44-27/`
+  - `success: true`
+  - `final_distance: 0.3299633860588074`
+  - `path_length: 18.17268180847168`
+  - `mean_mppi_time_ms: 4.433298394793556`
+  - `max_mppi_time_ms: 8.055686950683594`
+  - `min_obstacle_clearance: 0.4667545557022095`
+  - `control_smoothness: 0.008712225537449353`
+  - `control_jerk: 0.010106915998271083`
+  - `acceleration_cost: 145.49416647540423`
+  - `sample_terminal_y_range_mean: 0.4946968513845821`
+  - `sample_terminal_spread_mean: 0.1497972121028426`
+- Config outcome:
+  - `obstacle_soft_weight=0.5`
+  - `obstacle_influence_dist=1.2`
+  - `max_vy=0.4`
+  - `max_wz=0.7`
+  - `max_ay=0.35`
+  - `max_awz=0.8`
+  - `execution.filter_enabled=false`
+  - `cbf.enabled=false`
+- Verification:
+  - `python3 -m pytest -q`
+  - result: `53 passed in 2.16s`
+- Conclusion: Trajectory now runs close to the red safety boundary while preserving the Stage 1.5 acceptance thresholds and reducing visible smoothness/jerk metrics versus the prior kinodynamic baseline.

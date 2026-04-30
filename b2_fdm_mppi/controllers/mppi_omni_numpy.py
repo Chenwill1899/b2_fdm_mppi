@@ -33,6 +33,7 @@ class MppiOmniNumpy:
         lateral_weight: float = 0.0,
         yaw_rate_weight: float = 0.0,
         accel_weight: float = 0.0,
+        jerk_weight: float = 0.0,
         robot_radius: float = 0.6,
         safety_dist: float = 0.3,
         draw_num_traj: int = 50,
@@ -56,6 +57,7 @@ class MppiOmniNumpy:
         self.lateral_weight = float(lateral_weight)
         self.yaw_rate_weight = float(yaw_rate_weight)
         self.accel_weight = float(accel_weight)
+        self.jerk_weight = float(jerk_weight)
         self.robot_radius = float(robot_radius)
         self.safety_dist = float(safety_dist)
         self.draw_num_traj = min(int(draw_num_traj), self.num_samples)
@@ -104,6 +106,7 @@ class MppiOmniNumpy:
             lateral_weight=float(overrides.get("lateral_weight", mppi.get("lateral_weight", 0.0))),
             yaw_rate_weight=float(overrides.get("yaw_rate_weight", mppi.get("yaw_rate_weight", 0.0))),
             accel_weight=float(overrides.get("accel_weight", mppi.get("accel_weight", 0.0))),
+            jerk_weight=float(overrides.get("jerk_weight", mppi.get("jerk_weight", 0.0))),
             robot_radius=float(robot["radius"]),
             safety_dist=float(robot["safety_dist"]),
             draw_num_traj=int(mppi["draw_num_traj"]),
@@ -167,10 +170,22 @@ class MppiOmniNumpy:
         )
         accel = np.diff(np.vstack([np.asarray(initial_state, dtype=np.float32)[3:], real_controls]), axis=0) / self.dt
         accel_cost = self.accel_weight * float(np.sum(accel * accel))
+        jerk = np.diff(np.vstack([np.asarray(initial_state, dtype=np.float32)[3:], real_controls]), n=2, axis=0)
+        jerk_cost = self.jerk_weight * float(np.sum(jerk * jerk))
         lateral_cost = self.lateral_weight * float(np.sum(real_controls[:, 1] * real_controls[:, 1]))
         yaw_rate_cost = self.yaw_rate_weight * float(np.sum(real_controls[:, 2] * real_controls[:, 2]))
         obstacle_cost = self._obstacle_cost(states[1:], obstacles)
-        return goal_cost + yaw_cost + control_cost + smooth_cost + accel_cost + lateral_cost + yaw_rate_cost + obstacle_cost
+        return (
+            goal_cost
+            + yaw_cost
+            + control_cost
+            + smooth_cost
+            + accel_cost
+            + jerk_cost
+            + lateral_cost
+            + yaw_rate_cost
+            + obstacle_cost
+        )
 
     def trajectory_cost_batch(
         self,
@@ -195,6 +210,8 @@ class MppiOmniNumpy:
         )
         accel = np.diff(np.concatenate([initial_velocity, real_controls], axis=1), axis=1) / self.dt
         accel_cost = self.accel_weight * np.sum(accel * accel, axis=(1, 2))
+        jerk = np.diff(np.concatenate([initial_velocity, real_controls], axis=1), n=2, axis=1)
+        jerk_cost = self.jerk_weight * np.sum(jerk * jerk, axis=(1, 2))
         lateral_cost = self.lateral_weight * np.sum(real_controls[:, :, 1] * real_controls[:, :, 1], axis=1)
         yaw_rate_cost = self.yaw_rate_weight * np.sum(real_controls[:, :, 2] * real_controls[:, :, 2], axis=1)
         obstacle_cost = self._obstacle_cost_batch(states[:, 1:, :], obstacles)
@@ -204,6 +221,7 @@ class MppiOmniNumpy:
             + control_cost
             + smooth_cost
             + accel_cost
+            + jerk_cost
             + lateral_cost
             + yaw_rate_cost
             + obstacle_cost

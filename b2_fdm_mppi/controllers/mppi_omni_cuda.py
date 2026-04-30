@@ -90,6 +90,7 @@ extern "C" __global__ void omni_costs(
     float lateral_weight,
     float yaw_rate_weight,
     float accel_weight,
+    float jerk_weight,
     float obstacle_weight,
     float obstacle_soft_weight,
     float obstacle_influence_dist,
@@ -120,6 +121,9 @@ extern "C" __global__ void omni_costs(
     float prev_real0 = initial_state[3];
     float prev_real1 = initial_state[4];
     float prev_real2 = initial_state[5];
+    float prev_prev_real0 = prev_real0;
+    float prev_prev_real1 = prev_real1;
+    float prev_prev_real2 = prev_real2;
     float max_du0 = max_ax * dt;
     float max_du1 = max_ay * dt;
     float max_du2 = max_awz * dt;
@@ -151,6 +155,10 @@ extern "C" __global__ void omni_costs(
         float ay = (vy - prev_real1) / dt;
         float awz = (wz - prev_real2) / dt;
         cost += accel_weight * (ax * ax + ay * ay + awz * awz);
+        float jerk0 = vx - 2.0f * prev_real0 + prev_prev_real0;
+        float jerk1 = vy - 2.0f * prev_real1 + prev_prev_real1;
+        float jerk2 = wz - 2.0f * prev_real2 + prev_prev_real2;
+        cost += jerk_weight * (jerk0 * jerk0 + jerk1 * jerk1 + jerk2 * jerk2);
         cost += lateral_weight * vy * vy;
         cost += yaw_rate_weight * wz * wz;
 
@@ -234,6 +242,9 @@ extern "C" __global__ void omni_costs(
         prev_u0 = cmd0;
         prev_u1 = cmd1;
         prev_u2 = cmd2;
+        prev_prev_real0 = prev_real0;
+        prev_prev_real1 = prev_real1;
+        prev_prev_real2 = prev_real2;
         prev_real0 = vx;
         prev_real1 = vy;
         prev_real2 = wz;
@@ -277,6 +288,7 @@ class MppiOmniCuda:
         lateral_weight: float = 0.0,
         yaw_rate_weight: float = 0.0,
         accel_weight: float = 0.0,
+        jerk_weight: float = 0.0,
         cbf_weight: float = 0.0,
         cbf_alpha: float = 0.1,
         cbf_type: int = 0,
@@ -305,6 +317,7 @@ class MppiOmniCuda:
         self.lateral_weight = float(lateral_weight)
         self.yaw_rate_weight = float(yaw_rate_weight)
         self.accel_weight = float(accel_weight)
+        self.jerk_weight = float(jerk_weight)
         self.cbf_weight = float(cbf_weight)
         self.cbf_alpha = float(cbf_alpha)
         self.cbf_type = int(cbf_type)
@@ -365,6 +378,7 @@ class MppiOmniCuda:
             lateral_weight=float(overrides.get("lateral_weight", mppi.get("lateral_weight", 0.0))),
             yaw_rate_weight=float(overrides.get("yaw_rate_weight", mppi.get("yaw_rate_weight", 0.0))),
             accel_weight=float(overrides.get("accel_weight", mppi.get("accel_weight", 0.0))),
+            jerk_weight=float(overrides.get("jerk_weight", mppi.get("jerk_weight", 0.0))),
             cbf_weight=cbf_weight,
             cbf_alpha=float(overrides.get("cbf_alpha", cbf.get("dcbf_alpha", 0.1))),
             cbf_type=int(overrides.get("cbf_type", cbf.get("type", 0))),
@@ -441,6 +455,7 @@ class MppiOmniCuda:
             np.float32(self.lateral_weight),
             np.float32(self.yaw_rate_weight),
             np.float32(self.accel_weight),
+            np.float32(self.jerk_weight),
             np.float32(self.obstacle_weight),
             np.float32(self.obstacle_soft_weight),
             np.float32(self.obstacle_influence_dist),

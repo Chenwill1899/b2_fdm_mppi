@@ -26,14 +26,15 @@ mppi:
   std_slack: 0.1
   lambda: 0.7
   obstacle_weight: 300.0
-  obstacle_soft_weight: 6.0
-  obstacle_influence_dist: 1.6
+  obstacle_soft_weight: 0.5
+  obstacle_influence_dist: 1.2
   cbf_weight: 0.0
   control_weight: 0.02
   smooth_weight: 1.0
   lateral_weight: 0.2
   yaw_rate_weight: 0.05
   accel_weight: 0.45
+  jerk_weight: 0.0
   beta_1: 0.5
   beta_2: 0.8
   beta_3: 0.5
@@ -44,11 +45,11 @@ mppi:
 robot:
   state_dim: 6
   max_vx: 1.5
-  max_vy: 0.5
-  max_wz: 1.0
+  max_vy: 0.4
+  max_wz: 0.7
   max_ax: 0.8
-  max_ay: 0.5
-  max_awz: 1.2
+  max_ay: 0.35
+  max_awz: 0.8
   velocity_lag_beta: 0.35
   radius: 0.6
   safety_dist: 0.5
