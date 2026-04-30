@@ -46,7 +46,7 @@ mppi:
 robot:
   state_dim: 6
   max_vx: 1.5
-  max_vy: 0.4
+  max_vy: 0.2
   max_wz: 0.7
   max_ax: 0.8
   max_ay: 0.35
@@ -87,6 +87,7 @@ execution:
 
 terrain:
   enabled: true
+  friction_base: 0.72
   goal_relief:
     enabled: true
     center: [18.0, 0.0]
