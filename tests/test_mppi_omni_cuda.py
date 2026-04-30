@@ -71,6 +71,7 @@ def test_cuda_omni_rcbf_penalizes_approaching_obstacle_more_than_static():
     config["mppi"]["obstacle_weight"] = 0.0
     config["mppi"]["control_weight"] = 0.0
     config["mppi"]["smooth_weight"] = 0.0
+    config["cbf"]["enabled"] = True
     config["cbf"]["type"] = 1
     config["cbf"]["atau"] = 0.2
     controller = MppiOmniCuda.from_config(config, seed=1)
@@ -90,3 +91,15 @@ def test_cuda_omni_rcbf_penalizes_approaching_obstacle_more_than_static():
     approaching_cost = controller.trajectory_cost_batch(state, controls, goal, approaching_obstacle)[0]
 
     assert approaching_cost > static_cost
+
+
+def test_cuda_omni_from_config_disables_cbf_when_configured():
+    from b2_fdm_mppi.controllers.mppi_omni_cuda import MppiOmniCuda
+
+    config = make_config()
+    config["mppi"]["cbf_weight"] = 500.0
+    config["cbf"]["enabled"] = False
+
+    controller = MppiOmniCuda.from_config(config, seed=1)
+
+    assert controller.cbf_weight == 0.0

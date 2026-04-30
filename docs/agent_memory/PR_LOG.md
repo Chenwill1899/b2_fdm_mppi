@@ -279,3 +279,57 @@ min_obstacle_clearance: 0.4714846611022949
   - Add regression coverage that an approaching obstacle costs more than a static obstacle at the same distance.
   - Tune formal config to `num_trajectories=1024` and `simulation.minimum_distance=0.45`.
 - Note: This is RCBF-style cost integration. Full soft/slack RCBF remains future work.
+
+## PR Candidate: Stage 1.5 Static-Obstacle Smoothness
+
+- Repository: `Chenwill1899/b2_fdm_mppi`
+- Base branch: `fdm`
+- Head branch: `feature/stage1-static-smoothness`
+- Title: `[MPPI] refine static-obstacle nominal planner smoothness`
+- Current verification:
+
+```text
+python3 -m pytest -q
+43 passed in 2.56s
+```
+
+- Old Stage 1 reference:
+
+```text
+results/sim_results/b2_omni_nominal_2026-04-30_14-45-30/
+success: true
+final_distance: 0.34110841155052185
+path_length: 18.318750381469727
+mean_mppi_time_ms: 4.219803545210096
+max_mppi_time_ms: 9.484291076660156
+min_obstacle_clearance: 0.4714846611022949
+control_smoothness: not_available in summary; computed from controls.csv as 0.1314503344222518
+control_jerk: not_available in summary; computed from controls.csv as 0.36088919826191274
+```
+
+- New Stage 1.5 formal run:
+
+```text
+results/sim_results/b2_omni_nominal_2026-04-30_14-52-40/
+success: true
+final_distance: 0.3399098217487335
+path_length: 18.460805892944336
+arrival_time: 16.2
+mean_mppi_time_ms: 5.112684803244508
+max_mppi_time_ms: 16.221046447753906
+min_obstacle_clearance: 0.4645106792449951
+control_smoothness: 0.012281207671864226
+control_jerk: 0.020258904777513565
+vx_variance: 0.1710001605578116
+vy_variance: 0.018017247619684575
+wz_variance: 0.03171373441428392
+```
+
+- Scope:
+  - Disable default dynamic RCBF dependency for static-obstacle nominal baseline.
+  - Keep RCBF code as optional extension through `cbf.enabled`.
+  - Add executed-control smoothness, jerk, and variance metrics to `summary.json`.
+  - Add execution low-pass filtering in the runner.
+  - Save `raw_controls.csv` in addition to executed `controls.csv`.
+  - Tune static obstacle distance penalty and execution filter.
+- Body file: `docs/agent_memory/PR_STAGE1_STATIC_SMOOTHNESS_BODY.md`

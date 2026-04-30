@@ -551,3 +551,56 @@ results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
   - `python3 -m pytest -q`
   - result: `40 passed in 2.02s`
 - Conclusion: Stage 1 now has a tuned CUDA B2 omni MPPI controller with RCBF-style relative-velocity barrier cost. This is still a cost-based barrier, not the old soft/slack RCBF optimizer.
+
+### 2026-04-30: Stage 1.5 Static-Obstacle Smoothness Baseline
+
+- Goal: clean the Stage 1 B2 omni nominal MPPI baseline for static-obstacle FDM comparisons before entering oracle residual world work.
+- Rationale:
+  - The RCBF-style relative-velocity barrier is useful for dynamic obstacles.
+  - Stage 1.5 is a static-obstacle baseline, so the default planner now relies on static obstacle distance penalty and keeps RCBF as an optional extension.
+- Changes:
+  - `config/b2_omni_nominal.yaml` default:
+    - `mppi.cbf_weight: 0.0`
+    - `cbf.enabled: false`
+    - `cbf.type: 0`
+    - `mppi.obstacle_weight: 300.0`
+    - `robot.safety_dist: 0.5`
+    - `execution.filter_enabled: true`
+    - `execution.filter_alpha: 0.6`
+  - Summary metrics now include:
+    - `control_smoothness`
+    - `smooth_vx`, `smooth_vy`, `smooth_wz`
+    - `control_jerk`
+    - `jerk_vx`, `jerk_vy`, `jerk_wz`
+    - `vx_variance`, `vy_variance`, `wz_variance`
+  - `controls.csv` stores executed controls.
+  - `raw_controls.csv` stores raw MPPI commands before the execution low-pass filter.
+  - `MppiOmniCuda.from_config()` forces `cbf_weight=0.0` when `cbf.enabled: false`.
+- Old Stage 1 reference:
+  - Result: `results/sim_results/b2_omni_nominal_2026-04-30_14-45-30/`
+  - `success: true`
+  - `final_distance: 0.34110841155052185`
+  - `path_length: 18.318750381469727`
+  - `mean_mppi_time_ms: 4.219803545210096`
+  - `max_mppi_time_ms: 9.484291076660156`
+  - `min_obstacle_clearance: 0.4714846611022949`
+  - summary smoothness fields: not available
+  - computed from `controls.csv`: `control_smoothness=0.1314503344222518`, `control_jerk=0.36088919826191274`
+- New Stage 1.5 formal run:
+  - Result: `results/sim_results/b2_omni_nominal_2026-04-30_14-52-40/`
+  - `success: true`
+  - `final_distance: 0.3399098217487335`
+  - `path_length: 18.460805892944336`
+  - `arrival_time: 16.2`
+  - `mean_mppi_time_ms: 5.112684803244508`
+  - `max_mppi_time_ms: 16.221046447753906`
+  - `min_obstacle_clearance: 0.4645106792449951`
+  - `control_smoothness: 0.012281207671864226`
+  - `control_jerk: 0.020258904777513565`
+  - `vx_variance: 0.1710001605578116`
+  - `vy_variance: 0.018017247619684575`
+  - `wz_variance: 0.03171373441428392`
+- Verification:
+  - `python3 -m pytest -q`
+  - result: `43 passed in 2.56s`
+- Conclusion: Stage 1.5 preserves success, final distance, runtime, and clearance while reducing computed control smoothness by about `90.7%` and control jerk by about `94.4%`. No FDM or oracle residual world changes were made.

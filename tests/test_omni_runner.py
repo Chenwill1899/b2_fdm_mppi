@@ -53,6 +53,52 @@ def test_omni_runner_saves_summary_csv_outputs(tmp_path):
     assert (summary.results_path / "controls.csv").exists()
     assert (summary.results_path / "time_results.csv").exists()
     assert (summary.results_path / "test_summary.yaml").exists()
+    assert "control_smoothness" in summary_json
+    assert "control_jerk" in summary_json
+    assert "vx_variance" in summary_json
+    assert "vy_variance" in summary_json
+    assert "wz_variance" in summary_json
+    assert summary_json["controls_csv"] == "executed_controls"
+
+
+def test_omni_runner_summary_reports_control_smoothness_metrics(tmp_path):
+    runner = OmniMppiSimulationRunner(
+        make_config(tmp_path),
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    runner.control_history = [
+        np.array([0.0, 0.0, 0.0], dtype=np.float32),
+        np.array([1.0, 0.0, 0.0], dtype=np.float32),
+        np.array([1.0, 1.0, 0.0], dtype=np.float32),
+    ]
+
+    metrics = runner._control_metrics()
+
+    assert metrics["control_smoothness"] == 1.0
+    assert metrics["smooth_vx"] == 0.5
+    assert metrics["smooth_vy"] == 0.5
+    assert metrics["smooth_wz"] == 0.0
+    assert metrics["control_jerk"] == 2.0
+    assert metrics["jerk_vx"] == 1.0
+    assert metrics["jerk_vy"] == 1.0
+    assert metrics["jerk_wz"] == 0.0
+    assert metrics["vx_variance"] == np.var([0.0, 1.0, 1.0])
+
+
+def test_omni_runner_applies_execution_low_pass_filter(tmp_path):
+    config = make_config(tmp_path, max_steps=2)
+    config["execution"] = {"filter_enabled": True, "filter_alpha": 0.5}
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    runner.step()
+    runner.step()
+
+    assert runner.raw_control_history[0].tolist() == [1.0, 0.0, 0.0]
+    assert runner.control_history[0].tolist() == [0.5, 0.0, 0.0]
+    assert runner.control_history[1].tolist() == [0.75, 0.0, 0.0]
 
 
 def test_omni_runner_saves_png_and_gif_when_enabled(tmp_path):

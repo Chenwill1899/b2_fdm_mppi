@@ -36,7 +36,8 @@ Stage 1: B2 omnidirectional SE(2) nominal model.
 | S1-006 | P0 | done | Add CUDA backend for B2 omni MPPI | Added `MppiOmniCuda` with PyCUDA rollout/cost kernel and `mppi.backend: cuda`. Verified by pytest and real run `results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/`: success, final distance `0.3754 m`, mean MPPI `4.9297 ms`. |
 | S1-007 | P0 | done | Add CBF cost to CUDA omni MPPI | Added discrete CBF penalty term using `cbf.dcbf_alpha` and `mppi.cbf_weight`; current config uses `cbf_weight=500`. Real run min clearance `0.4296 m`. |
 | S1-008 | P0 | done | Integrate and tune RCBF-style CUDA barrier | CUDA omni MPPI now supports `cbf.type` 1/2/3 barrier modes from the old project. Tuned config: `num_trajectories=1024`, `minimum_distance=0.45`, `cbf.type=1`, `cbf_weight=500`. Verified run `results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/`: success, final distance `0.3411 m`, mean MPPI `4.5400 ms`, max `11.8539 ms`, min clearance `0.4715 m`. |
-| S1-009 | P0 | todo | Review/merge Stage 1 PR stack | PR #1, #2, and runner/CUDA/RCBF PR should be reviewed before Stage 2 oracle residual world work. |
+| S1.5-001 | P0 | done | Refine static-obstacle nominal planner smoothness | Default RCBF disabled for the static-obstacle baseline (`cbf.enabled=false`, `cbf.type=0`, `cbf_weight=0`). Added control smoothness/jerk/variance metrics and executed-control low-pass filtering. Formal run `results/sim_results/b2_omni_nominal_2026-04-30_14-52-40/`: success, final distance `0.3399 m`, min clearance `0.4645 m`, mean MPPI `5.1127 ms`, control smoothness `0.01228`, control jerk `0.02026`. |
+| S1.5-002 | P0 | todo | Review/merge Stage 1.5 PR | PR should be reviewed before Stage 2 oracle residual world work. |
 
 ## Later Stages
 
