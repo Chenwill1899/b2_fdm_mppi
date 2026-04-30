@@ -84,6 +84,7 @@ def test_omni_runner_draws_sampled_and_optimized_rollouts(tmp_path):
 def test_omni_runner_can_overwrite_named_results_directory(tmp_path):
     config = make_config(tmp_path)
     config["results"]["run_name"] = "latest"
+    config["results"]["timestamp_suffix"] = False
     config["results"]["overwrite"] = True
 
     first = OmniMppiSimulationRunner(
@@ -104,3 +105,23 @@ def test_omni_runner_can_overwrite_named_results_directory(tmp_path):
     assert second_summary.results_path == tmp_path / "latest"
     assert not stale_file.exists()
     assert (second_summary.results_path / "summary.json").exists()
+
+
+def test_omni_runner_uses_cuda_backend_when_configured(tmp_path, monkeypatch):
+    config = make_config(tmp_path)
+    config["mppi"]["backend"] = "cuda"
+    created = []
+
+    class FakeCudaController(ConstantOmniController):
+        @classmethod
+        def from_config(cls, config, seed=None):
+            created.append((config, seed))
+            return cls()
+
+    import b2_fdm_mppi.simulation.omni_runner as omni_runner
+
+    monkeypatch.setattr(omni_runner, "MppiOmniCuda", FakeCudaController)
+    runner = OmniMppiSimulationRunner(config)
+
+    assert isinstance(runner.controller, FakeCudaController)
+    assert created == [(config, 123)]

@@ -2,9 +2,9 @@
 
 ## 1. 任务目标
 
-新增 B2 全向 SE(2) NumPy MPPI 仿真 runner，使 Stage 1 能在固定双静态障碍物场景中自动保存 summary、CSV、PNG 和 `animation.gif`，并完成一轮可复现调参。
+新增 B2 全向 SE(2) MPPI 仿真 runner，使 Stage 1 能在固定双静态障碍物场景中自动保存 summary、CSV、PNG 和 `animation.gif`，并完成一轮可复现调参。
 
-同时修复正式结果保存目录混乱的问题：正式 omni 运行现在固定覆盖保存到 `results/sim_results/b2_omni_nominal_latest/`，避免一次调参或反复运行产生大量需要人工辨认的时间戳目录。
+同时加入 CUDA backend 和 CBF cost：正式 omni 运行现在通过 `mppi.backend: cuda` 使用 PyCUDA rollout/cost kernel，并用 `mppi.cbf_weight` 加入离散 CBF 代价。结果目录改为 `results/sim_results/b2_omni_nominal_<timestamp>/`，避免反复运行覆盖旧结果。
 
 ## 2. 所属阶段
 
@@ -23,8 +23,11 @@
 
 - `b2_fdm_mppi/simulation/omni_runner.py`
 - `b2_fdm_mppi/simulation/results_path.py`
+- `b2_fdm_mppi/controllers/mppi_omni_cuda.py`
 - `tools/run_omni_mppi.py`
 - `tests/test_omni_runner.py`
+- `tests/test_mppi_omni_cuda.py`
+- `tests/test_results_path.py`
 
 ### 修改文件
 
@@ -56,63 +59,56 @@
 ## 5. 验证命令
 
 ```bash
-python3 -m pytest tests/ -v --junitxml=results/test_reports/20260429_233404/pytest.xml
+python3 -m pytest -q
 python3 tools/run_omni_mppi.py --config config/b2_omni_nominal.yaml --seed 123
 ```
 
 ## 6. 验证结果
 
 ```text
-34 passed in 1.97s
-```
-
-测试报告：
-
-```text
-results/test_reports/20260429_233404/pytest.log
-results/test_reports/20260429_233404/pytest.xml
+39 passed in 2.46s
 ```
 
 实际仿真结果：
 
 ```text
-results/sim_results/b2_omni_nominal_latest/
+results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/
 ```
 
 关键指标：
 
 ```text
 success: true
-steps: 134
-final_distance: 0.36341118812561035
-path_length: 18.1884765625
-arrival_time: 13.4
-mean_mppi_time_ms: 5.523462793720302
-max_mppi_time_ms: 8.809804916381836
-min_obstacle_clearance: 0.38778746128082275
+steps: 142
+final_distance: 0.3754442036151886
+path_length: 18.206396102905273
+arrival_time: 14.200000000000001
+mean_mppi_time_ms: 4.929683577846474
+max_mppi_time_ms: 7.981300354003906
+min_obstacle_clearance: 0.4295613765716553
 ```
 
 关键输出：
 
 ```text
-results/sim_results/b2_omni_nominal_latest/animation.gif
-results/sim_results/b2_omni_nominal_latest/trajectory.png
-results/sim_results/b2_omni_nominal_latest/summary.json
-results/sim_results/b2_omni_nominal_latest/trajectory.csv
-results/sim_results/b2_omni_nominal_latest/controls.csv
+results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/animation.gif
+results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/trajectory.png
+results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/summary.json
+results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/trajectory.csv
+results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/controls.csv
 ```
 
 Result directory check:
 
 ```text
-find results/sim_results -maxdepth 1 -mindepth 1 -type d -name 'b2_omni_nominal_latest' | wc -l
-1
+results_path=results/sim_results/b2_omni_nominal_2026-04-30_13-54-40
 ```
 
 ## 7. 当前限制与下一步
 
 - 当前 runner 仍是 nominal world，不包含 oracle residual world。
+- 当前 CBF 是 CUDA cost penalty，不是完整 soft/slack RCBF。
 - `animation.gif` 已恢复 sampled candidate rollouts 和 optimized rollout 显示。
-- `smooth_weight=1.0` 能改善轨迹平滑性，但后续 Stage 2/3 仍需要正式加入 `control_smoothness` 指标。
+- `smooth_weight=2.0` 能改善轨迹平滑性，但后续 Stage 2/3 仍需要正式加入 `control_smoothness` 指标。
 - 旧时间戳结果目录未自动删除，避免误删历史检查材料。
 - 下一步进入 Oracle Residual World：新增 `core/terrain.py` 和 `core/residual_world.py`，保持 nominal runner 不破坏。

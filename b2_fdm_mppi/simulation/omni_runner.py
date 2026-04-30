@@ -17,8 +17,24 @@ from b2_fdm_mppi.core.omni_b2 import OmniB2
 from b2_fdm_mppi.simulation.results_path import create_results_path
 from b2_fdm_mppi.visualization.utils import map_axis_limits
 
+try:
+    from b2_fdm_mppi.controllers.mppi_omni_cuda import MppiOmniCuda
+except Exception:  # pragma: no cover - exercised on machines without CUDA/PyCUDA.
+    MppiOmniCuda = None
+
 
 ControllerFactory = Callable[..., object]
+
+
+def create_omni_controller(config: dict, seed: int = 123) -> object:
+    backend = str(config["mppi"].get("backend", "numpy")).lower()
+    if backend == "cuda":
+        if MppiOmniCuda is None:
+            raise RuntimeError("mppi.backend is 'cuda' but PyCUDA controller is unavailable")
+        return MppiOmniCuda.from_config(config, seed=seed)
+    if backend == "numpy":
+        return MppiOmniNumpy.from_config(config, seed=seed)
+    raise ValueError(f"Unsupported omni MPPI backend: {backend}")
 
 
 @dataclass(frozen=True)
@@ -324,4 +340,4 @@ class OmniMppiSimulationRunner:
         return min_clearance
 
     def _default_controller_factory(self, *, config: dict, runner: "OmniMppiSimulationRunner") -> object:
-        return MppiOmniNumpy.from_config(config, seed=123)
+        return create_omni_controller(config, seed=123)

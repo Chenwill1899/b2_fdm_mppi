@@ -13,12 +13,22 @@ def create_results_path(results_config: dict[str, Any] | str) -> Path:
         root = Path(results_config)
         run_name = None
         overwrite = False
+        timestamp_suffix = False
     else:
         root = Path(str(results_config["root"]))
         run_name = results_config.get("run_name")
         overwrite = bool(results_config.get("overwrite", False))
+        timestamp_suffix = bool(results_config.get("timestamp_suffix", False))
 
-    path = root / str(run_name) if run_name else root / _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    timestamp = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    if timestamp_suffix and overwrite:
+        raise ValueError("results.timestamp_suffix cannot be combined with overwrite")
+    if run_name and timestamp_suffix:
+        path = root / f"{run_name}_{timestamp}"
+    elif run_name:
+        path = root / str(run_name)
+    else:
+        path = root / timestamp
     if overwrite and path.exists():
         _remove_run_directory(path, root)
     path.mkdir(parents=True, exist_ok=True)

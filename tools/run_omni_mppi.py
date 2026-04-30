@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the B2 omni NumPy MPPI simulation from a YAML config."""
+"""Run the B2 omni MPPI simulation from a YAML config."""
 
 from __future__ import annotations
 
@@ -9,8 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from b2_fdm_mppi.config import load_config
-from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
-from b2_fdm_mppi.simulation.omni_runner import OmniMppiSimulationRunner
+from b2_fdm_mppi.simulation.omni_runner import OmniMppiSimulationRunner, create_omni_controller
 
 
 def main() -> None:
@@ -22,7 +21,7 @@ def main() -> None:
     config = load_config(args.config)
     runner = OmniMppiSimulationRunner(
         config,
-        controller_factory=lambda *, config, runner: MppiOmniNumpy.from_config(config, seed=args.seed),
+        controller_factory=lambda *, config, runner: create_omni_controller(config, seed=args.seed),
     )
     summary = runner.run()
     print(f"results_path={summary.results_path}")

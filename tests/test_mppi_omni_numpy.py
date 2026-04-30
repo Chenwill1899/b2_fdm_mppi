@@ -130,7 +130,7 @@ def test_omni_mppi_can_be_created_from_config():
     controller = MppiOmniNumpy.from_config(config, seed=4)
 
     assert controller.horizon_steps == 20
-    assert controller.num_samples == 1024
+    assert controller.num_samples == 4096
     assert controller.max_control.tolist() == pytest.approx([1.5, 0.5, 1.0])
 
 
@@ -147,7 +147,7 @@ def test_omni_mppi_from_config_loads_smooth_weight():
 
     controller = MppiOmniNumpy.from_config(config, seed=4)
 
-    assert controller.smooth_weight == pytest.approx(1.0)
+    assert controller.smooth_weight == pytest.approx(2.0)
 
 
 def test_omni_mppi_closed_loop_moves_toward_unobstructed_goal():

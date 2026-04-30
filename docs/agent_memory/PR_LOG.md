@@ -215,3 +215,36 @@ animation.gif: saved, 695306 bytes
   - Tune harder double-obstacle scene with `obstacle_weight=800`, `safety_dist=0.4`, and `smooth_weight=1.0`.
   - Add named overwriteable result directory support so formal runs update one stable latest result directory.
 - Body file: `docs/agent_memory/PR_3_OMNI_RUNNER_BODY.md`
+
+## PR #3 Follow-up: CUDA Omni MPPI and CBF Cost
+
+- Repository: `Chenwill1899/b2_fdm_mppi`
+- Base branch: `feature/omni-mppi-numpy`
+- Head branch: `feature/omni-mppi-runner`
+- Suggested title update: `[MPPI] feat: add omni MPPI runner, CUDA backend, and CBF cost`
+- Current verification:
+
+```text
+python3 -m pytest -q
+39 passed in 2.46s
+```
+
+- Real run:
+
+```text
+results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/
+success: true
+final_distance: 0.3754442036151886
+mean_mppi_time_ms: 4.929683577846474
+max_mppi_time_ms: 7.981300354003906
+min_obstacle_clearance: 0.4295613765716553
+animation.gif: saved, 665K
+```
+
+- Added scope:
+  - Add `b2_fdm_mppi/controllers/mppi_omni_cuda.py`.
+  - Add `mppi.backend: cuda` selection for the omni runner.
+  - Make `tools/run_omni_mppi.py` respect configured backend while keeping `--seed`.
+  - Add CUDA rollout/cost tests and CBF-cost behavior test.
+  - Change formal result naming to `b2_omni_nominal_<timestamp>` instead of overwriting `b2_omni_nominal_latest`.
+- Note: CBF is currently a CUDA cost penalty using discrete barrier decrease. It is not yet the old soft/slack RCBF formulation.

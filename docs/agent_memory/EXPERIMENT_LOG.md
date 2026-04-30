@@ -445,4 +445,68 @@ results/sim_results/b2_omni_nominal_latest/
   - `results/test_reports/20260429_233404/pytest.log`
   - `results/test_reports/20260429_233404/pytest.xml`
   - result: `34 passed in 1.97s`
-- Conclusion: formal omni result output is now one stable overwriteable directory for user inspection. Old timestamped directories remain untouched.
+- Conclusion: formal omni result output used one stable overwriteable directory for user inspection at this point. This was later changed on 2026-04-30 to timestamp-suffixed named directories.
+
+### 2026-04-30: Named Timestamp Result Directories
+
+- Goal: avoid overwriting the formal B2 omni result directory while keeping result names easy to identify.
+- Change:
+  - `create_results_path()` now supports `results.timestamp_suffix: true`.
+  - `config/b2_omni_nominal.yaml` uses `run_name: b2_omni_nominal`, `timestamp_suffix: true`, and `overwrite: false`.
+- Verification:
+  - `python3 -m pytest -q`
+  - result: `36 passed in 2.01s`
+- Real run:
+  - `results/sim_results/b2_omni_nominal_2026-04-30_13-43-14/`
+  - `success: true`
+  - `final_distance: 0.3889111578464508`
+  - `mean_mppi_time_ms: 6.074447291237967`
+  - `min_obstacle_clearance: 0.3978804349899292`
+
+### 2026-04-30: CUDA B2 Omni MPPI With CBF Cost
+
+- Goal: move the B2 omnidirectional MPPI rollout/cost evaluation onto CUDA first, then add CBF.
+- Implementation:
+  - Added `b2_fdm_mppi/controllers/mppi_omni_cuda.py`.
+  - Added `mppi.backend` selection through `OmniMppiSimulationRunner`.
+  - `tools/run_omni_mppi.py` now respects the configured backend.
+  - Added discrete CBF penalty in the CUDA cost kernel:
+    - `h = distance_to_obstacle - obstacle_radius - robot_radius - safety_dist`
+    - violation uses `-(h_next - h + alpha * h)`
+    - cost uses `mppi.cbf_weight * max(violation, 0)^2`
+  - Current config uses `mppi.backend: cuda` and `mppi.cbf_weight: 500.0`.
+- Tests added:
+  - CUDA cost matches NumPy cost when `cbf_weight=0`.
+  - CUDA CBF cost penalizes trajectories that decrease the barrier near an obstacle.
+  - Runner selects CUDA backend when configured.
+- Verification:
+  - `python3 -m pytest -q`
+  - result: `39 passed in 2.46s`
+- Real run command:
+
+```bash
+python3 tools/run_omni_mppi.py --config config/b2_omni_nominal.yaml --seed 123
+```
+
+- Result directory:
+
+```text
+results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/
+```
+
+- Metrics:
+  - `success: true`
+  - `steps: 142`
+  - `final_distance: 0.3754442036151886`
+  - `path_length: 18.206396102905273`
+  - `arrival_time: 14.200000000000001`
+  - `mean_mppi_time_ms: 4.929683577846474`
+  - `max_mppi_time_ms: 7.981300354003906`
+  - `min_obstacle_clearance: 0.4295613765716553`
+- Artifacts:
+  - `animation.gif` (`665K`)
+  - `trajectory.png` (`57K`)
+  - `summary.json`
+  - `trajectory.csv`
+  - `controls.csv`
+- Conclusion: the current Stage 1 runtime is CUDA-backed B2 omni MPPI with a CBF penalty cost. It is not a full soft/slack RCBF implementation yet.

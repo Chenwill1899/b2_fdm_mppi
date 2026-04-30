@@ -14,19 +14,21 @@ simulation:
   print_out: false
 
 mppi:
+  backend: cuda
   state_dim: 6
   control_dim: 3
-  num_trajectories: 1024
+  num_trajectories: 4096
   draw_num_traj: 50
   exploration_variance: 1200.0
   weights: [2.5, 2.5, 0.5, 0.0, 0.0, 0.0]
   dist_type: 2
-  std_normal: [0.25, 0.15, 0.25]
+  std_normal: [0.2, 0.1, 0.15]
   std_slack: 0.1
   lambda: 0.5
   obstacle_weight: 800.0
-  control_weight: 0.01
-  smooth_weight: 1.0
+  cbf_weight: 500.0
+  control_weight: 0.02
+  smooth_weight: 2.0
   beta_1: 0.5
   beta_2: 0.8
   beta_3: 0.5
@@ -61,7 +63,8 @@ obstacles:
 
 results:
   root: "./results/sim_results"
-  run_name: "b2_omni_nominal_latest"
-  overwrite: true
+  run_name: "b2_omni_nominal"
+  timestamp_suffix: true
+  overwrite: false
   enable_plots: true
   enable_animation: true
