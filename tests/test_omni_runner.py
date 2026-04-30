@@ -281,6 +281,56 @@ def test_omni_runner_oracle_world_records_residuals(tmp_path):
     assert (summary.results_path / "terrain.csv").exists()
 
 
+def test_omni_runner_uses_random_obstacles_and_records_summary(tmp_path):
+    config = make_config(tmp_path, max_steps=1)
+    config["simulation"]["world_mode"] = "oracle"
+    config["simulation"]["initial_state"] = [5.0, 50.0, 0.0, 0.0, 0.0, 0.0]
+    config["simulation"]["goal"] = [95.0, 50.0, 0.0, 0.0, 0.0, 0.0]
+    config["obstacles"] = {
+        "random_enabled": True,
+        "random_seed": 9,
+        "num_random": 4,
+        "radius_range": [0.5, 1.0],
+        "x_range": [10.0, 90.0],
+        "y_range": [10.0, 90.0],
+        "min_obstacle_gap": 1.0,
+        "min_start_goal_clearance": 5.0,
+        "virtual": [],
+    }
+    config["oracle_residual"] = {"enabled": False}
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    assert runner.obstacles.shape == (4, 7)
+    assert runner.obstacle_mode == "random"
+    assert runner.obstacle_random_seed == 9
+
+    summary = runner.run()
+    summary_json = json.loads((summary.results_path / "summary.json").read_text())
+
+    assert summary_json["obstacle_mode"] == "random"
+    assert summary_json["num_obstacles"] == 4
+    assert summary_json["obstacle_random_seed"] == 9
+    assert (summary.results_path / "obs_results.csv").exists()
+
+
+def test_omni_runner_fixed_obstacles_record_summary(tmp_path):
+    runner = OmniMppiSimulationRunner(
+        make_config(tmp_path, max_steps=1),
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    summary = runner.run()
+    summary_json = json.loads((summary.results_path / "summary.json").read_text())
+
+    assert runner.obstacle_mode == "fixed"
+    assert summary_json["obstacle_mode"] == "fixed"
+    assert summary_json["num_obstacles"] == len(runner.obstacles)
+    assert summary_json["obstacle_random_seed"] is None
+
+
 def test_omni_runner_residuals_csv_separates_oracle_and_execution_residuals(tmp_path):
     runner = OmniMppiSimulationRunner(
         make_config(tmp_path),

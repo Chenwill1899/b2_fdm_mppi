@@ -24,6 +24,16 @@ def map_axis_limits():
     return (0.0, 20.0), (-10.0, 10.0)
 
 
+def map_axis_limits_from_config(config):
+    simulation = (config or {}).get("simulation", {})
+    if "map_size" not in simulation:
+        return map_axis_limits()
+    size_x, size_y = (float(value) for value in simulation["map_size"][:2])
+    origin = simulation.get("map_origin", [0.0, 0.0])
+    origin_x, origin_y = (float(value) for value in origin[:2])
+    return (origin_x, origin_x + size_x), (origin_y, origin_y + size_y)
+
+
 def animation_axis_limits(targets):
     return map_axis_limits()
 
