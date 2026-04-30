@@ -82,10 +82,10 @@ scenario:
 obstacles:
   random_enabled: true
   random_seed: 123
-  num_random: 50
+  num_random: 70
   radius_range: [0.6, 2.0]
-  x_range: [8.0, 92.0]
-  y_range: [8.0, 92.0]
+  x_range: [8.0, 95.0]
+  y_range: [8.0, 95.0]
   min_obstacle_gap: 3.0
   min_start_goal_clearance: 5.0
   static_enabled: true
