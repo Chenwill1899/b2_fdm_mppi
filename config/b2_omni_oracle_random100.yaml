@@ -1,0 +1,118 @@
+# Stage 2.5 oracle residual world on a 100m x 100m random obstacle map.
+b2_fdm_mppi:
+  ros__parameters:
+    config_file: ""
+
+simulation:
+  sampling_rate: 10.0
+  time_horizon: 2.5
+  map_size: [100.0, 100.0]
+  map_origin: [0.0, 0.0]
+  initial_state: [5.0, 50.0, 0.0, 0.0, 0.0, 0.0]
+  goal: [95.0, 50.0, 0.0, 0.0, 0.0, 0.0]
+  minimum_distance: 0.8
+  max_steps: 1200
+  without_heading: true
+  print_out: false
+  world_mode: oracle
+
+mppi:
+  backend: cuda
+  state_dim: 6
+  control_dim: 3
+  num_trajectories: 1024
+  draw_num_traj: 50
+  exploration_variance: 1200.0
+  weights: [2.5, 2.5, 0.5, 0.0, 0.0, 0.0]
+  dist_type: 2
+  std_normal: [0.22, 0.16, 0.16]
+  std_slack: 0.1
+  lambda: 0.7
+  obstacle_weight: 300.0
+  obstacle_soft_weight: 0.5
+  obstacle_influence_dist: 1.2
+  cbf_weight: 0.0
+  control_weight: 0.02
+  smooth_weight: 1.0
+  lateral_weight: 0.2
+  yaw_rate_weight: 0.05
+  accel_weight: 0.45
+  jerk_weight: 0.0
+  beta_1: 0.5
+  beta_2: 0.8
+  beta_3: 0.5
+  sg_window: 51
+  sg_poly_order: 3
+  soft_cbf: false
+
+robot:
+  state_dim: 6
+  max_vx: 1.5
+  max_vy: 0.1
+  max_wz: 1.0
+  max_ax: 0.8
+  max_ay: 0.2
+  max_awz: 0.8
+  velocity_lag_beta: 0.35
+  radius: 0.6
+  safety_dist: 0.5
+  obstacle_state_num: 7
+
+cbf:
+  enabled: false
+  type: 0
+  dcbf_alpha: 0.1
+  dcbf_weight: 1000000.0
+  slack_weight: 100.0
+  check_dist: 6.0
+  max_slack_vari: 1.0
+  atau: 0.2
+
+obstacles:
+  random_enabled: true
+  random_seed: 123
+  num_random: 50
+  radius_range: [0.6, 2.0]
+  x_range: [8.0, 92.0]
+  y_range: [8.0, 92.0]
+  min_obstacle_gap: 3.0
+  min_start_goal_clearance: 5.0
+  static_enabled: true
+  virtual: []
+
+results:
+  root: "./results/sim_results"
+  run_name: "b2_omni_oracle_random100"
+  timestamp_suffix: true
+  overwrite: false
+  enable_plots: true
+  enable_animation: true
+
+execution:
+  filter_enabled: false
+  filter_alpha: 0.0
+
+visualization:
+  terrain_grid_resolution: 100
+
+terrain:
+  enabled: true
+  friction_base: 0.72
+  slope_scale: 0.10
+  roughness_scale: 0.25
+  friction_slope_scale: 0.18
+  friction_roughness_scale: 0.10
+  goal_relief:
+    enabled: true
+    center: [95.0, 50.0]
+    sigma: [4.0, 2.4]
+    strength: 0.75
+    floor: 0.25
+
+oracle_residual:
+  enabled: true
+  alpha: 0.35
+  residual_scale: 0.35
+  noise_std: 0.012
+  max_residual_ratio: 0.3
+  seed: 123

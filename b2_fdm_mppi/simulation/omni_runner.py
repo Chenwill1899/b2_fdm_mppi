@@ -16,8 +16,9 @@ from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
 from b2_fdm_mppi.core.omni_b2 import OmniB2
 from b2_fdm_mppi.core.residual_world import ResidualWorld
 from b2_fdm_mppi.core.terrain import TerrainField
+from b2_fdm_mppi.simulation.random_obstacles import generate_random_obstacles
 from b2_fdm_mppi.simulation.results_path import create_results_path
-from b2_fdm_mppi.visualization.utils import map_axis_limits
+from b2_fdm_mppi.visualization.utils import map_axis_limits_from_config
 
 try:
     from b2_fdm_mppi.controllers.mppi_omni_cuda import MppiOmniCuda
@@ -74,7 +75,7 @@ class OmniMppiSimulationRunner:
         self.world_mode = str(sim.get("world_mode", "nominal")).lower()
         if self.world_mode not in {"nominal", "oracle"}:
             raise ValueError(f"Unsupported simulation.world_mode: {self.world_mode}")
-        self.obstacles = np.asarray(config["obstacles"].get("virtual", []), dtype=np.float32).reshape(-1, 7)
+        self.obstacles, self.obstacle_mode, self.obstacle_random_seed = self._build_obstacles()
         execution_cfg = config.get("execution", {})
         self.filter_enabled = bool(execution_cfg.get("filter_enabled", False))
         self.filter_alpha = float(execution_cfg.get("filter_alpha", 0.0))
@@ -197,6 +198,16 @@ class OmniMppiSimulationRunner:
         self.previous_exec_control = np.asarray(filtered, dtype=np.float32)
         return self.previous_exec_control.copy()
 
+    def _build_obstacles(self) -> tuple[np.ndarray, str, int | None]:
+        obstacle_cfg = self.config.get("obstacles", {})
+        if bool(obstacle_cfg.get("random_enabled", False)):
+            obstacles = generate_random_obstacles(obstacle_cfg, self.init_pose[:2], self.goal[:2])
+            obstacle_cfg["virtual"] = obstacles.tolist()
+            obstacle_cfg["num_max"] = int(len(obstacles))
+            return obstacles, "random", int(obstacle_cfg.get("random_seed", 0))
+        obstacles = np.asarray(obstacle_cfg.get("virtual", []), dtype=np.float32).reshape(-1, 7)
+        return obstacles, "fixed", None
+
     def _summary_metrics(self) -> dict:
         final_distance = float(np.linalg.norm(self.goal[:2] - self.state[:2]))
         path_length = self._path_length()
@@ -236,6 +247,9 @@ class OmniMppiSimulationRunner:
             "mean_mppi_time_ms": mean_time,
             "max_mppi_time_ms": max_time,
             "min_obstacle_clearance": self._min_obstacle_clearance(),
+            "obstacle_mode": self.obstacle_mode,
+            "num_obstacles": int(len(self.obstacles)),
+            "obstacle_random_seed": self.obstacle_random_seed,
             "controls_csv": "executed_controls",
             "raw_controls_csv": "raw_controls",
             "mean_residual_norm": mean_residual,
@@ -312,7 +326,9 @@ class OmniMppiSimulationRunner:
         for idx, (cmd, real, delta) in enumerate(
             zip(self.cmd_control_history, self.control_history, self.residual_history)
         ):
-            du_norm = float(np.linalg.norm(delta))
+            exec_delta = np.asarray(real, dtype=np.float32) - np.asarray(cmd, dtype=np.float32)
+            oracle_du_norm = float(np.linalg.norm(delta))
+            exec_du_norm = float(np.linalg.norm(exec_delta))
             rows.append(
                 {
                     "step": idx,
@@ -322,10 +338,18 @@ class OmniMppiSimulationRunner:
                     "real_vx": real[0],
                     "real_vy": real[1],
                     "real_wz": real[2],
+                    "oracle_du_vx": delta[0],
+                    "oracle_du_vy": delta[1],
+                    "oracle_du_wz": delta[2],
+                    "oracle_du_norm": oracle_du_norm,
+                    "exec_du_vx": exec_delta[0],
+                    "exec_du_vy": exec_delta[1],
+                    "exec_du_wz": exec_delta[2],
+                    "exec_du_norm": exec_du_norm,
                     "du_vx": delta[0],
                     "du_vy": delta[1],
                     "du_wz": delta[2],
-                    "du_norm": du_norm,
+                    "du_norm": oracle_du_norm,
                 }
             )
         pd.DataFrame(rows).to_csv(self.results_path / "residuals.csv", index=False)
@@ -386,7 +410,7 @@ class OmniMppiSimulationRunner:
         self._draw_obstacles(ax)
         ax.scatter([self.init_pose[0]], [self.init_pose[1]], color="green", label="start")
         ax.scatter([self.goal[0]], [self.goal[1]], color="purple", label="goal")
-        xlim, ylim = map_axis_limits()
+        xlim, ylim = map_axis_limits_from_config(self.config)
         ax.set_xlim(*xlim)
         ax.set_ylim(*ylim)
         ax.set_aspect("equal", adjustable="box")
@@ -406,7 +430,7 @@ class OmniMppiSimulationRunner:
             else np.zeros(0, dtype=np.float32)
         )
         fig, ax = plt.subplots(figsize=(6, 6))
-        xlim, ylim = map_axis_limits()
+        xlim, ylim = map_axis_limits_from_config(self.config)
         risk_grid = self._terrain_risk_grid(xlim, ylim) if self.world_mode == "oracle" else None
         max_residual = float(np.max(residual_norms)) if residual_norms.size else 1.0
 
@@ -472,8 +496,9 @@ class OmniMppiSimulationRunner:
         return handles
 
     def _terrain_risk_grid(self, xlim: tuple[float, float], ylim: tuple[float, float]) -> np.ndarray:
-        grid_x = np.linspace(xlim[0], xlim[1], 80)
-        grid_y = np.linspace(ylim[0], ylim[1], 80)
+        resolution = int(self.config.get("visualization", {}).get("terrain_grid_resolution", 100))
+        grid_x = np.linspace(xlim[0], xlim[1], resolution)
+        grid_y = np.linspace(ylim[0], ylim[1], resolution)
         mesh_x, mesh_y = np.meshgrid(grid_x, grid_y)
         risk_grid = np.zeros_like(mesh_x, dtype=np.float32)
         for i in range(mesh_x.shape[0]):

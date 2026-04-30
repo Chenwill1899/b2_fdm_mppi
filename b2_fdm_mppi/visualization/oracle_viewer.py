@@ -9,7 +9,7 @@ import pandas as pd
 import yaml
 
 from b2_fdm_mppi.core.terrain import TerrainField
-from b2_fdm_mppi.visualization.utils import map_axis_limits
+from b2_fdm_mppi.visualization.utils import map_axis_limits_from_config
 
 
 def _resolve_goal_xy(trajectory: pd.DataFrame, config: dict) -> tuple[float, float]:
@@ -36,10 +36,11 @@ def plot_oracle_diagnostics(results_path: Path, config: dict) -> None:
         with config_path.open("r", encoding="utf-8") as stream:
             config = yaml.safe_load(stream) or config
 
-    xlim, ylim = map_axis_limits()
+    xlim, ylim = map_axis_limits_from_config(config)
     terrain_field = TerrainField.from_config(config.get("terrain"))
-    grid_x = np.linspace(xlim[0], xlim[1], 60)
-    grid_y = np.linspace(ylim[0], ylim[1], 60)
+    grid_resolution = int(config.get("visualization", {}).get("terrain_grid_resolution", 100))
+    grid_x = np.linspace(xlim[0], xlim[1], grid_resolution)
+    grid_y = np.linspace(ylim[0], ylim[1], grid_resolution)
     mesh_x, mesh_y = np.meshgrid(grid_x, grid_y)
     risk_grid = np.zeros_like(mesh_x, dtype=np.float32)
     for i in range(mesh_x.shape[0]):

@@ -118,6 +118,20 @@ def test_b2_omni_oracle_config_loads_stage2_parameters():
     assert config["oracle_residual"]["max_residual_ratio"] == pytest.approx(0.3)
 
 
+def test_b2_omni_oracle_random100_config_loads_stage25_parameters():
+    config = load_config(Path("config/b2_omni_oracle_random100.yaml"))
+
+    assert config["simulation"]["world_mode"] == "oracle"
+    assert config["simulation"]["map_size"] == [100.0, 100.0]
+    assert config["simulation"]["map_origin"] == [0.0, 0.0]
+    assert config["simulation"]["initial_state"][:2] == [5.0, 50.0]
+    assert config["simulation"]["goal"][:2] == [95.0, 50.0]
+    assert config["obstacles"]["random_enabled"] is True
+    assert config["obstacles"]["random_seed"] == 123
+    assert config["obstacles"]["num_random"] == 30
+    assert config["results"]["run_name"] == "b2_omni_oracle_random100"
+
+
 def test_validate_config_rejects_bad_goal_length():
     config = load_config(Path("config/fdm_mppi.yaml"))
     config["simulation"]["goal"] = [1.0, 2.0]
