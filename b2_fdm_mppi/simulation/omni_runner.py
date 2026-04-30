@@ -124,6 +124,8 @@ class OmniMppiSimulationRunner:
         self.failed = False
 
     def run(self) -> OmniSimulationSummary:
+        if self.world_mode == "oracle":
+            self.oracle_world.reset()
         steps = 0
         while steps < self.max_steps and not goal_reached_xy(self.state, self.goal, self.minimum_distance):
             self.step()
@@ -206,8 +208,17 @@ class OmniMppiSimulationRunner:
             if self.residual_history
             else np.zeros(0, dtype=np.float32)
         )
+        cmd_controls = np.asarray(self.cmd_control_history, dtype=np.float32)
+        real_controls = np.asarray(self.control_history, dtype=np.float32)
+        cmd_real_errors = (
+            np.linalg.norm(real_controls - cmd_controls, axis=1)
+            if len(cmd_controls) and len(real_controls)
+            else np.zeros(0, dtype=np.float32)
+        )
         mean_residual = float(np.mean(residual_norms)) if residual_norms.size else 0.0
         max_residual = float(np.max(residual_norms)) if residual_norms.size else 0.0
+        mean_cmd_real_error = float(np.mean(cmd_real_errors)) if cmd_real_errors.size else 0.0
+        max_cmd_real_error = float(np.max(cmd_real_errors)) if cmd_real_errors.size else 0.0
         mean_terrain = float(np.mean(self.terrain_risk_history)) if self.terrain_risk_history else 0.0
         max_terrain = float(np.max(self.terrain_risk_history)) if self.terrain_risk_history else 0.0
         return {
@@ -229,8 +240,8 @@ class OmniMppiSimulationRunner:
             "raw_controls_csv": "raw_controls",
             "mean_residual_norm": mean_residual,
             "max_residual_norm": max_residual,
-            "mean_cmd_real_error": mean_residual,
-            "max_cmd_real_error": max_residual,
+            "mean_cmd_real_error": mean_cmd_real_error,
+            "max_cmd_real_error": max_cmd_real_error,
             "mean_terrain_risk": mean_terrain,
             "max_terrain_risk": max_terrain,
             **self._control_metrics(),
@@ -358,6 +369,10 @@ class OmniMppiSimulationRunner:
 
     def _plot_results(self) -> None:
         self._plot_trajectory()
+        if self.world_mode == "oracle":
+            from b2_fdm_mppi.visualization.oracle_viewer import plot_oracle_diagnostics
+
+            plot_oracle_diagnostics(self.results_path, self.config)
         if self.config["results"].get("enable_animation", True):
             self._save_animation()
 

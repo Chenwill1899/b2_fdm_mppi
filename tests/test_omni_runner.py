@@ -244,6 +244,34 @@ def test_omni_runner_oracle_world_records_residuals(tmp_path):
     assert (summary.results_path / "terrain.csv").exists()
 
 
+def test_omni_runner_cmd_real_error_uses_executed_minus_commanded_norm(tmp_path):
+    runner = OmniMppiSimulationRunner(
+        make_config(tmp_path),
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    runner.cmd_control_history = [
+        np.array([0.9, 0.0, 0.0], dtype=np.float32),
+        np.array([0.2, 0.2, 0.0], dtype=np.float32),
+    ]
+    runner.control_history = [
+        np.array([0.5, 0.0, 0.0], dtype=np.float32),
+        np.array([0.2, -0.1, 0.4], dtype=np.float32),
+    ]
+    runner.residual_history = [
+        np.array([0.9, 0.0, 0.0], dtype=np.float32),
+        np.array([0.0, 0.0, 0.2], dtype=np.float32),
+    ]
+
+    metrics = runner._summary_metrics()
+
+    cmd_real_errors = np.array([0.4, 0.5], dtype=np.float32)
+    residual_norms = np.array([0.9, 0.2], dtype=np.float32)
+    assert metrics["mean_cmd_real_error"] == pytest.approx(float(np.mean(cmd_real_errors)))
+    assert metrics["max_cmd_real_error"] == pytest.approx(float(np.max(cmd_real_errors)))
+    assert metrics["mean_residual_norm"] == pytest.approx(float(np.mean(residual_norms)))
+    assert metrics["max_residual_norm"] == pytest.approx(float(np.max(residual_norms)))
+
+
 def test_omni_runner_uses_cuda_backend_when_configured(tmp_path, monkeypatch):
     config = make_config(tmp_path)
     config["mppi"]["backend"] = "cuda"

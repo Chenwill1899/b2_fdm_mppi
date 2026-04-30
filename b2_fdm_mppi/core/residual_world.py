@@ -35,6 +35,10 @@ class ResidualWorld:
             [model.max_vx, model.max_vy, model.max_wz],
             dtype=np.float32,
         )
+        self.prev_u_real = np.zeros(3, dtype=np.float32)
+
+    def reset(self) -> None:
+        self.prev_u_real[:] = 0.0
 
     @classmethod
     def from_config(
@@ -80,7 +84,7 @@ class ResidualWorld:
             scale=self.noise_std * (1.0 + roughness),
             size=3,
         ).astype(np.float32)
-        delta = self.alpha * self.residual_scale * base + noise * self.residual_scale
+        delta = self.residual_scale * base + noise * self.residual_scale
         max_delta = self.max_control * self.max_residual_ratio
         return np.clip(delta, -max_delta, max_delta)
 
@@ -89,7 +93,15 @@ class ResidualWorld:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         u_cmd = self.model.clip_control(u_cmd)
         terrain_features = self.terrain.feature(float(state[0]), float(state[1]))
+        if not self.enabled:
+            delta_u = np.zeros(3, dtype=np.float32)
+            u_real = u_cmd
+            next_state = self.model.update_state(state, u_real)
+            return next_state, u_real, delta_u, terrain_features
         delta_u = self.residual(state, u_cmd, terrain_features)
-        u_real = self.model.clip_control(u_cmd + delta_u)
+        u_target = self.model.clip_control(u_cmd + delta_u)
+        u_real = self.alpha * self.prev_u_real + (1.0 - self.alpha) * u_target
+        u_real = self.model.clip_control(u_real)
+        self.prev_u_real = u_real.copy()
         next_state = self.model.update_state(state, u_real)
         return next_state, u_real, delta_u, terrain_features
