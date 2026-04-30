@@ -1,6 +1,7 @@
 import json
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from b2_fdm_mppi.config import load_config
@@ -278,6 +279,29 @@ def test_omni_runner_oracle_world_records_residuals(tmp_path):
     assert summary_json["mean_residual_norm"] > 0.0
     assert (summary.results_path / "residuals.csv").exists()
     assert (summary.results_path / "terrain.csv").exists()
+
+
+def test_omni_runner_residuals_csv_separates_oracle_and_execution_residuals(tmp_path):
+    runner = OmniMppiSimulationRunner(
+        make_config(tmp_path),
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    runner.cmd_control_history = [np.array([0.9, 0.0, 0.2], dtype=np.float32)]
+    runner.control_history = [np.array([0.5, -0.1, 0.3], dtype=np.float32)]
+    runner.residual_history = [np.array([0.8, -0.2, 0.0], dtype=np.float32)]
+
+    runner._save_residuals()
+
+    row = pd.read_csv(runner.results_path / "residuals.csv").iloc[0]
+    assert row["oracle_du_vx"] == pytest.approx(0.8)
+    assert row["oracle_du_vy"] == pytest.approx(-0.2)
+    assert row["oracle_du_wz"] == pytest.approx(0.0)
+    assert row["exec_du_vx"] == pytest.approx(-0.4)
+    assert row["exec_du_vy"] == pytest.approx(-0.1)
+    assert row["exec_du_wz"] == pytest.approx(0.1)
+    assert row["exec_du_norm"] == pytest.approx(float(np.linalg.norm([-0.4, -0.1, 0.1])))
+    assert row["du_vx"] == pytest.approx(row["oracle_du_vx"])
+    assert row["du_norm"] == pytest.approx(row["oracle_du_norm"])
 
 
 def test_omni_runner_oracle_animation_writes_diagnostic_outputs(tmp_path):

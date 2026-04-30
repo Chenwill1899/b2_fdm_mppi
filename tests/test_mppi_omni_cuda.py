@@ -3,9 +3,10 @@ import pytest
 
 from b2_fdm_mppi.config import load_config
 from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
+from tests.cuda_test_utils import require_cuda_device
 
 
-pycuda = pytest.importorskip("pycuda")
+pycuda = require_cuda_device()
 
 
 def make_config():

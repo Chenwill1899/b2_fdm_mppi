@@ -312,7 +312,9 @@ class OmniMppiSimulationRunner:
         for idx, (cmd, real, delta) in enumerate(
             zip(self.cmd_control_history, self.control_history, self.residual_history)
         ):
-            du_norm = float(np.linalg.norm(delta))
+            exec_delta = np.asarray(real, dtype=np.float32) - np.asarray(cmd, dtype=np.float32)
+            oracle_du_norm = float(np.linalg.norm(delta))
+            exec_du_norm = float(np.linalg.norm(exec_delta))
             rows.append(
                 {
                     "step": idx,
@@ -322,10 +324,18 @@ class OmniMppiSimulationRunner:
                     "real_vx": real[0],
                     "real_vy": real[1],
                     "real_wz": real[2],
+                    "oracle_du_vx": delta[0],
+                    "oracle_du_vy": delta[1],
+                    "oracle_du_wz": delta[2],
+                    "oracle_du_norm": oracle_du_norm,
+                    "exec_du_vx": exec_delta[0],
+                    "exec_du_vy": exec_delta[1],
+                    "exec_du_wz": exec_delta[2],
+                    "exec_du_norm": exec_du_norm,
                     "du_vx": delta[0],
                     "du_vy": delta[1],
                     "du_wz": delta[2],
-                    "du_norm": du_norm,
+                    "du_norm": oracle_du_norm,
                 }
             )
         pd.DataFrame(rows).to_csv(self.results_path / "residuals.csv", index=False)
