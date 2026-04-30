@@ -24,17 +24,29 @@ def test_terrain_disabled_returns_zero_features():
     assert risk == 0.0
 
 
-def test_terrain_safe_zone_reduces_goal_area_risk():
+def test_terrain_goal_relief_smoothly_reduces_goal_area_risk():
+    base = TerrainField(enabled=True)
     terrain = TerrainField(
         enabled=True,
-        safe_zones=[{"center": [18.0, 0.0], "radius": 1.5, "transition": 1.0}],
+        goal_relief={
+            "enabled": True,
+            "center": [18.0, 0.0],
+            "sigma": [2.0, 1.2],
+            "strength": 0.75,
+            "floor": 0.25,
+        },
     )
 
+    base_goal_features = base.feature(18.0, 0.0)
     goal_features = terrain.feature(18.0, 0.0)
+    edge_features = terrain.feature(20.0, 0.0)
     far_features = terrain.feature(10.0, -3.0)
+    base_goal_risk = base.risk_cost(18.0, 0.0, features=base_goal_features)
     goal_risk = terrain.risk_cost(18.0, 0.0, features=goal_features)
+    edge_risk = terrain.risk_cost(20.0, 0.0, features=edge_features)
     far_risk = terrain.risk_cost(10.0, -3.0, features=far_features)
 
-    assert goal_features.tolist() == [0.0, 0.0, 0.0, 1.0]
-    assert goal_risk == 0.0
+    assert goal_risk > 0.0
+    assert goal_risk < base_goal_risk
+    assert goal_risk < edge_risk
     assert far_risk > goal_risk

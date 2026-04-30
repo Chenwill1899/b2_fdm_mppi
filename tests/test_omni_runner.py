@@ -244,6 +244,39 @@ def test_omni_runner_oracle_world_records_residuals(tmp_path):
     assert (summary.results_path / "terrain.csv").exists()
 
 
+def test_omni_runner_oracle_animation_writes_diagnostic_outputs(tmp_path):
+    config = make_config(tmp_path, enable_plots=True, max_steps=4)
+    config["simulation"]["world_mode"] = "oracle"
+    config["terrain"] = {
+        "enabled": True,
+        "goal_relief": {
+            "enabled": True,
+            "center": [1.0, 0.0],
+            "sigma": [1.0, 0.8],
+            "strength": 0.5,
+            "floor": 0.3,
+        },
+    }
+    config["oracle_residual"] = {
+        "enabled": True,
+        "alpha": 0.5,
+        "residual_scale": 0.6,
+        "noise_std": 0.0,
+        "max_residual_ratio": 0.4,
+        "seed": 7,
+    }
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    summary = runner.run()
+
+    assert (summary.results_path / "oracle_diagnostics.png").exists()
+    assert (summary.results_path / "animation.gif").exists()
+    assert (summary.results_path / "animation.gif").stat().st_size > 0
+
+
 def test_omni_runner_cmd_real_error_uses_executed_minus_commanded_norm(tmp_path):
     runner = OmniMppiSimulationRunner(
         make_config(tmp_path),
