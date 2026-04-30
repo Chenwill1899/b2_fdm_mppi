@@ -14,6 +14,47 @@ def test_terrain_feature_is_deterministic():
     assert risk >= 0.0
 
 
+def test_terrain_noise_is_reproducible_for_same_seed():
+    config = {
+        "enabled": True,
+        "noise_enabled": True,
+        "noise_seed": 123,
+        "noise_grid_size": [8, 8],
+        "noise_scale": 0.35,
+    }
+    first = TerrainField.from_config(config)
+    second = TerrainField.from_config(config)
+
+    assert np.allclose(first.feature(4.2, 7.1), second.feature(4.2, 7.1))
+
+
+def test_terrain_noise_seed_changes_features():
+    config = {
+        "enabled": True,
+        "noise_enabled": True,
+        "noise_grid_size": [8, 8],
+        "noise_scale": 0.35,
+    }
+    first = TerrainField.from_config({**config, "noise_seed": 1})
+    second = TerrainField.from_config({**config, "noise_seed": 2})
+
+    assert not np.allclose(first.feature(4.2, 7.1), second.feature(4.2, 7.1))
+
+
+def test_terrain_noise_disabled_preserves_analytic_features():
+    config = {
+        "enabled": True,
+        "noise_enabled": False,
+        "noise_seed": 123,
+        "noise_grid_size": [8, 8],
+        "noise_scale": 0.35,
+    }
+    terrain = TerrainField.from_config(config)
+    legacy = TerrainField(enabled=True)
+
+    assert np.allclose(terrain.feature(4.2, 7.1), legacy.feature(4.2, 7.1))
+
+
 def test_terrain_disabled_returns_zero_features():
     terrain = TerrainField(enabled=False)
 

@@ -1,4 +1,4 @@
-# Stage 2.6 oracle residual world on a 100m x 100m random obstacle map.
+# Stage 2.6 dataset-friendly oracle random world configuration.
 b2_fdm_mppi:
   ros__parameters:
     config_file: ""
@@ -68,6 +68,17 @@ cbf:
   max_slack_vari: 1.0
   atau: 0.2
 
+scenario:
+  random_start_goal_enabled: true
+  random_seed: 123
+  x_range: [5.0, 95.0]
+  y_range: [5.0, 95.0]
+  distance_range: [5.0, 20.0]
+  min_obstacle_clearance: 2.0
+  max_attempts: 5000
+  start_yaw: 0.0
+  goal_yaw: 0.0
+
 obstacles:
   random_enabled: true
   random_seed: 123
@@ -82,10 +93,10 @@ obstacles:
 
 results:
   root: "./results/sim_results"
-  run_name: "b2_omni_oracle_random100"
+  run_name: "b2_omni_oracle_random100_dataset"
   timestamp_suffix: true
   overwrite: false
-  enable_plots: true
+  enable_plots: false
   enable_animation: false
 
 execution:

@@ -316,6 +316,56 @@ def test_omni_runner_uses_random_obstacles_and_records_summary(tmp_path):
     assert (summary.results_path / "obs_results.csv").exists()
 
 
+def test_omni_runner_random_start_goal_overrides_fixed_state_and_updates_goal_relief(tmp_path):
+    config = make_config(tmp_path, max_steps=1)
+    config["simulation"]["world_mode"] = "oracle"
+    config["simulation"]["initial_state"] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    config["simulation"]["goal"] = [99.0, 99.0, 0.0, 0.0, 0.0, 0.0]
+    config["scenario"] = {
+        "random_start_goal_enabled": True,
+        "random_seed": 11,
+        "x_range": [5.0, 20.0],
+        "y_range": [5.0, 20.0],
+        "distance_range": [5.0, 10.0],
+        "min_obstacle_clearance": 1.0,
+        "max_attempts": 500,
+        "start_yaw": 0.1,
+        "goal_yaw": 0.2,
+    }
+    config["terrain"] = {
+        "enabled": True,
+        "goal_relief": {
+            "enabled": True,
+            "center": [99.0, 99.0],
+            "sigma": [2.0, 1.2],
+            "strength": 0.75,
+            "floor": 0.25,
+        },
+    }
+    config["oracle_residual"] = {"enabled": False}
+
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    assert not np.allclose(runner.init_pose[:2], [0.0, 0.0])
+    assert not np.allclose(runner.goal[:2], [99.0, 99.0])
+    assert runner.init_pose[2] == pytest.approx(0.1)
+    assert runner.goal[2] == pytest.approx(0.2)
+    assert runner.config["terrain"]["goal_relief"]["center"] == pytest.approx(runner.goal[:2].tolist())
+    assert runner.terrain.goal_relief["center"] == pytest.approx(runner.goal[:2].tolist())
+
+    summary = runner.run()
+    summary_json = json.loads((summary.results_path / "summary.json").read_text())
+    saved_config = load_config(summary.results_path / "config.yaml")
+
+    assert summary_json["scenario_mode"] == "random_start_goal"
+    assert summary_json["scenario_random_seed"] == 11
+    assert 5.0 <= summary_json["start_goal_distance"] <= 10.0
+    assert saved_config["terrain"]["goal_relief"]["center"] == pytest.approx(runner.goal[:2].tolist())
+
+
 def test_omni_runner_fixed_obstacles_record_summary(tmp_path):
     runner = OmniMppiSimulationRunner(
         make_config(tmp_path, max_steps=1),
@@ -329,6 +379,11 @@ def test_omni_runner_fixed_obstacles_record_summary(tmp_path):
     assert summary_json["obstacle_mode"] == "fixed"
     assert summary_json["num_obstacles"] == len(runner.obstacles)
     assert summary_json["obstacle_random_seed"] is None
+    assert summary_json["scenario_mode"] == "fixed"
+    assert summary_json["scenario_random_seed"] is None
+    assert summary_json["start_goal_distance"] == pytest.approx(
+        float(np.linalg.norm(runner.goal[:2] - runner.init_pose[:2]))
+    )
 
 
 def test_omni_runner_residuals_csv_separates_oracle_and_execution_residuals(tmp_path):
