@@ -180,3 +180,102 @@ results/test_reports/20260429_230911/pytest.xml
   - Add tests for control limits, goal progress, obstacle cost, config construction, and closed-loop smoke behavior.
   - Keep existing CUDA differential MPPI unchanged.
 - Body file: `docs/agent_memory/PR_2_OMNI_MPPI_BODY.md`
+
+## PR #3: Omni MPPI Runner and Tuned Scene
+
+- Repository: `Chenwill1899/b2_fdm_mppi`
+- PR: `https://github.com/Chenwill1899/b2_fdm_mppi/pull/3`
+- State: `OPEN`
+- Base branch: `feature/omni-mppi-numpy`
+- Head branch: `feature/omni-mppi-runner`
+- Title: `[MPPI] feat: add omni MPPI runner and tuning outputs`
+- Current verification:
+
+```text
+results/test_reports/20260429_233404/pytest.log
+results/test_reports/20260429_233404/pytest.xml
+34 passed in 1.97s
+```
+
+- Real run:
+
+```text
+results/sim_results/b2_omni_nominal_latest/
+success: true
+final_distance: 0.36341118812561035
+mean_mppi_time_ms: 5.523462793720302
+min_obstacle_clearance: 0.38778746128082275
+animation.gif: saved, 695306 bytes
+```
+
+- Scope:
+  - Add B2 omni simulation runner and CLI.
+  - Save `summary.json`, `test_summary.yaml`, `trajectory.csv`, `controls.csv`, `obs_results.csv`, `time_results.csv`, `costs.csv`, `trajectory.png`, and `animation.gif`.
+  - Restore sampled candidate rollout and optimized rollout display in GIF.
+  - Tune harder double-obstacle scene with `obstacle_weight=800`, `safety_dist=0.4`, and `smooth_weight=1.0`.
+  - Add named overwriteable result directory support so formal runs update one stable latest result directory.
+- Body file: `docs/agent_memory/PR_3_OMNI_RUNNER_BODY.md`
+
+## PR #3 Follow-up: CUDA Omni MPPI and CBF Cost
+
+- Repository: `Chenwill1899/b2_fdm_mppi`
+- Base branch: `feature/omni-mppi-numpy`
+- Head branch: `feature/omni-mppi-runner`
+- Suggested title update: `[MPPI] feat: add omni MPPI runner, CUDA backend, and CBF cost`
+- Current verification:
+
+```text
+python3 -m pytest -q
+39 passed in 2.46s
+```
+
+- Real run:
+
+```text
+results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/
+success: true
+final_distance: 0.3754442036151886
+mean_mppi_time_ms: 4.929683577846474
+max_mppi_time_ms: 7.981300354003906
+min_obstacle_clearance: 0.4295613765716553
+animation.gif: saved, 665K
+```
+
+- Added scope:
+  - Add `b2_fdm_mppi/controllers/mppi_omni_cuda.py`.
+  - Add `mppi.backend: cuda` selection for the omni runner.
+  - Make `tools/run_omni_mppi.py` respect configured backend while keeping `--seed`.
+  - Add CUDA rollout/cost tests and CBF-cost behavior test.
+  - Change formal result naming to `b2_omni_nominal_<timestamp>` instead of overwriting `b2_omni_nominal_latest`.
+- Note: CBF is currently a CUDA cost penalty using discrete barrier decrease. It is not yet the old soft/slack RCBF formulation.
+
+## PR #3 Follow-up: RCBF-Style Barrier Tuning
+
+- Repository: `Chenwill1899/b2_fdm_mppi`
+- Base branch: `feature/omni-mppi-numpy`
+- Head branch: `feature/omni-mppi-runner`
+- Suggested title update: `[MPPI] feat: add omni runner, CUDA backend, and RCBF cost`
+- Current verification:
+
+```text
+python3 -m pytest -q
+40 passed in 2.02s
+```
+
+- Real run:
+
+```text
+results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
+success: true
+final_distance: 0.34110841155052185
+mean_mppi_time_ms: 4.540036122004191
+max_mppi_time_ms: 11.853933334350586
+min_obstacle_clearance: 0.4714846611022949
+```
+
+- Added scope:
+  - Port old `cbf.type` barrier modes into `MppiOmniCuda`.
+  - Support `cbf.type=1` cosine relative-velocity lookahead, `type=2` direct lookahead, and `type=3` distance constraint.
+  - Add regression coverage that an approaching obstacle costs more than a static obstacle at the same distance.
+  - Tune formal config to `num_trajectories=1024` and `simulation.minimum_distance=0.45`.
+- Note: This is RCBF-style cost integration. Full soft/slack RCBF remains future work.

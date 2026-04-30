@@ -355,3 +355,199 @@ Expected Stage 0 outputs:
 - `results/sim_results/<timestamp>/time_results.csv`
 - `results/sim_results/<timestamp>/test_summary.yaml`
 - Plot images when plotting is enabled.
+
+### 2026-04-29: S1-004 Omni MPPI Runner and Tuned Double-Obstacle Scene
+
+- Goal: run the B2 omni SE(2) nominal MPPI in the fixed map `x=[0,20]`, `y=[-10,10]` with target `[18,0]` and static obstacles `[6,0.5]`, `[12,-1]`.
+- Added:
+  - `b2_fdm_mppi/simulation/omni_runner.py`
+  - `tools/run_omni_mppi.py`
+  - `tests/test_omni_runner.py`
+- Controller updates:
+  - vectorized candidate rollout and obstacle cost
+  - configurable `obstacle_weight`, `control_weight`, `smooth_weight`
+  - smoothness cost includes the previous executed control and adjacent controls
+- Visualization update:
+  - `animation.gif` now draws sampled candidate rollouts in black and optimized rollout in orange.
+- Tuned config:
+  - `mppi.obstacle_weight: 800.0`
+  - `mppi.control_weight: 0.01`
+  - `mppi.smooth_weight: 1.0`
+  - `robot.safety_dist: 0.4`
+- Pytest report:
+  - `results/test_reports/20260429_232717/pytest.log`
+  - `results/test_reports/20260429_232717/pytest.xml`
+  - result: `33 passed in 1.99s`
+- Real omni MPPI result directory:
+
+```text
+results/sim_results/2026-04-29_23-27-26/
+```
+
+- Key artifacts:
+  - `results/sim_results/2026-04-29_23-27-26/animation.gif` (`680K`)
+  - `results/sim_results/2026-04-29_23-27-26/trajectory.png`
+  - `results/sim_results/2026-04-29_23-27-26/summary.json`
+  - `results/sim_results/2026-04-29_23-27-26/trajectory.csv`
+  - `results/sim_results/2026-04-29_23-27-26/controls.csv`
+- Metrics:
+  - `success: true`
+  - `steps: 134`
+  - `final_distance: 0.36341118812561035`
+  - `path_length: 18.1884765625`
+  - `arrival_time: 13.4`
+  - `mean_mppi_time_ms: 6.374088685903976`
+  - `max_mppi_time_ms: 18.85843276977539`
+  - `min_obstacle_clearance: 0.38778746128082275`
+  - control mean absolute deltas: `vx=0.080398`, `vy=0.168291`, `wz=0.282473`
+- Conclusion: Stage 1 omni nominal MPPI reaches the target in the harder double-obstacle scene, stays under the 20 ms mean compute target, saves summary/CSV/PNG/GIF, and restores candidate rollout visualization in GIF. Next stage after PR review is Oracle Residual World.
+
+### 2026-04-29: S1-004 Result Directory Save Fix
+
+- Issue: parameter tuning created many timestamped directories under `results/sim_results`, making it hard to identify the result the user should inspect.
+- Fix:
+  - Added `b2_fdm_mppi/simulation/results_path.py`.
+  - Both legacy runner and omni runner now support `results.run_name` and `results.overwrite`.
+  - `config/b2_omni_nominal.yaml` uses:
+
+```yaml
+results:
+  root: "./results/sim_results"
+  run_name: "b2_omni_nominal_latest"
+  overwrite: true
+```
+
+- Formal run command:
+
+```bash
+python3 tools/run_omni_mppi.py --config config/b2_omni_nominal.yaml --seed 123
+```
+
+- Result directory:
+
+```text
+results/sim_results/b2_omni_nominal_latest/
+```
+
+- Key artifacts:
+  - `animation.gif` (`695306` bytes)
+  - `summary.json`
+  - `trajectory.csv`
+  - `controls.csv`
+  - `trajectory.png`
+- Metrics:
+  - `success: true`
+  - `final_distance: 0.36341118812561035`
+  - `mean_mppi_time_ms: 5.523462793720302`
+  - `max_mppi_time_ms: 8.809804916381836`
+  - `min_obstacle_clearance: 0.38778746128082275`
+- Pytest report:
+  - `results/test_reports/20260429_233404/pytest.log`
+  - `results/test_reports/20260429_233404/pytest.xml`
+  - result: `34 passed in 1.97s`
+- Conclusion: formal omni result output used one stable overwriteable directory for user inspection at this point. This was later changed on 2026-04-30 to timestamp-suffixed named directories.
+
+### 2026-04-30: Named Timestamp Result Directories
+
+- Goal: avoid overwriting the formal B2 omni result directory while keeping result names easy to identify.
+- Change:
+  - `create_results_path()` now supports `results.timestamp_suffix: true`.
+  - `config/b2_omni_nominal.yaml` uses `run_name: b2_omni_nominal`, `timestamp_suffix: true`, and `overwrite: false`.
+- Verification:
+  - `python3 -m pytest -q`
+  - result: `36 passed in 2.01s`
+- Real run:
+  - `results/sim_results/b2_omni_nominal_2026-04-30_13-43-14/`
+  - `success: true`
+  - `final_distance: 0.3889111578464508`
+  - `mean_mppi_time_ms: 6.074447291237967`
+  - `min_obstacle_clearance: 0.3978804349899292`
+
+### 2026-04-30: CUDA B2 Omni MPPI With CBF Cost
+
+- Goal: move the B2 omnidirectional MPPI rollout/cost evaluation onto CUDA first, then add CBF.
+- Implementation:
+  - Added `b2_fdm_mppi/controllers/mppi_omni_cuda.py`.
+  - Added `mppi.backend` selection through `OmniMppiSimulationRunner`.
+  - `tools/run_omni_mppi.py` now respects the configured backend.
+  - Added discrete CBF penalty in the CUDA cost kernel:
+    - `h = distance_to_obstacle - obstacle_radius - robot_radius - safety_dist`
+    - violation uses `-(h_next - h + alpha * h)`
+    - cost uses `mppi.cbf_weight * max(violation, 0)^2`
+  - Current config uses `mppi.backend: cuda` and `mppi.cbf_weight: 500.0`.
+- Tests added:
+  - CUDA cost matches NumPy cost when `cbf_weight=0`.
+  - CUDA CBF cost penalizes trajectories that decrease the barrier near an obstacle.
+  - Runner selects CUDA backend when configured.
+- Verification:
+  - `python3 -m pytest -q`
+  - result: `39 passed in 2.46s`
+- Real run command:
+
+```bash
+python3 tools/run_omni_mppi.py --config config/b2_omni_nominal.yaml --seed 123
+```
+
+- Result directory:
+
+```text
+results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/
+```
+
+- Metrics:
+  - `success: true`
+  - `steps: 142`
+  - `final_distance: 0.3754442036151886`
+  - `path_length: 18.206396102905273`
+  - `arrival_time: 14.200000000000001`
+  - `mean_mppi_time_ms: 4.929683577846474`
+  - `max_mppi_time_ms: 7.981300354003906`
+  - `min_obstacle_clearance: 0.4295613765716553`
+- Artifacts:
+  - `animation.gif` (`665K`)
+  - `trajectory.png` (`57K`)
+  - `summary.json`
+  - `trajectory.csv`
+  - `controls.csv`
+- Conclusion: the current Stage 1 runtime is CUDA-backed B2 omni MPPI with a CBF penalty cost. It is not a full soft/slack RCBF implementation yet.
+
+### 2026-04-30: RCBF-Style Barrier Integration and Tuning
+
+- Goal: replace the plain CUDA CBF penalty with the old project's RCBF-style relative-velocity barrier modes and tune the Stage 1 B2 omni scene.
+- Implementation:
+  - Extended `MppiOmniCuda` with `cbf.type` and `cbf.atau`.
+  - Ported old barrier modes into the omni CUDA kernel:
+    - `type=1`: cosine relative-velocity lookahead barrier (`h_csx` style).
+    - `type=2`: direct relative-velocity lookahead barrier (`h_ex` style).
+    - `type=3`: distance-constraint barrier.
+  - The default config remains `cbf.type: 1`.
+  - Added regression test proving an approaching obstacle is penalized more than an equally distant static obstacle.
+- Tuning decision:
+  - `num_trajectories=4096`: success, high safety, but mean runtime rose to about `12 ms`.
+  - `num_trajectories=2048`: success, better runtime, but still not materially better than 1024.
+  - `num_trajectories=1024` plus `minimum_distance=0.45`: best balance for this scene.
+- Formal run:
+
+```bash
+python3 tools/run_omni_mppi.py --config config/b2_omni_nominal.yaml --seed 123
+```
+
+- Result directory:
+
+```text
+results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
+```
+
+- Metrics:
+  - `success: true`
+  - `steps: 144`
+  - `final_distance: 0.34110841155052185`
+  - `path_length: 18.318750381469727`
+  - `arrival_time: 14.4`
+  - `mean_mppi_time_ms: 4.540036122004191`
+  - `max_mppi_time_ms: 11.853933334350586`
+  - `min_obstacle_clearance: 0.4714846611022949`
+- Verification:
+  - `python3 -m pytest -q`
+  - result: `40 passed in 2.02s`
+- Conclusion: Stage 1 now has a tuned CUDA B2 omni MPPI controller with RCBF-style relative-velocity barrier cost. This is still a cost-based barrier, not the old soft/slack RCBF optimizer.

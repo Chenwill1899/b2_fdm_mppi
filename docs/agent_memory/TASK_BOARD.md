@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-29
+Last updated: 2026-04-30
 
 ## Current Stage
 
@@ -31,13 +31,18 @@ Stage 1: B2 omnidirectional SE(2) nominal model.
 | S1-001 | P0 | done | Add B2 omnidirectional SE(2) nominal model | Added `core/omni_b2.py` with state `[x,y,theta,vx,vy,wz]`, control `[vx,vy,wz]`, and limits `1.5/0.5/1.0`. Verified by pytest. |
 | S1-002 | P0 | done | Add B2 omni nominal config | Added `config/b2_omni_nominal.yaml`; config validation now supports state/control dimensions from config. |
 | S1-003 | P0 | done | Add NumPy omni MPPI rollout/controller | Added `controllers/mppi_omni_numpy.py`; supports 3D controls, config factory, obstacle cost, and closed-loop smoke test. Verified by pytest. |
-| S1-004 | P0 | todo | Run and tune B2 omni baseline | Use target `[18,0]`, static obstacles `[6,0.5]` and `[12,-1]`, and velocity limits `vx=1.5`, `vy=0.5`, `wz=1.0`. |
+| S1-004 | P0 | done | Run and tune B2 omni baseline | Added omni runner/logger, restored candidate and optimal rollout GIF drawing, tuned `obstacle_weight=800`, `safety_dist=0.4`, `smooth_weight=1.0`. Verified final run `results/sim_results/2026-04-29_23-27-26/`: success, final distance `0.3634 m`, mean MPPI `6.3741 ms`, GIF saved. |
+| S1-005 | P0 | done | Add simple timestamp result suffix | Formal omni run now writes `results/sim_results/b2_omni_nominal_<timestamp>/`, avoiding overwrite while keeping runs easy to identify. Verified by pytest and real GIF run. |
+| S1-006 | P0 | done | Add CUDA backend for B2 omni MPPI | Added `MppiOmniCuda` with PyCUDA rollout/cost kernel and `mppi.backend: cuda`. Verified by pytest and real run `results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/`: success, final distance `0.3754 m`, mean MPPI `4.9297 ms`. |
+| S1-007 | P0 | done | Add CBF cost to CUDA omni MPPI | Added discrete CBF penalty term using `cbf.dcbf_alpha` and `mppi.cbf_weight`; current config uses `cbf_weight=500`. Real run min clearance `0.4296 m`. |
+| S1-008 | P0 | done | Integrate and tune RCBF-style CUDA barrier | CUDA omni MPPI now supports `cbf.type` 1/2/3 barrier modes from the old project. Tuned config: `num_trajectories=1024`, `minimum_distance=0.45`, `cbf.type=1`, `cbf_weight=500`. Verified run `results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/`: success, final distance `0.3411 m`, mean MPPI `4.5400 ms`, max `11.8539 ms`, min clearance `0.4715 m`. |
+| S1-009 | P0 | todo | Review/merge Stage 1 PR stack | PR #1, #2, and runner/CUDA/RCBF PR should be reviewed before Stage 2 oracle residual world work. |
 
 ## Later Stages
 
 | Stage | Status | Goal |
 | --- | --- | --- |
-| 1 | pending | B2 omnidirectional SE(2) nominal model. |
+| 1 | in_progress | B2 omnidirectional SE(2) nominal model. |
 | 2 | pending | Oracle residual world. |
 | 3 | pending | Unified evaluation system. |
 | 4 | pending | Oracle dataset generation. |

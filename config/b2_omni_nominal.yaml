@@ -8,12 +8,13 @@ simulation:
   time_horizon: 2.0
   goal: [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]
   initial_state: [0.01, 0.01, 0.0, 0.0, 0.0, 0.0]
-  minimum_distance: 0.5
+  minimum_distance: 0.45
   max_steps: 400
   without_heading: true
   print_out: false
 
 mppi:
+  backend: cuda
   state_dim: 6
   control_dim: 3
   num_trajectories: 1024
@@ -21,9 +22,13 @@ mppi:
   exploration_variance: 1200.0
   weights: [2.5, 2.5, 0.5, 0.0, 0.0, 0.0]
   dist_type: 2
-  std_normal: [0.25, 0.15, 0.25]
+  std_normal: [0.2, 0.1, 0.15]
   std_slack: 0.1
   lambda: 0.5
+  obstacle_weight: 800.0
+  cbf_weight: 500.0
+  control_weight: 0.02
+  smooth_weight: 2.0
   beta_1: 0.5
   beta_2: 0.8
   beta_3: 0.5
@@ -37,7 +42,7 @@ robot:
   max_vy: 0.5
   max_wz: 1.0
   radius: 0.6
-  safety_dist: 0.3
+  safety_dist: 0.4
   obstacle_state_num: 7
 
 cbf:
@@ -58,5 +63,8 @@ obstacles:
 
 results:
   root: "./results/sim_results"
+  run_name: "b2_omni_nominal"
+  timestamp_suffix: true
+  overwrite: false
   enable_plots: true
   enable_animation: true

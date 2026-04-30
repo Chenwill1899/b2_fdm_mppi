@@ -22,6 +22,7 @@ class MppiOmniNumpy:
         goal_xy_weight: float = 5.0,
         yaw_weight: float = 0.2,
         control_weight: float = 0.01,
+        smooth_weight: float = 0.2,
         obstacle_weight: float = 25.0,
         robot_radius: float = 0.6,
         safety_dist: float = 0.3,
@@ -37,16 +38,23 @@ class MppiOmniNumpy:
         self.goal_xy_weight = float(goal_xy_weight)
         self.yaw_weight = float(yaw_weight)
         self.control_weight = float(control_weight)
+        self.smooth_weight = float(smooth_weight)
         self.obstacle_weight = float(obstacle_weight)
         self.robot_radius = float(robot_radius)
         self.safety_dist = float(safety_dist)
         self.draw_num_traj = min(int(draw_num_traj), self.num_samples)
         self.rng = np.random.default_rng(seed)
         self.nominal_u = np.zeros((self.horizon_steps, 3), dtype=np.float32)
+        self.previous_control = np.zeros(3, dtype=np.float32)
         self.model = OmniB2(self.dt, max_vx, max_vy, max_wz)
 
     @classmethod
-    def from_config(cls, config: dict, seed: int | None = None) -> "MppiOmniNumpy":
+    def from_config(
+        cls,
+        config: dict,
+        seed: int | None = None,
+        **overrides,
+    ) -> "MppiOmniNumpy":
         sim = config["simulation"]
         mppi = config["mppi"]
         robot = config["robot"]
@@ -62,8 +70,11 @@ class MppiOmniNumpy:
             max_vx=float(robot["max_vx"]),
             max_vy=float(robot["max_vy"]),
             max_wz=float(robot["max_wz"]),
-            goal_xy_weight=float(mppi["weights"][0]),
-            yaw_weight=float(mppi["weights"][2]),
+            goal_xy_weight=float(overrides.get("goal_xy_weight", mppi["weights"][0])),
+            yaw_weight=float(overrides.get("yaw_weight", mppi["weights"][2])),
+            control_weight=float(overrides.get("control_weight", mppi.get("control_weight", 0.01))),
+            smooth_weight=float(overrides.get("smooth_weight", mppi.get("smooth_weight", 0.2))),
+            obstacle_weight=float(overrides.get("obstacle_weight", mppi.get("obstacle_weight", 25.0))),
             robot_radius=float(robot["radius"]),
             safety_dist=float(robot["safety_dist"]),
             draw_num_traj=int(mppi["draw_num_traj"]),
@@ -83,10 +94,7 @@ class MppiOmniNumpy:
             -self.max_control,
             self.max_control,
         )
-        costs = np.array(
-            [self.trajectory_cost(state, candidate, goal, obstacles) for candidate in candidates],
-            dtype=np.float32,
-        )
+        costs = self.trajectory_cost_batch(state, candidates, goal, obstacles)
         min_cost = float(np.min(costs))
         weights = np.exp(-(costs - min_cost) / max(self.lambda_, 1e-6))
         normalizer = float(np.sum(weights))
@@ -100,6 +108,7 @@ class MppiOmniNumpy:
         control = self.nominal_u[0].copy()
         optimal_u = self.nominal_u.copy()
         sample_u = candidates[: self.draw_num_traj].copy()
+        self.previous_control = control.copy()
         self._shift_nominal_controls()
         return control, optimal_u, sample_u, normalizer, min_cost
 
@@ -117,8 +126,53 @@ class MppiOmniNumpy:
         goal_cost = self.goal_xy_weight * float(np.dot(xy_error, xy_error))
         yaw_cost = self.yaw_weight * yaw_error * yaw_error
         control_cost = self.control_weight * float(np.sum(controls * controls))
+        smooth_cost = self.smooth_weight * float(
+            np.sum(np.diff(np.vstack([self.previous_control, controls]), axis=0) ** 2)
+        )
         obstacle_cost = self._obstacle_cost(states[1:], obstacles)
-        return goal_cost + yaw_cost + control_cost + obstacle_cost
+        return goal_cost + yaw_cost + control_cost + smooth_cost + obstacle_cost
+
+    def trajectory_cost_batch(
+        self,
+        initial_state: np.ndarray,
+        controls: np.ndarray,
+        goal: np.ndarray,
+        obstacles: np.ndarray,
+    ) -> np.ndarray:
+        states = self._rollout_batch(initial_state, controls)
+        final_states = states[:, -1, :]
+        xy_error = final_states[:, :2] - goal[:2]
+        yaw_error = self._angle_diff_array(final_states[:, 2], float(goal[2]))
+        goal_cost = self.goal_xy_weight * np.sum(xy_error * xy_error, axis=1)
+        yaw_cost = self.yaw_weight * yaw_error * yaw_error
+        control_cost = self.control_weight * np.sum(controls * controls, axis=(1, 2))
+        previous = np.broadcast_to(self.previous_control, (controls.shape[0], 1, 3))
+        control_deltas = np.diff(np.concatenate([previous, controls], axis=1), axis=1)
+        smooth_cost = self.smooth_weight * np.sum(control_deltas * control_deltas, axis=(1, 2))
+        obstacle_cost = self._obstacle_cost_batch(states[:, 1:, :], obstacles)
+        return (goal_cost + yaw_cost + control_cost + smooth_cost + obstacle_cost).astype(np.float32)
+
+    def _rollout_batch(self, initial_state: np.ndarray, controls: np.ndarray) -> np.ndarray:
+        controls = np.clip(np.asarray(controls, dtype=np.float32), -self.max_control, self.max_control)
+        num_samples, horizon_steps, _ = controls.shape
+        states = np.zeros((num_samples, horizon_steps + 1, 6), dtype=np.float32)
+        states[:, 0, :] = np.asarray(initial_state, dtype=np.float32)
+        for step in range(horizon_steps):
+            prev = states[:, step, :]
+            control = controls[:, step, :]
+            theta = prev[:, 2]
+            cos_theta = np.cos(theta)
+            sin_theta = np.sin(theta)
+            vx = control[:, 0]
+            vy = control[:, 1]
+            wz = control[:, 2]
+            states[:, step + 1, 0] = prev[:, 0] + (vx * cos_theta - vy * sin_theta) * self.dt
+            states[:, step + 1, 1] = prev[:, 1] + (vx * sin_theta + vy * cos_theta) * self.dt
+            states[:, step + 1, 2] = prev[:, 2] + wz * self.dt
+            states[:, step + 1, 3] = vx
+            states[:, step + 1, 4] = vy
+            states[:, step + 1, 5] = wz
+        return states
 
     def _obstacle_cost(self, states: np.ndarray, obstacles: np.ndarray) -> float:
         if obstacles.size == 0:
@@ -137,6 +191,21 @@ class MppiOmniNumpy:
                 total += self.obstacle_weight * float(np.sum(violations * violations))
         return total
 
+    def _obstacle_cost_batch(self, states: np.ndarray, obstacles: np.ndarray) -> np.ndarray:
+        costs = np.zeros(states.shape[0], dtype=np.float32)
+        if obstacles.size == 0:
+            return costs
+        for obstacle in obstacles:
+            center = obstacle[:2].astype(np.float32)
+            clearance = (
+                np.linalg.norm(states[:, :, :2] - center[None, None, :], axis=2)
+                - float(obstacle[2])
+                - self.robot_radius
+            )
+            margin = np.maximum(self.safety_dist - clearance, 0.0)
+            costs += self.obstacle_weight * np.sum(margin * margin, axis=1)
+        return costs
+
     def _shift_nominal_controls(self) -> None:
         self.nominal_u[:-1] = self.nominal_u[1:]
         self.nominal_u[-1] = 0.0
@@ -144,3 +213,7 @@ class MppiOmniNumpy:
     @staticmethod
     def _angle_diff(a: float, b: float) -> float:
         return float((a - b + np.pi) % (2.0 * np.pi) - np.pi)
+
+    @staticmethod
+    def _angle_diff_array(a: np.ndarray, b: float) -> np.ndarray:
+        return (a - b + np.pi) % (2.0 * np.pi) - np.pi
