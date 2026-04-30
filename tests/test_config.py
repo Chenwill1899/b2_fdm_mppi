@@ -102,6 +102,16 @@ def test_b2_omni_kinodynamic_config_loads_main_baseline():
     assert config["execution"]["filter_alpha"] == pytest.approx(0.0)
 
 
+def test_b2_omni_oracle_config_loads_stage2_parameters():
+    config = load_config(Path("config/b2_omni_oracle.yaml"))
+
+    assert config["simulation"]["world_mode"] == "oracle"
+    assert config["terrain"]["enabled"] is True
+    assert config["oracle_residual"]["enabled"] is True
+    assert config["oracle_residual"]["alpha"] == pytest.approx(0.35)
+    assert config["oracle_residual"]["residual_scale"] == pytest.approx(0.5)
+
+
 def test_validate_config_rejects_bad_goal_length():
     config = load_config(Path("config/fdm_mppi.yaml"))
     config["simulation"]["goal"] = [1.0, 2.0]

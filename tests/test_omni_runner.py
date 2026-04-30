@@ -52,6 +52,8 @@ def test_omni_runner_saves_summary_csv_outputs(tmp_path):
     assert summary_json["final_distance"] < 1.0
     assert (summary.results_path / "trajectory.csv").exists()
     assert (summary.results_path / "controls.csv").exists()
+    assert (summary.results_path / "residuals.csv").exists()
+    assert (summary.results_path / "terrain.csv").exists()
     assert (summary.results_path / "time_results.csv").exists()
     assert (summary.results_path / "test_summary.yaml").exists()
     assert "control_smoothness" in summary_json
@@ -67,6 +69,13 @@ def test_omni_runner_saves_summary_csv_outputs(tmp_path):
     assert "vy_variance" in summary_json
     assert "wz_variance" in summary_json
     assert summary_json["controls_csv"] == "executed_controls"
+    assert "world_mode" in summary_json
+    assert "mean_residual_norm" in summary_json
+    assert "max_residual_norm" in summary_json
+    assert "mean_cmd_real_error" in summary_json
+    assert "max_cmd_real_error" in summary_json
+    assert "mean_terrain_risk" in summary_json
+    assert "max_terrain_risk" in summary_json
 
 
 def test_omni_runner_summary_reports_control_smoothness_metrics(tmp_path):
@@ -207,6 +216,32 @@ def test_omni_runner_can_overwrite_named_results_directory(tmp_path):
     assert second_summary.results_path == tmp_path / "latest"
     assert not stale_file.exists()
     assert (second_summary.results_path / "summary.json").exists()
+
+
+def test_omni_runner_oracle_world_records_residuals(tmp_path):
+    config = make_config(tmp_path, max_steps=4)
+    config["simulation"]["world_mode"] = "oracle"
+    config["terrain"] = {"enabled": True}
+    config["oracle_residual"] = {
+        "enabled": True,
+        "alpha": 0.5,
+        "residual_scale": 0.6,
+        "noise_std": 0.0,
+        "max_residual_ratio": 0.4,
+        "seed": 7,
+    }
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    summary = runner.run()
+    summary_json = json.loads((summary.results_path / "summary.json").read_text())
+
+    assert summary_json["world_mode"] == "oracle"
+    assert summary_json["mean_residual_norm"] > 0.0
+    assert (summary.results_path / "residuals.csv").exists()
+    assert (summary.results_path / "terrain.csv").exists()
 
 
 def test_omni_runner_uses_cuda_backend_when_configured(tmp_path, monkeypatch):
