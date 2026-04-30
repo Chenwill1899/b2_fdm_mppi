@@ -17,6 +17,7 @@ from b2_fdm_mppi.core.omni_b2 import OmniB2
 from b2_fdm_mppi.core.residual_world import ResidualWorld
 from b2_fdm_mppi.core.terrain import TerrainField
 from b2_fdm_mppi.simulation.random_obstacles import generate_random_obstacles
+from b2_fdm_mppi.simulation.random_scenario import sample_start_goal
 from b2_fdm_mppi.simulation.results_path import create_results_path
 from b2_fdm_mppi.visualization.utils import map_axis_limits_from_config
 
@@ -69,9 +70,13 @@ class OmniMppiSimulationRunner:
         self.dt = 1.0 / self.hz
         self.max_steps = int(sim["max_steps"])
         self.minimum_distance = float(sim["minimum_distance"])
+        self.scenario_mode = "fixed"
+        self.scenario_random_seed = None
+        self._apply_random_start_goal()
         self.state = np.asarray(sim["initial_state"], dtype=np.float32)
         self.init_pose = np.copy(self.state)
         self.goal = np.asarray(sim["goal"], dtype=np.float32)
+        self.start_goal_distance = float(np.linalg.norm(self.goal[:2] - self.init_pose[:2]))
         self.world_mode = str(sim.get("world_mode", "nominal")).lower()
         if self.world_mode not in {"nominal", "oracle"}:
             raise ValueError(f"Unsupported simulation.world_mode: {self.world_mode}")
@@ -123,6 +128,30 @@ class OmniMppiSimulationRunner:
         self.optimal_u_history: list[np.ndarray] = []
         self.sample_u_history: list[np.ndarray] = []
         self.failed = False
+
+    def _apply_random_start_goal(self) -> None:
+        scenario_cfg = self.config.get("scenario", {})
+        if not bool(scenario_cfg.get("random_start_goal_enabled", False)):
+            return
+        scenario_cfg["random_seed"] = self._resolve_scenario_seed(scenario_cfg.get("random_seed", 123))
+        fixed_obstacles = None
+        obstacle_cfg = self.config.get("obstacles", {})
+        if not bool(obstacle_cfg.get("random_enabled", False)):
+            fixed_obstacles = np.asarray(obstacle_cfg.get("virtual", []), dtype=np.float32).reshape(-1, 7)
+        start_state, goal_state = sample_start_goal(self.config, obstacles=fixed_obstacles)
+        self.config["simulation"]["initial_state"] = [float(v) for v in start_state.tolist()]
+        self.config["simulation"]["goal"] = [float(v) for v in goal_state.tolist()]
+        terrain_cfg = self.config.setdefault("terrain", {})
+        relief_cfg = terrain_cfg.get("goal_relief")
+        if isinstance(relief_cfg, dict) and bool(relief_cfg.get("enabled", False)):
+            relief_cfg["center"] = [float(goal_state[0]), float(goal_state[1])]
+        self.scenario_mode = "random_start_goal"
+        self.scenario_random_seed = int(scenario_cfg["random_seed"])
+
+    def _resolve_scenario_seed(self, value) -> int:
+        if value is None or (isinstance(value, str) and value.lower() == "auto"):
+            return int(np.random.default_rng().integers(0, np.iinfo(np.int32).max))
+        return int(value)
 
     def run(self) -> OmniSimulationSummary:
         if self.world_mode == "oracle":
@@ -250,6 +279,9 @@ class OmniMppiSimulationRunner:
             "obstacle_mode": self.obstacle_mode,
             "num_obstacles": int(len(self.obstacles)),
             "obstacle_random_seed": self.obstacle_random_seed,
+            "scenario_mode": self.scenario_mode,
+            "scenario_random_seed": self.scenario_random_seed,
+            "start_goal_distance": self.start_goal_distance,
             "controls_csv": "executed_controls",
             "raw_controls_csv": "raw_controls",
             "mean_residual_norm": mean_residual,
