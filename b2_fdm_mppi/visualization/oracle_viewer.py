@@ -12,6 +12,17 @@ from b2_fdm_mppi.core.terrain import TerrainField
 from b2_fdm_mppi.visualization.utils import map_axis_limits
 
 
+def _resolve_goal_xy(trajectory: pd.DataFrame, config: dict) -> tuple[float, float]:
+    goal = config.get("simulation", {}).get("goal")
+    if goal is not None and len(goal) >= 2:
+        return float(goal[0]), float(goal[1])
+    if {"x_des", "y_des"}.issubset(trajectory.columns) and not trajectory.empty:
+        return float(trajectory["x_des"].iloc[-1]), float(trajectory["y_des"].iloc[-1])
+    if not trajectory.empty:
+        return float(trajectory["x"].iloc[-1]), float(trajectory["y"].iloc[-1])
+    return 0.0, 0.0
+
+
 def plot_oracle_diagnostics(results_path: Path, config: dict) -> None:
     results_path = Path(results_path)
     trajectory = pd.read_csv(results_path / "trajectory.csv")
@@ -81,13 +92,17 @@ def plot_oracle_diagnostics(results_path: Path, config: dict) -> None:
             )
         )
 
+    goal_x, goal_y = _resolve_goal_xy(trajectory, config)
     if not trajectory.empty:
         ax_map.scatter([trajectory["x"].iloc[0]], [trajectory["y"].iloc[0]], color="green", label="start")
+        ax_map.scatter([goal_x], [goal_y], color="purple", marker="*", s=120, label="goal")
         ax_map.scatter(
             [trajectory["x"].iloc[-1]],
             [trajectory["y"].iloc[-1]],
-            color="purple",
-            label="goal",
+            color="tab:orange",
+            marker="x",
+            s=60,
+            label="end",
         )
 
     states = trajectory[["x", "y", "theta"]].to_numpy(dtype=np.float32)

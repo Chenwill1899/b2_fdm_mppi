@@ -87,6 +87,10 @@ execution:
 
 terrain:
   enabled: true
+  safe_zones:
+    - center: [18.0, 0.0]
+      radius: 1.5
+      transition: 1.0
 
 oracle_residual:
   enabled: true

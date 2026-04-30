@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from b2_fdm_mppi.visualization.oracle_viewer import plot_oracle_diagnostics
+from b2_fdm_mppi.visualization.oracle_viewer import _resolve_goal_xy, plot_oracle_diagnostics
 
 
 def test_plot_oracle_diagnostics_writes_nonempty_png(tmp_path: Path):
@@ -76,3 +76,19 @@ def test_plot_oracle_diagnostics_writes_nonempty_png(tmp_path: Path):
     output = tmp_path / "oracle_diagnostics.png"
     assert output.exists()
     assert output.stat().st_size > 0
+
+
+def test_oracle_viewer_resolves_config_goal_not_trajectory_end():
+    trajectory = pd.DataFrame(
+        {
+            "x": [0.0, 18.4],
+            "y": [0.0, -1.3],
+            "x_des": [18.0, 18.0],
+            "y_des": [0.0, 0.0],
+        }
+    )
+    config = {"simulation": {"goal": [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]}}
+
+    goal_x, goal_y = _resolve_goal_xy(trajectory, config)
+
+    assert (goal_x, goal_y) == (18.0, 0.0)
