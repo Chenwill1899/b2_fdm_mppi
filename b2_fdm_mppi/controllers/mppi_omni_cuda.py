@@ -28,6 +28,47 @@ __device__ float angle_diff(float a, float b) {
     return fmodf(a - b + pi, 2.0f * pi) - pi;
 }
 
+__device__ float barrier_distance(
+    int cbf_type,
+    float robot_x,
+    float robot_y,
+    float robot_vx,
+    float robot_vy,
+    float obs_x,
+    float obs_y,
+    float obs_vx,
+    float obs_vy,
+    float obs_radius,
+    float robot_radius,
+    float safety_dist,
+    float atau
+) {
+    float safe_radius = obs_radius + robot_radius + safety_dist;
+    float dx = obs_x - robot_x;
+    float dy = obs_y - robot_y;
+    float dvx = obs_vx - robot_vx;
+    float dvy = obs_vy - robot_vy;
+    float dot = dx * dvx + dy * dvy;
+    float dist = sqrtf(dx * dx + dy * dy);
+
+    if (cbf_type == 1 && dot < 0.0f && dist > 1e-6f) {
+        float cos_v = dot / dist;
+        float tau = 0.1f * dist / (cos_v + 0.001f);
+        if (fabsf(tau) > atau) {
+            return dist + cos_v * atau - safe_radius;
+        }
+        return dist + cos_v * fabsf(tau) - safe_radius;
+    }
+
+    if (cbf_type == 2 && dot < 0.0f) {
+        float px = dx + dvx * atau;
+        float py = dy + dvy * atau;
+        return sqrtf(px * px + py * py) - safe_radius;
+    }
+
+    return dist - safe_radius;
+}
+
 extern "C" __global__ void omni_costs(
     const float *initial_state,
     const float *controls,
@@ -49,6 +90,8 @@ extern "C" __global__ void omni_costs(
     float obstacle_weight,
     float cbf_weight,
     float cbf_alpha,
+    int cbf_type,
+    float atau,
     float robot_radius,
     float safety_dist
 ) {
@@ -60,6 +103,8 @@ extern "C" __global__ void omni_costs(
     float x = initial_state[0];
     float y = initial_state[1];
     float theta = initial_state[2];
+    float robot_world_vx = initial_state[3] * cosf(theta) - initial_state[4] * sinf(theta);
+    float robot_world_vy = initial_state[3] * sinf(theta) + initial_state[4] * cosf(theta);
     float prev_u0 = previous_control[0];
     float prev_u1 = previous_control[1];
     float prev_u2 = previous_control[2];
@@ -90,6 +135,8 @@ extern "C" __global__ void omni_costs(
             float ox = obstacles[obs_offset];
             float oy = obstacles[obs_offset + 1];
             float radius = obstacles[obs_offset + 2];
+            float obs_vx = obstacles[obs_offset + 5];
+            float obs_vy = obstacles[obs_offset + 6];
 
             float dx = x - ox;
             float dy = y - oy;
@@ -100,13 +147,45 @@ extern "C" __global__ void omni_costs(
             }
 
             if (cbf_weight > 0.0f) {
-                float old_dx = old_x - ox;
-                float old_dy = old_y - oy;
-                float h = sqrtf(old_dx * old_dx + old_dy * old_dy) - radius - robot_radius - safety_dist;
-                float h_next = clearance - safety_dist;
-                float cbf_violation = -(h_next - h + cbf_alpha * h);
+                float old_obs_x = ox;
+                float old_obs_y = oy;
+                float next_obs_x = ox + obs_vx * dt;
+                float next_obs_y = oy + obs_vy * dt;
+                float next_robot_world_vx = vx * cos_theta - vy * sin_theta;
+                float next_robot_world_vy = vx * sin_theta + vy * cos_theta;
+                float h = barrier_distance(
+                    cbf_type,
+                    old_x,
+                    old_y,
+                    robot_world_vx,
+                    robot_world_vy,
+                    old_obs_x,
+                    old_obs_y,
+                    obs_vx,
+                    obs_vy,
+                    radius,
+                    robot_radius,
+                    safety_dist,
+                    atau
+                );
+                float h_next = barrier_distance(
+                    cbf_type,
+                    x,
+                    y,
+                    next_robot_world_vx,
+                    next_robot_world_vy,
+                    next_obs_x,
+                    next_obs_y,
+                    obs_vx,
+                    obs_vy,
+                    radius,
+                    robot_radius,
+                    safety_dist,
+                    atau
+                );
+                float cbf_violation = cbf_type == 3 ? -h : -h_next + cbf_alpha * h;
                 if (cbf_violation > 0.0f) {
-                    cost += cbf_weight * cbf_violation * cbf_violation;
+                    cost += cbf_weight * cbf_violation;
                 }
             }
         }
@@ -114,6 +193,8 @@ extern "C" __global__ void omni_costs(
         prev_u0 = vx;
         prev_u1 = vy;
         prev_u2 = wz;
+        robot_world_vx = vx * cos_theta - vy * sin_theta;
+        robot_world_vy = vx * sin_theta + vy * cos_theta;
     }
 
     float xy0 = x - goal[0];
@@ -145,6 +226,8 @@ class MppiOmniCuda:
         obstacle_weight: float = 25.0,
         cbf_weight: float = 0.0,
         cbf_alpha: float = 0.1,
+        cbf_type: int = 0,
+        atau: float = 0.0,
         robot_radius: float = 0.6,
         safety_dist: float = 0.3,
         draw_num_traj: int = 50,
@@ -164,6 +247,8 @@ class MppiOmniCuda:
         self.obstacle_weight = float(obstacle_weight)
         self.cbf_weight = float(cbf_weight)
         self.cbf_alpha = float(cbf_alpha)
+        self.cbf_type = int(cbf_type)
+        self.atau = float(atau)
         self.robot_radius = float(robot_radius)
         self.safety_dist = float(safety_dist)
         self.draw_num_traj = min(int(draw_num_traj), self.num_samples)
@@ -205,6 +290,8 @@ class MppiOmniCuda:
             obstacle_weight=float(overrides.get("obstacle_weight", mppi.get("obstacle_weight", 25.0))),
             cbf_weight=float(overrides.get("cbf_weight", mppi.get("cbf_weight", 0.0))),
             cbf_alpha=float(overrides.get("cbf_alpha", cbf.get("dcbf_alpha", 0.1))),
+            cbf_type=int(overrides.get("cbf_type", cbf.get("type", 0))),
+            atau=float(overrides.get("atau", cbf.get("atau", 0.0))),
             robot_radius=float(robot["radius"]),
             safety_dist=float(robot["safety_dist"]),
             draw_num_traj=int(mppi["draw_num_traj"]),
@@ -276,6 +363,8 @@ class MppiOmniCuda:
             np.float32(self.obstacle_weight),
             np.float32(self.cbf_weight),
             np.float32(self.cbf_alpha),
+            np.int32(self.cbf_type),
+            np.float32(self.atau),
             np.float32(self.robot_radius),
             np.float32(self.safety_dist),
             block=(self.block_dim, 1, 1),

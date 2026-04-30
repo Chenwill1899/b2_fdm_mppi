@@ -510,3 +510,44 @@ results/sim_results/b2_omni_nominal_2026-04-30_13-54-40/
   - `trajectory.csv`
   - `controls.csv`
 - Conclusion: the current Stage 1 runtime is CUDA-backed B2 omni MPPI with a CBF penalty cost. It is not a full soft/slack RCBF implementation yet.
+
+### 2026-04-30: RCBF-Style Barrier Integration and Tuning
+
+- Goal: replace the plain CUDA CBF penalty with the old project's RCBF-style relative-velocity barrier modes and tune the Stage 1 B2 omni scene.
+- Implementation:
+  - Extended `MppiOmniCuda` with `cbf.type` and `cbf.atau`.
+  - Ported old barrier modes into the omni CUDA kernel:
+    - `type=1`: cosine relative-velocity lookahead barrier (`h_csx` style).
+    - `type=2`: direct relative-velocity lookahead barrier (`h_ex` style).
+    - `type=3`: distance-constraint barrier.
+  - The default config remains `cbf.type: 1`.
+  - Added regression test proving an approaching obstacle is penalized more than an equally distant static obstacle.
+- Tuning decision:
+  - `num_trajectories=4096`: success, high safety, but mean runtime rose to about `12 ms`.
+  - `num_trajectories=2048`: success, better runtime, but still not materially better than 1024.
+  - `num_trajectories=1024` plus `minimum_distance=0.45`: best balance for this scene.
+- Formal run:
+
+```bash
+python3 tools/run_omni_mppi.py --config config/b2_omni_nominal.yaml --seed 123
+```
+
+- Result directory:
+
+```text
+results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
+```
+
+- Metrics:
+  - `success: true`
+  - `steps: 144`
+  - `final_distance: 0.34110841155052185`
+  - `path_length: 18.318750381469727`
+  - `arrival_time: 14.4`
+  - `mean_mppi_time_ms: 4.540036122004191`
+  - `max_mppi_time_ms: 11.853933334350586`
+  - `min_obstacle_clearance: 0.4714846611022949`
+- Verification:
+  - `python3 -m pytest -q`
+  - result: `40 passed in 2.02s`
+- Conclusion: Stage 1 now has a tuned CUDA B2 omni MPPI controller with RCBF-style relative-velocity barrier cost. This is still a cost-based barrier, not the old soft/slack RCBF optimizer.

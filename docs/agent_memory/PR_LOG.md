@@ -248,3 +248,34 @@ animation.gif: saved, 665K
   - Add CUDA rollout/cost tests and CBF-cost behavior test.
   - Change formal result naming to `b2_omni_nominal_<timestamp>` instead of overwriting `b2_omni_nominal_latest`.
 - Note: CBF is currently a CUDA cost penalty using discrete barrier decrease. It is not yet the old soft/slack RCBF formulation.
+
+## PR #3 Follow-up: RCBF-Style Barrier Tuning
+
+- Repository: `Chenwill1899/b2_fdm_mppi`
+- Base branch: `feature/omni-mppi-numpy`
+- Head branch: `feature/omni-mppi-runner`
+- Suggested title update: `[MPPI] feat: add omni runner, CUDA backend, and RCBF cost`
+- Current verification:
+
+```text
+python3 -m pytest -q
+40 passed in 2.02s
+```
+
+- Real run:
+
+```text
+results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
+success: true
+final_distance: 0.34110841155052185
+mean_mppi_time_ms: 4.540036122004191
+max_mppi_time_ms: 11.853933334350586
+min_obstacle_clearance: 0.4714846611022949
+```
+
+- Added scope:
+  - Port old `cbf.type` barrier modes into `MppiOmniCuda`.
+  - Support `cbf.type=1` cosine relative-velocity lookahead, `type=2` direct lookahead, and `type=3` distance constraint.
+  - Add regression coverage that an approaching obstacle costs more than a static obstacle at the same distance.
+  - Tune formal config to `num_trajectories=1024` and `simulation.minimum_distance=0.45`.
+- Note: This is RCBF-style cost integration. Full soft/slack RCBF remains future work.

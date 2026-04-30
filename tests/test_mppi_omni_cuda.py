@@ -61,3 +61,32 @@ def test_cuda_omni_cbf_cost_penalizes_decreasing_barrier():
     costs = controller.trajectory_cost_batch(state, controls, goal, obstacles)
 
     assert costs[0] > costs[1]
+
+
+def test_cuda_omni_rcbf_penalizes_approaching_obstacle_more_than_static():
+    from b2_fdm_mppi.controllers.mppi_omni_cuda import MppiOmniCuda
+
+    config = make_config()
+    config["mppi"]["cbf_weight"] = 500.0
+    config["mppi"]["obstacle_weight"] = 0.0
+    config["mppi"]["control_weight"] = 0.0
+    config["mppi"]["smooth_weight"] = 0.0
+    config["cbf"]["type"] = 1
+    config["cbf"]["atau"] = 0.2
+    controller = MppiOmniCuda.from_config(config, seed=1)
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([3.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    controls = np.array(
+        [
+            [[0.2, 0.0, 0.0], [0.2, 0.0, 0.0], [0.2, 0.0, 0.0]],
+        ],
+        dtype=np.float32,
+    )
+
+    static_obstacle = np.array([[1.4, 0.0, 0.05, 0.0, 0.0, 0.0, 0.0]], dtype=np.float32)
+    approaching_obstacle = np.array([[1.4, 0.0, 0.05, 0.0, 0.0, -2.0, 0.0]], dtype=np.float32)
+
+    static_cost = controller.trajectory_cost_batch(state, controls, goal, static_obstacle)[0]
+    approaching_cost = controller.trajectory_cost_batch(state, controls, goal, approaching_obstacle)[0]
+
+    assert approaching_cost > static_cost
