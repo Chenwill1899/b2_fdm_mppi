@@ -70,6 +70,10 @@ class OmniMppiSimulationRunner:
         self.init_pose = np.copy(self.state)
         self.goal = np.asarray(sim["goal"], dtype=np.float32)
         self.obstacles = np.asarray(config["obstacles"].get("virtual", []), dtype=np.float32).reshape(-1, 7)
+        execution_cfg = config.get("execution", {})
+        self.filter_enabled = bool(execution_cfg.get("filter_enabled", False))
+        self.filter_alpha = float(execution_cfg.get("filter_alpha", 0.0))
+        self.filter_alpha = float(np.clip(self.filter_alpha, 0.0, 1.0))
         self.robot = OmniB2(
             self.dt,
             float(robot_cfg["max_vx"]),
@@ -83,6 +87,8 @@ class OmniMppiSimulationRunner:
         self.results_path = create_results_path(config["results"])
         self.state_history: list[np.ndarray] = []
         self.control_history: list[np.ndarray] = []
+        self.raw_control_history: list[np.ndarray] = []
+        self.previous_exec_control = np.zeros(3, dtype=np.float32)
         self.mppi_time_history: list[float] = []
         self.min_cost_history: list[float] = []
         self.optimal_u_history: list[np.ndarray] = []
@@ -109,14 +115,16 @@ class OmniMppiSimulationRunner:
 
     def step(self) -> np.ndarray:
         start = time.time()
-        u, optimal_u, sample_u, _normalizer, min_cost = self.controller.compute_control(
+        raw_u, optimal_u, sample_u, _normalizer, min_cost = self.controller.compute_control(
             self.state,
             [None, None, None, self.goal, self.obstacles, len(self.obstacles)],
         )
         elapsed_ms = (time.time() - start) * 1000.0
-        u = np.asarray(u, dtype=np.float32)
+        raw_u = np.asarray(raw_u, dtype=np.float32)
+        u = self._execution_control(raw_u)
 
         self.state_history.append(np.copy(self.state))
+        self.raw_control_history.append(np.copy(raw_u))
         self.control_history.append(np.copy(u))
         self.mppi_time_history.append(float(elapsed_ms))
         self.min_cost_history.append(float(min_cost))
@@ -128,6 +136,14 @@ class OmniMppiSimulationRunner:
             return u
         self.state = self.robot.update_state(self.state, u)
         return u
+
+    def _execution_control(self, raw_u: np.ndarray) -> np.ndarray:
+        if not self.filter_enabled:
+            self.previous_exec_control = np.asarray(raw_u, dtype=np.float32).copy()
+            return self.previous_exec_control.copy()
+        filtered = self.filter_alpha * self.previous_exec_control + (1.0 - self.filter_alpha) * raw_u
+        self.previous_exec_control = np.asarray(filtered, dtype=np.float32)
+        return self.previous_exec_control.copy()
 
     def _summary_metrics(self) -> dict:
         final_distance = float(np.linalg.norm(self.goal[:2] - self.state[:2]))
@@ -149,12 +165,16 @@ class OmniMppiSimulationRunner:
             "mean_mppi_time_ms": mean_time,
             "max_mppi_time_ms": max_time,
             "min_obstacle_clearance": self._min_obstacle_clearance(),
+            "controls_csv": "executed_controls",
+            "raw_controls_csv": "raw_controls",
+            **self._control_metrics(),
         }
 
     def _save_results(self) -> None:
         self._save_config()
         self._save_trajectory()
         self._save_controls()
+        self._save_raw_controls()
         self._save_obstacles()
         pd.DataFrame({"mppi_time_ms": self.mppi_time_history}).to_csv(
             self.results_path / "time_results.csv", index=False
@@ -200,6 +220,12 @@ class OmniMppiSimulationRunner:
         for idx, control in enumerate(self.control_history):
             rows.append({"step": idx, "vx_cmd": control[0], "vy_cmd": control[1], "wz_cmd": control[2]})
         pd.DataFrame(rows).to_csv(self.results_path / "controls.csv", index=False)
+
+    def _save_raw_controls(self) -> None:
+        rows = []
+        for idx, control in enumerate(self.raw_control_history):
+            rows.append({"step": idx, "vx_cmd": control[0], "vy_cmd": control[1], "wz_cmd": control[2]})
+        pd.DataFrame(rows).to_csv(self.results_path / "raw_controls.csv", index=False)
 
     def _save_obstacles(self) -> None:
         rows = []
@@ -338,6 +364,51 @@ class OmniMppiSimulationRunner:
             )
             min_clearance = min(min_clearance, float(np.min(clearance)))
         return min_clearance
+
+    def _control_metrics(self) -> dict:
+        if not self.control_history:
+            return {
+                "control_smoothness": 0.0,
+                "smooth_vx": 0.0,
+                "smooth_vy": 0.0,
+                "smooth_wz": 0.0,
+                "control_jerk": 0.0,
+                "jerk_vx": 0.0,
+                "jerk_vy": 0.0,
+                "jerk_wz": 0.0,
+                "vx_variance": 0.0,
+                "vy_variance": 0.0,
+                "wz_variance": 0.0,
+            }
+        controls = np.asarray(self.control_history, dtype=np.float64)
+        variances = np.var(controls, axis=0)
+        if len(controls) >= 2:
+            deltas = np.diff(controls, axis=0)
+            smooth_by_channel = np.mean(deltas * deltas, axis=0)
+            smoothness = float(np.mean(np.sum(deltas * deltas, axis=1)))
+        else:
+            smooth_by_channel = np.zeros(3, dtype=np.float64)
+            smoothness = 0.0
+        if len(controls) >= 3:
+            jerks = controls[2:] - 2.0 * controls[1:-1] + controls[:-2]
+            jerk_by_channel = np.mean(jerks * jerks, axis=0)
+            jerk = float(np.mean(np.sum(jerks * jerks, axis=1)))
+        else:
+            jerk_by_channel = np.zeros(3, dtype=np.float64)
+            jerk = 0.0
+        return {
+            "control_smoothness": smoothness,
+            "smooth_vx": float(smooth_by_channel[0]),
+            "smooth_vy": float(smooth_by_channel[1]),
+            "smooth_wz": float(smooth_by_channel[2]),
+            "control_jerk": jerk,
+            "jerk_vx": float(jerk_by_channel[0]),
+            "jerk_vy": float(jerk_by_channel[1]),
+            "jerk_wz": float(jerk_by_channel[2]),
+            "vx_variance": float(variances[0]),
+            "vy_variance": float(variances[1]),
+            "wz_variance": float(variances[2]),
+        }
 
     def _default_controller_factory(self, *, config: dict, runner: "OmniMppiSimulationRunner") -> object:
         return create_omni_controller(config, seed=123)

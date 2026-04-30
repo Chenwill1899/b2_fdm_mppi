@@ -147,7 +147,7 @@ def test_omni_mppi_from_config_loads_smooth_weight():
 
     controller = MppiOmniNumpy.from_config(config, seed=4)
 
-    assert controller.smooth_weight == pytest.approx(2.0)
+    assert controller.smooth_weight == pytest.approx(1.5)
 
 
 def test_omni_mppi_closed_loop_moves_toward_unobstructed_goal():

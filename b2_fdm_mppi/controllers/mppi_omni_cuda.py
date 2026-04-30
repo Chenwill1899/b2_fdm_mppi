@@ -274,6 +274,10 @@ class MppiOmniCuda:
         sampling_rate = float(sim["sampling_rate"])
         dt = 1.0 / sampling_rate
         horizon_steps = int(float(sim["time_horizon"]) * sampling_rate)
+        cbf_enabled = bool(cbf.get("enabled", True))
+        cbf_weight = float(overrides.get("cbf_weight", mppi.get("cbf_weight", 0.0)))
+        if not cbf_enabled:
+            cbf_weight = 0.0
         return cls(
             dt=dt,
             horizon_steps=horizon_steps,
@@ -288,7 +292,7 @@ class MppiOmniCuda:
             control_weight=float(overrides.get("control_weight", mppi.get("control_weight", 0.01))),
             smooth_weight=float(overrides.get("smooth_weight", mppi.get("smooth_weight", 0.2))),
             obstacle_weight=float(overrides.get("obstacle_weight", mppi.get("obstacle_weight", 25.0))),
-            cbf_weight=float(overrides.get("cbf_weight", mppi.get("cbf_weight", 0.0))),
+            cbf_weight=cbf_weight,
             cbf_alpha=float(overrides.get("cbf_alpha", cbf.get("dcbf_alpha", 0.1))),
             cbf_type=int(overrides.get("cbf_type", cbf.get("type", 0))),
             atau=float(overrides.get("atau", cbf.get("atau", 0.0))),
