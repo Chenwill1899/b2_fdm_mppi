@@ -14,6 +14,8 @@ import yaml
 
 from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
 from b2_fdm_mppi.core.omni_b2 import OmniB2
+from b2_fdm_mppi.core.residual_world import ResidualWorld
+from b2_fdm_mppi.core.terrain import TerrainField
 from b2_fdm_mppi.simulation.results_path import create_results_path
 from b2_fdm_mppi.visualization.utils import map_axis_limits
 
@@ -69,6 +71,9 @@ class OmniMppiSimulationRunner:
         self.state = np.asarray(sim["initial_state"], dtype=np.float32)
         self.init_pose = np.copy(self.state)
         self.goal = np.asarray(sim["goal"], dtype=np.float32)
+        self.world_mode = str(sim.get("world_mode", "nominal")).lower()
+        if self.world_mode not in {"nominal", "oracle"}:
+            raise ValueError(f"Unsupported simulation.world_mode: {self.world_mode}")
         self.obstacles = np.asarray(config["obstacles"].get("virtual", []), dtype=np.float32).reshape(-1, 7)
         execution_cfg = config.get("execution", {})
         self.filter_enabled = bool(execution_cfg.get("filter_enabled", False))
@@ -93,6 +98,12 @@ class OmniMppiSimulationRunner:
             float(robot_cfg["max_vy"]),
             float(robot_cfg["max_wz"]),
         )
+        self.terrain = TerrainField.from_config(config.get("terrain"))
+        self.oracle_world = ResidualWorld.from_config(
+            config.get("oracle_residual"),
+            model=self.robot,
+            terrain=self.terrain,
+        )
         self.controller = (controller_factory or self._default_controller_factory)(
             config=config,
             runner=self,
@@ -101,6 +112,10 @@ class OmniMppiSimulationRunner:
         self.state_history: list[np.ndarray] = []
         self.control_history: list[np.ndarray] = []
         self.raw_control_history: list[np.ndarray] = []
+        self.cmd_control_history: list[np.ndarray] = []
+        self.residual_history: list[np.ndarray] = []
+        self.terrain_history: list[np.ndarray] = []
+        self.terrain_risk_history: list[float] = []
         self.previous_exec_control = np.zeros(3, dtype=np.float32)
         self.mppi_time_history: list[float] = []
         self.min_cost_history: list[float] = []
@@ -134,21 +149,43 @@ class OmniMppiSimulationRunner:
         )
         elapsed_ms = (time.time() - start) * 1000.0
         raw_u = np.asarray(raw_u, dtype=np.float32)
-        u = self._execution_control(raw_u)
+        u_cmd = self._execution_control(raw_u)
+
+        if self.world_mode == "oracle":
+            next_state, u_real, delta_u, terrain_features = self.oracle_world.update_state(self.state, u_cmd)
+            terrain_risk = self.terrain.risk_cost(
+                float(self.state[0]),
+                float(self.state[1]),
+                features=terrain_features,
+            )
+        else:
+            terrain_features = self.terrain.feature(float(self.state[0]), float(self.state[1]))
+            terrain_risk = self.terrain.risk_cost(
+                float(self.state[0]),
+                float(self.state[1]),
+                features=terrain_features,
+            )
+            u_real = u_cmd
+            delta_u = np.zeros(3, dtype=np.float32)
+            next_state = self.robot.update_state(self.state, u_real)
 
         self.state_history.append(np.copy(self.state))
         self.raw_control_history.append(np.copy(raw_u))
-        self.control_history.append(np.copy(u))
+        self.cmd_control_history.append(np.copy(u_cmd))
+        self.control_history.append(np.copy(u_real))
+        self.residual_history.append(np.copy(delta_u))
+        self.terrain_history.append(np.copy(terrain_features))
+        self.terrain_risk_history.append(float(terrain_risk))
         self.mppi_time_history.append(float(elapsed_ms))
         self.min_cost_history.append(float(min_cost))
         self.optimal_u_history.append(np.copy(optimal_u))
         self.sample_u_history.append(np.copy(sample_u))
 
-        if np.isnan(np.sum(self.state)) or np.isnan(np.sum(u)):
+        if np.isnan(np.sum(self.state)) or np.isnan(np.sum(u_real)) or np.isnan(np.sum(next_state)):
             self.failed = True
-            return u
-        self.state = self.robot.update_state(self.state, u)
-        return u
+            return u_real
+        self.state = next_state
+        return u_real
 
     def _execution_control(self, raw_u: np.ndarray) -> np.ndarray:
         if not self.filter_enabled:
@@ -164,7 +201,17 @@ class OmniMppiSimulationRunner:
         mean_time = float(np.mean(self.mppi_time_history)) if self.mppi_time_history else 0.0
         max_time = float(np.max(self.mppi_time_history)) if self.mppi_time_history else 0.0
         success = goal_reached_xy(self.state, self.goal, self.minimum_distance)
+        residual_norms = (
+            np.linalg.norm(np.asarray(self.residual_history, dtype=np.float32), axis=1)
+            if self.residual_history
+            else np.zeros(0, dtype=np.float32)
+        )
+        mean_residual = float(np.mean(residual_norms)) if residual_norms.size else 0.0
+        max_residual = float(np.max(residual_norms)) if residual_norms.size else 0.0
+        mean_terrain = float(np.mean(self.terrain_risk_history)) if self.terrain_risk_history else 0.0
+        max_terrain = float(np.max(self.terrain_risk_history)) if self.terrain_risk_history else 0.0
         return {
+            "world_mode": self.world_mode,
             "success": success,
             "reached_goal": success,
             "failed": self.failed,
@@ -180,6 +227,12 @@ class OmniMppiSimulationRunner:
             "min_obstacle_clearance": self._min_obstacle_clearance(),
             "controls_csv": "executed_controls",
             "raw_controls_csv": "raw_controls",
+            "mean_residual_norm": mean_residual,
+            "max_residual_norm": max_residual,
+            "mean_cmd_real_error": mean_residual,
+            "max_cmd_real_error": max_residual,
+            "mean_terrain_risk": mean_terrain,
+            "max_terrain_risk": max_terrain,
             **self._control_metrics(),
             **self._sample_coverage_metrics(),
         }
@@ -189,6 +242,8 @@ class OmniMppiSimulationRunner:
         self._save_trajectory()
         self._save_controls()
         self._save_raw_controls()
+        self._save_residuals()
+        self._save_terrain()
         self._save_obstacles()
         pd.DataFrame({"mppi_time_ms": self.mppi_time_history}).to_csv(
             self.results_path / "time_results.csv", index=False
@@ -240,6 +295,48 @@ class OmniMppiSimulationRunner:
         for idx, control in enumerate(self.raw_control_history):
             rows.append({"step": idx, "vx_cmd": control[0], "vy_cmd": control[1], "wz_cmd": control[2]})
         pd.DataFrame(rows).to_csv(self.results_path / "raw_controls.csv", index=False)
+
+    def _save_residuals(self) -> None:
+        rows = []
+        for idx, (cmd, real, delta) in enumerate(
+            zip(self.cmd_control_history, self.control_history, self.residual_history)
+        ):
+            du_norm = float(np.linalg.norm(delta))
+            rows.append(
+                {
+                    "step": idx,
+                    "cmd_vx": cmd[0],
+                    "cmd_vy": cmd[1],
+                    "cmd_wz": cmd[2],
+                    "real_vx": real[0],
+                    "real_vy": real[1],
+                    "real_wz": real[2],
+                    "du_vx": delta[0],
+                    "du_vy": delta[1],
+                    "du_wz": delta[2],
+                    "du_norm": du_norm,
+                }
+            )
+        pd.DataFrame(rows).to_csv(self.results_path / "residuals.csv", index=False)
+
+    def _save_terrain(self) -> None:
+        rows = []
+        for idx, (state, features, risk) in enumerate(
+            zip(self.state_history, self.terrain_history, self.terrain_risk_history)
+        ):
+            rows.append(
+                {
+                    "step": idx,
+                    "x": state[0],
+                    "y": state[1],
+                    "slope_f": features[0],
+                    "slope_l": features[1],
+                    "roughness": features[2],
+                    "friction": features[3],
+                    "risk_cost": risk,
+                }
+            )
+        pd.DataFrame(rows).to_csv(self.results_path / "terrain.csv", index=False)
 
     def _save_obstacles(self) -> None:
         rows = []

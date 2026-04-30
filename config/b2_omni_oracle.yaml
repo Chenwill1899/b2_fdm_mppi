@@ -1,0 +1,97 @@
+# Stage 2 oracle residual world configuration.
+b2_fdm_mppi:
+  ros__parameters:
+    config_file: ""
+
+simulation:
+  sampling_rate: 10.0
+  time_horizon: 2.5
+  goal: [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  initial_state: [0.01, 0.01, 0.0, 0.0, 0.0, 0.0]
+  minimum_distance: 0.45
+  max_steps: 400
+  without_heading: true
+  print_out: false
+  world_mode: oracle
+
+mppi:
+  backend: cuda
+  state_dim: 6
+  control_dim: 3
+  num_trajectories: 1024
+  draw_num_traj: 50
+  exploration_variance: 1200.0
+  weights: [2.5, 2.5, 0.5, 0.0, 0.0, 0.0]
+  dist_type: 2
+  std_normal: [0.22, 0.16, 0.16]
+  std_slack: 0.1
+  lambda: 0.7
+  obstacle_weight: 300.0
+  obstacle_soft_weight: 0.5
+  obstacle_influence_dist: 1.2
+  cbf_weight: 0.0
+  control_weight: 0.02
+  smooth_weight: 1.0
+  lateral_weight: 0.2
+  yaw_rate_weight: 0.05
+  accel_weight: 0.45
+  jerk_weight: 0.0
+  beta_1: 0.5
+  beta_2: 0.8
+  beta_3: 0.5
+  sg_window: 51
+  sg_poly_order: 3
+  soft_cbf: false
+
+robot:
+  state_dim: 6
+  max_vx: 1.5
+  max_vy: 0.4
+  max_wz: 0.7
+  max_ax: 0.8
+  max_ay: 0.35
+  max_awz: 0.8
+  velocity_lag_beta: 0.35
+  radius: 0.6
+  safety_dist: 0.5
+  obstacle_state_num: 7
+
+cbf:
+  enabled: false
+  type: 0
+  dcbf_alpha: 0.1
+  dcbf_weight: 1000000.0
+  slack_weight: 100.0
+  check_dist: 6.0
+  max_slack_vari: 1.0
+  atau: 0.2
+
+obstacles:
+  num_max: 5
+  static_enabled: true
+  virtual:
+    - [6.0, 0.5, 0.4, 0.0, 0.0, 0.0, 0.0]
+    - [12.0, -1.0, 0.4, 0.0, 0.0, 0.0, 0.0]
+
+results:
+  root: "./results/sim_results"
+  run_name: "b2_omni_oracle"
+  timestamp_suffix: true
+  overwrite: false
+  enable_plots: true
+  enable_animation: true
+
+execution:
+  filter_enabled: false
+  filter_alpha: 0.0
+
+terrain:
+  enabled: true
+
+oracle_residual:
+  enabled: true
+  alpha: 0.35
+  residual_scale: 0.5
+  noise_std: 0.02
+  max_residual_ratio: 0.4
+  seed: 123
