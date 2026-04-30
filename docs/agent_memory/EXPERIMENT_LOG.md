@@ -604,3 +604,52 @@ results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
   - `python3 -m pytest -q`
   - result: `43 passed in 2.56s`
 - Conclusion: Stage 1.5 preserves success, final distance, runtime, and clearance while reducing computed control smoothness by about `90.7%` and control jerk by about `94.4%`. No FDM or oracle residual world changes were made.
+
+### 2026-04-30: Stage 1.5 Pure SE2 vs Kinodynamic Baselines
+
+- Goal: finalize Stage 1.5 nominal MPPI controls before Stage 2 oracle residual world work.
+- Scope exclusions: no oracle residual world, no FDM dataset, no FDM training, no FDM-MPPI integration.
+- Changes:
+  - Added `config/b2_omni_pure_se2.yaml` as the weak pure SE(2)-MPPI baseline.
+  - Added `config/b2_omni_kinodynamic.yaml` as the main kinodynamic nominal baseline.
+  - Both configs keep `cbf.enabled=false`, `mppi.cbf_weight=0.0`, and execution filtering disabled.
+  - Added far-field static obstacle potential with `mppi.obstacle_soft_weight` and `mppi.obstacle_influence_dist`.
+  - Added sampling coverage summary metrics:
+    - `sample_terminal_y_std_mean`
+    - `sample_terminal_y_range_mean`
+    - `sample_terminal_spread_mean`
+    - `sample_terminal_x_range_mean`
+  - Animation sampled and optimized rollouts now use the same kinodynamic rollout response model.
+- Verification:
+  - `python3 -m pytest -q`
+  - result: `52 passed in 2.18s`
+- Pure SE2 run:
+  - Command: `python3 tools/run_omni_mppi.py --config config/b2_omni_pure_se2.yaml --seed 123`
+  - Result: `results/sim_results/b2_omni_pure_se2_2026-04-30_16-26-22/`
+  - `success: true`
+  - `final_distance: 0.34273529052734375`
+  - `min_obstacle_clearance: 0.48917269706726074`
+  - `mean_mppi_time_ms: 4.515667484231191`
+  - `control_smoothness: 0.1382118749747343`
+  - `control_jerk: 0.3336636216416364`
+  - `sample_terminal_y_std_mean: 0.0908367551911449`
+  - `sample_terminal_y_range_mean: 0.42170131142723233`
+  - `sample_terminal_spread_mean: 0.11228468836481957`
+  - `sample_terminal_x_range_mean: 0.3947257046421913`
+- Kinodynamic run:
+  - Command: `python3 tools/run_omni_mppi.py --config config/b2_omni_kinodynamic.yaml --seed 123`
+  - Result: `results/sim_results/b2_omni_kinodynamic_2026-04-30_16-27-08/`
+  - `success: true`
+  - `final_distance: 0.3254147171974182`
+  - `min_obstacle_clearance: 1.302788257598877`
+  - `mean_mppi_time_ms: 4.605328225340519`
+  - `control_smoothness: 0.012360351873633395`
+  - `control_jerk: 0.015468352090701201`
+  - `acceleration_cost: 234.84668559903452`
+  - `lateral_usage: 0.048483854998728086`
+  - `yaw_rate_usage: 0.04249369600847192`
+  - `sample_terminal_y_std_mean: 0.1175942634262934`
+  - `sample_terminal_y_range_mean: 0.5386991505035692`
+  - `sample_terminal_spread_mean: 0.15318969119647644`
+  - `sample_terminal_x_range_mean: 0.5618406619232986`
+- Conclusion: Kinodynamic remains within acceptance thresholds, removes execution-side double low-pass filtering, improves smoothness over Pure SE2, and increases sampled terminal spread for less concentrated prediction rollouts.

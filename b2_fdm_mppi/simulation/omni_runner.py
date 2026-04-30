@@ -74,6 +74,19 @@ class OmniMppiSimulationRunner:
         self.filter_enabled = bool(execution_cfg.get("filter_enabled", False))
         self.filter_alpha = float(execution_cfg.get("filter_alpha", 0.0))
         self.filter_alpha = float(np.clip(self.filter_alpha, 0.0, 1.0))
+        self.rollout_max_control = np.asarray(
+            [robot_cfg["max_vx"], robot_cfg["max_vy"], robot_cfg["max_wz"]],
+            dtype=np.float32,
+        )
+        self.rollout_max_accel = np.asarray(
+            [
+                robot_cfg.get("max_ax", 1000.0),
+                robot_cfg.get("max_ay", 1000.0),
+                robot_cfg.get("max_awz", 1000.0),
+            ],
+            dtype=np.float32,
+        )
+        self.rollout_velocity_lag_beta = float(np.clip(robot_cfg.get("velocity_lag_beta", 0.0), 0.0, 1.0))
         self.robot = OmniB2(
             self.dt,
             float(robot_cfg["max_vx"]),
@@ -168,6 +181,7 @@ class OmniMppiSimulationRunner:
             "controls_csv": "executed_controls",
             "raw_controls_csv": "raw_controls",
             **self._control_metrics(),
+            **self._sample_coverage_metrics(),
         }
 
     def _save_results(self) -> None:
@@ -318,9 +332,16 @@ class OmniMppiSimulationRunner:
     def _predict_trajectory(self, state: np.ndarray, controls: np.ndarray) -> np.ndarray:
         predicted = [np.asarray(state, dtype=np.float32).copy()]
         rollout_state = predicted[0].copy()
-        for control in controls:
+        prev_real = rollout_state[3:].copy()
+        max_delta = self.rollout_max_accel * self.dt
+        for command in controls:
+            command = np.clip(np.asarray(command, dtype=np.float32), -self.rollout_max_control, self.rollout_max_control)
+            lagged = self.rollout_velocity_lag_beta * prev_real + (1.0 - self.rollout_velocity_lag_beta) * command
+            delta = np.clip(lagged - prev_real, -max_delta, max_delta)
+            control = np.clip(prev_real + delta, -self.rollout_max_control, self.rollout_max_control)
             rollout_state = self.robot.update_state(rollout_state, control)
             predicted.append(rollout_state.copy())
+            prev_real = control
         return np.asarray(predicted, dtype=np.float32)
 
     def _draw_obstacles(self, ax) -> None:
@@ -417,6 +438,45 @@ class OmniMppiSimulationRunner:
             "vx_variance": float(variances[0]),
             "vy_variance": float(variances[1]),
             "wz_variance": float(variances[2]),
+        }
+
+    def _sample_coverage_metrics(self) -> dict:
+        empty = {
+            "sample_terminal_y_std_mean": 0.0,
+            "sample_terminal_y_range_mean": 0.0,
+            "sample_terminal_spread_mean": 0.0,
+            "sample_terminal_x_range_mean": 0.0,
+        }
+        if not self.sample_u_history or not self.state_history:
+            return empty
+        y_stds = []
+        y_ranges = []
+        spreads = []
+        x_ranges = []
+        for frame, sampled_controls in enumerate(self.sample_u_history):
+            if frame >= len(self.state_history) or len(sampled_controls) == 0:
+                continue
+            terminals = []
+            for control_sequence in sampled_controls:
+                predicted = self._predict_trajectory(self.state_history[frame], control_sequence)
+                terminals.append(predicted[-1, :2])
+            terminal_xy = np.asarray(terminals, dtype=np.float64)
+            if terminal_xy.size == 0:
+                continue
+            y_values = terminal_xy[:, 1]
+            x_values = terminal_xy[:, 0]
+            center = np.mean(terminal_xy, axis=0)
+            y_stds.append(float(np.std(y_values)))
+            y_ranges.append(float(np.max(y_values) - np.min(y_values)))
+            x_ranges.append(float(np.max(x_values) - np.min(x_values)))
+            spreads.append(float(np.mean(np.linalg.norm(terminal_xy - center[None, :], axis=1))))
+        if not y_stds:
+            return empty
+        return {
+            "sample_terminal_y_std_mean": float(np.mean(y_stds)),
+            "sample_terminal_y_range_mean": float(np.mean(y_ranges)),
+            "sample_terminal_spread_mean": float(np.mean(spreads)),
+            "sample_terminal_x_range_mean": float(np.mean(x_ranges)),
         }
 
     def _default_controller_factory(self, *, config: dict, runner: "OmniMppiSimulationRunner") -> object:

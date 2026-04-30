@@ -27,6 +27,7 @@ git branch
 
 ## Recent Commits
 
+- `feat: refine kinodynamic MPPI baseline` planned on `dev` for Stage 1.5 final baseline split and far-field static obstacle potential.
 - `feat: add kinodynamic omni rollout` on `dev`.
 - `2a085a8 feat: refine static obstacle MPPI smoothness metrics` cherry-picked onto `dev` from the accidental feature branch.
 - `8be8e73 fix: make animation non-fatal`

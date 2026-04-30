@@ -91,6 +91,8 @@ extern "C" __global__ void omni_costs(
     float yaw_rate_weight,
     float accel_weight,
     float obstacle_weight,
+    float obstacle_soft_weight,
+    float obstacle_influence_dist,
     float cbf_weight,
     float cbf_alpha,
     int cbf_type,
@@ -175,6 +177,15 @@ extern "C" __global__ void omni_costs(
             if (margin > 0.0f) {
                 cost += obstacle_weight * margin * margin;
             }
+            if (
+                obstacle_soft_weight > 0.0f
+                && obstacle_influence_dist > safety_dist
+                && clearance > safety_dist
+                && clearance < obstacle_influence_dist
+            ) {
+                float soft_margin = obstacle_influence_dist - clearance;
+                cost += obstacle_soft_weight * soft_margin * soft_margin;
+            }
 
             if (cbf_weight > 0.0f) {
                 float old_obs_x = ox;
@@ -257,6 +268,8 @@ class MppiOmniCuda:
         control_weight: float = 0.01,
         smooth_weight: float = 0.2,
         obstacle_weight: float = 25.0,
+        obstacle_soft_weight: float = 0.0,
+        obstacle_influence_dist: float = 0.0,
         max_ax: float = 1000.0,
         max_ay: float = 1000.0,
         max_awz: float = 1000.0,
@@ -285,6 +298,8 @@ class MppiOmniCuda:
         self.control_weight = float(control_weight)
         self.smooth_weight = float(smooth_weight)
         self.obstacle_weight = float(obstacle_weight)
+        self.obstacle_soft_weight = float(obstacle_soft_weight)
+        self.obstacle_influence_dist = float(obstacle_influence_dist)
         self.max_accel = np.asarray([max_ax, max_ay, max_awz], dtype=np.float32)
         self.velocity_lag_beta = float(np.clip(velocity_lag_beta, 0.0, 1.0))
         self.lateral_weight = float(lateral_weight)
@@ -337,6 +352,12 @@ class MppiOmniCuda:
             control_weight=float(overrides.get("control_weight", mppi.get("control_weight", 0.01))),
             smooth_weight=float(overrides.get("smooth_weight", mppi.get("smooth_weight", 0.2))),
             obstacle_weight=float(overrides.get("obstacle_weight", mppi.get("obstacle_weight", 25.0))),
+            obstacle_soft_weight=float(
+                overrides.get("obstacle_soft_weight", mppi.get("obstacle_soft_weight", 0.0))
+            ),
+            obstacle_influence_dist=float(
+                overrides.get("obstacle_influence_dist", mppi.get("obstacle_influence_dist", 0.0))
+            ),
             max_ax=float(overrides.get("max_ax", robot.get("max_ax", 1000.0))),
             max_ay=float(overrides.get("max_ay", robot.get("max_ay", 1000.0))),
             max_awz=float(overrides.get("max_awz", robot.get("max_awz", 1000.0))),
@@ -421,6 +442,8 @@ class MppiOmniCuda:
             np.float32(self.yaw_rate_weight),
             np.float32(self.accel_weight),
             np.float32(self.obstacle_weight),
+            np.float32(self.obstacle_soft_weight),
+            np.float32(self.obstacle_influence_dist),
             np.float32(self.cbf_weight),
             np.float32(self.cbf_alpha),
             np.int32(self.cbf_type),

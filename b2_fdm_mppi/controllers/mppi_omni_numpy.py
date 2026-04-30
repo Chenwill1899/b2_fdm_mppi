@@ -24,6 +24,8 @@ class MppiOmniNumpy:
         control_weight: float = 0.01,
         smooth_weight: float = 0.2,
         obstacle_weight: float = 25.0,
+        obstacle_soft_weight: float = 0.0,
+        obstacle_influence_dist: float = 0.0,
         max_ax: float = 1000.0,
         max_ay: float = 1000.0,
         max_awz: float = 1000.0,
@@ -47,6 +49,8 @@ class MppiOmniNumpy:
         self.control_weight = float(control_weight)
         self.smooth_weight = float(smooth_weight)
         self.obstacle_weight = float(obstacle_weight)
+        self.obstacle_soft_weight = float(obstacle_soft_weight)
+        self.obstacle_influence_dist = float(obstacle_influence_dist)
         self.max_accel = np.asarray([max_ax, max_ay, max_awz], dtype=np.float32)
         self.velocity_lag_beta = float(np.clip(velocity_lag_beta, 0.0, 1.0))
         self.lateral_weight = float(lateral_weight)
@@ -87,6 +91,12 @@ class MppiOmniNumpy:
             control_weight=float(overrides.get("control_weight", mppi.get("control_weight", 0.01))),
             smooth_weight=float(overrides.get("smooth_weight", mppi.get("smooth_weight", 0.2))),
             obstacle_weight=float(overrides.get("obstacle_weight", mppi.get("obstacle_weight", 25.0))),
+            obstacle_soft_weight=float(
+                overrides.get("obstacle_soft_weight", mppi.get("obstacle_soft_weight", 0.0))
+            ),
+            obstacle_influence_dist=float(
+                overrides.get("obstacle_influence_dist", mppi.get("obstacle_influence_dist", 0.0))
+            ),
             max_ax=float(overrides.get("max_ax", robot.get("max_ax", 1000.0))),
             max_ay=float(overrides.get("max_ay", robot.get("max_ay", 1000.0))),
             max_awz=float(overrides.get("max_awz", robot.get("max_awz", 1000.0))),
@@ -251,6 +261,11 @@ class MppiOmniNumpy:
             violations = margin[margin > 0.0]
             if violations.size:
                 total += self.obstacle_weight * float(np.sum(violations * violations))
+            if self.obstacle_soft_weight > 0.0 and self.obstacle_influence_dist > self.safety_dist:
+                far_mask = (clearance > self.safety_dist) & (clearance < self.obstacle_influence_dist)
+                if np.any(far_mask):
+                    soft_margin = self.obstacle_influence_dist - clearance[far_mask]
+                    total += self.obstacle_soft_weight * float(np.sum(soft_margin * soft_margin))
         return total
 
     def _obstacle_cost_batch(self, states: np.ndarray, obstacles: np.ndarray) -> np.ndarray:
@@ -266,6 +281,10 @@ class MppiOmniNumpy:
             )
             margin = np.maximum(self.safety_dist - clearance, 0.0)
             costs += self.obstacle_weight * np.sum(margin * margin, axis=1)
+            if self.obstacle_soft_weight > 0.0 and self.obstacle_influence_dist > self.safety_dist:
+                soft_margin = np.maximum(self.obstacle_influence_dist - clearance, 0.0)
+                soft_margin = np.where(clearance > self.safety_dist, soft_margin, 0.0)
+                costs += self.obstacle_soft_weight * np.sum(soft_margin * soft_margin, axis=1)
         return costs
 
     def _shift_nominal_controls(self) -> None:
