@@ -21,6 +21,13 @@ def make_controller(seed=1, num_samples=64, horizon_steps=8):
         control_weight=0.01,
         smooth_weight=0.2,
         obstacle_weight=25.0,
+        max_ax=0.8,
+        max_ay=0.5,
+        max_awz=1.2,
+        velocity_lag_beta=0.35,
+        lateral_weight=0.2,
+        yaw_rate_weight=0.05,
+        accel_weight=0.5,
         robot_radius=0.6,
         safety_dist=0.3,
         seed=seed,
@@ -107,6 +114,52 @@ def test_omni_mppi_smooth_cost_penalizes_first_control_jump():
     assert jump_cost > continuous_cost
 
 
+def test_omni_mppi_rollout_applies_velocity_lag_and_accel_limits():
+    controller = make_controller(seed=9, num_samples=2, horizon_steps=4)
+    controls = np.zeros((1, controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, :] = np.array([1.5, 0.5, 1.0], dtype=np.float32)
+    state = np.zeros(6, dtype=np.float32)
+
+    states, real_controls = controller._rollout_batch(state, controls, return_controls=True)
+
+    expected_first = np.array([0.08, 0.05, 0.12], dtype=np.float32)
+    assert real_controls[0, 0] == pytest.approx(expected_first, abs=1e-6)
+    assert states[0, 1, 3:] == pytest.approx(expected_first, abs=1e-6)
+    deltas = np.diff(np.concatenate([state[None, None, 3:], real_controls], axis=1), axis=1)
+    assert np.max(np.abs(deltas[:, :, 0])) <= controller.max_accel[0] * controller.dt + 1e-6
+    assert np.max(np.abs(deltas[:, :, 1])) <= controller.max_accel[1] * controller.dt + 1e-6
+    assert np.max(np.abs(deltas[:, :, 2])) <= controller.max_accel[2] * controller.dt + 1e-6
+
+
+def test_omni_mppi_returns_first_realizable_velocity_response():
+    controller = make_controller(seed=11, num_samples=2, horizon_steps=4)
+    state = np.zeros(6, dtype=np.float32)
+    command = np.array([1.5, -0.5, 1.0], dtype=np.float32)
+
+    control = controller._apply_velocity_response(state, command)
+
+    assert control == pytest.approx([0.08, -0.05, 0.12], abs=1e-6)
+
+
+def test_omni_mppi_lateral_yaw_and_accel_costs_penalize_usage():
+    controller = make_controller(seed=10, num_samples=2, horizon_steps=4)
+    controller.goal_xy_weight = 0.0
+    controller.yaw_weight = 0.0
+    controller.control_weight = 0.0
+    controller.smooth_weight = 0.0
+    baseline = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    lateral_yaw = baseline.copy()
+    lateral_yaw[:, 1] = 0.5
+    lateral_yaw[:, 2] = 1.0
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    assert controller.trajectory_cost(state, lateral_yaw, goal, obstacles) > controller.trajectory_cost(
+        state, baseline, goal, obstacles
+    )
+
+
 def test_omni_mppi_batch_cost_matches_scalar_costs():
     controller = make_controller(seed=6, num_samples=4, horizon_steps=5)
     state = np.zeros(6, dtype=np.float32)
@@ -129,9 +182,14 @@ def test_omni_mppi_can_be_created_from_config():
 
     controller = MppiOmniNumpy.from_config(config, seed=4)
 
-    assert controller.horizon_steps == 20
+    assert controller.horizon_steps == 25
     assert controller.num_samples == 1024
     assert controller.max_control.tolist() == pytest.approx([1.5, 0.5, 1.0])
+    assert controller.max_accel.tolist() == pytest.approx([0.8, 0.5, 1.2])
+    assert controller.velocity_lag_beta == pytest.approx(0.35)
+    assert controller.lateral_weight == pytest.approx(0.2)
+    assert controller.yaw_rate_weight == pytest.approx(0.05)
+    assert controller.accel_weight == pytest.approx(0.5)
 
 
 def test_omni_mppi_from_config_accepts_tuning_overrides():
@@ -147,7 +205,7 @@ def test_omni_mppi_from_config_loads_smooth_weight():
 
     controller = MppiOmniNumpy.from_config(config, seed=4)
 
-    assert controller.smooth_weight == pytest.approx(1.5)
+    assert controller.smooth_weight == pytest.approx(1.2)
 
 
 def test_omni_mppi_closed_loop_moves_toward_unobstructed_goal():

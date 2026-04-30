@@ -55,6 +55,9 @@ def test_omni_runner_saves_summary_csv_outputs(tmp_path):
     assert (summary.results_path / "test_summary.yaml").exists()
     assert "control_smoothness" in summary_json
     assert "control_jerk" in summary_json
+    assert "acceleration_cost" in summary_json
+    assert "lateral_usage" in summary_json
+    assert "yaw_rate_usage" in summary_json
     assert "vx_variance" in summary_json
     assert "vy_variance" in summary_json
     assert "wz_variance" in summary_json
@@ -79,6 +82,9 @@ def test_omni_runner_summary_reports_control_smoothness_metrics(tmp_path):
     assert metrics["smooth_vy"] == 0.5
     assert metrics["smooth_wz"] == 0.0
     assert metrics["control_jerk"] == 2.0
+    assert metrics["acceleration_cost"] == 200.0
+    assert metrics["lateral_usage"] == np.mean([0.0, 0.0, 1.0])
+    assert metrics["yaw_rate_usage"] == 0.0
     assert metrics["jerk_vx"] == 1.0
     assert metrics["jerk_vy"] == 1.0
     assert metrics["jerk_wz"] == 0.0

@@ -4,7 +4,7 @@ Last updated: 2026-04-30
 
 ## Current Stage
 
-Stage 1: B2 omnidirectional SE(2) nominal model.
+Stage 1.5: B2 omnidirectional SE(2) nominal kinodynamic rollout.
 
 ## Stage 0 Acceptance Criteria
 
@@ -37,13 +37,14 @@ Stage 1: B2 omnidirectional SE(2) nominal model.
 | S1-007 | P0 | done | Add CBF cost to CUDA omni MPPI | Added discrete CBF penalty term using `cbf.dcbf_alpha` and `mppi.cbf_weight`; current config uses `cbf_weight=500`. Real run min clearance `0.4296 m`. |
 | S1-008 | P0 | done | Integrate and tune RCBF-style CUDA barrier | CUDA omni MPPI now supports `cbf.type` 1/2/3 barrier modes from the old project. Tuned config: `num_trajectories=1024`, `minimum_distance=0.45`, `cbf.type=1`, `cbf_weight=500`. Verified run `results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/`: success, final distance `0.3411 m`, mean MPPI `4.5400 ms`, max `11.8539 ms`, min clearance `0.4715 m`. |
 | S1.5-001 | P0 | done | Refine static-obstacle nominal planner smoothness | Default RCBF disabled for the static-obstacle baseline (`cbf.enabled=false`, `cbf.type=0`, `cbf_weight=0`). Added control smoothness/jerk/variance metrics and executed-control low-pass filtering. Formal run `results/sim_results/b2_omni_nominal_2026-04-30_14-52-40/`: success, final distance `0.3399 m`, min clearance `0.4645 m`, mean MPPI `5.1127 ms`, control smoothness `0.01228`, control jerk `0.02026`. |
-| S1.5-002 | P0 | todo | Review/merge Stage 1.5 PR | PR should be reviewed before Stage 2 oracle residual world work. |
+| S1.5-002 | P0 | done | Add kinodynamic constraints to B2 nominal rollout | Added rollout-internal velocity lag, acceleration limits, lateral/yaw/accel costs, and summary metrics. Verified run `results/sim_results/b2_omni_nominal_2026-04-30_15-46-59/`: success, final distance `0.3212 m`, min clearance `0.4854 m`, mean MPPI `4.7268 ms`, trajectory y-span `1.9814 m`, executed max delta `[0.032, 0.020, 0.048]`. |
+| S1.5-003 | P0 | done | Keep all assistant work on dev | User rule recorded: modify only on `dev`, push `dev`, user merges. Accidental feature branch work migrated back to `dev`. |
 
 ## Later Stages
 
 | Stage | Status | Goal |
 | --- | --- | --- |
-| 1 | in_progress | B2 omnidirectional SE(2) nominal model. |
+| 1.5 | in_progress | B2 omnidirectional SE(2) nominal kinodynamic rollout. |
 | 2 | pending | Oracle residual world. |
 | 3 | pending | Unified evaluation system. |
 | 4 | pending | Oracle dataset generation. |

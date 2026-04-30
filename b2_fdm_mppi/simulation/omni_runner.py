@@ -376,6 +376,9 @@ class OmniMppiSimulationRunner:
                 "jerk_vx": 0.0,
                 "jerk_vy": 0.0,
                 "jerk_wz": 0.0,
+                "acceleration_cost": 0.0,
+                "lateral_usage": 0.0,
+                "yaw_rate_usage": 0.0,
                 "vx_variance": 0.0,
                 "vy_variance": 0.0,
                 "wz_variance": 0.0,
@@ -386,9 +389,12 @@ class OmniMppiSimulationRunner:
             deltas = np.diff(controls, axis=0)
             smooth_by_channel = np.mean(deltas * deltas, axis=0)
             smoothness = float(np.mean(np.sum(deltas * deltas, axis=1)))
+            accelerations = deltas / self.dt
+            acceleration_cost = float(np.sum(accelerations * accelerations))
         else:
             smooth_by_channel = np.zeros(3, dtype=np.float64)
             smoothness = 0.0
+            acceleration_cost = 0.0
         if len(controls) >= 3:
             jerks = controls[2:] - 2.0 * controls[1:-1] + controls[:-2]
             jerk_by_channel = np.mean(jerks * jerks, axis=0)
@@ -405,6 +411,9 @@ class OmniMppiSimulationRunner:
             "jerk_vx": float(jerk_by_channel[0]),
             "jerk_vy": float(jerk_by_channel[1]),
             "jerk_wz": float(jerk_by_channel[2]),
+            "acceleration_cost": acceleration_cost,
+            "lateral_usage": float(np.mean(controls[:, 1] * controls[:, 1])),
+            "yaw_rate_usage": float(np.mean(controls[:, 2] * controls[:, 2])),
             "vx_variance": float(variances[0]),
             "vy_variance": float(variances[1]),
             "wz_variance": float(variances[2]),
