@@ -1,4 +1,9 @@
 # Stage 2.6 dataset-friendly oracle random world configuration.
+# Stage 3 seed mode: fixed_map_random_tasks.
+# - scenario.random_seed: auto -> random start/goal per single run.
+# - obstacles.random_seed, terrain.noise_seed, oracle_residual.seed stay fixed.
+# - Stage 3 parallel collection should replace auto with an episode_id-derived
+#   scenario_seed while keeping fixed map seeds unchanged for this mode.
 b2_fdm_mppi:
   ros__parameters:
     config_file: ""

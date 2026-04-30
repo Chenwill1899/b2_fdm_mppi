@@ -4,7 +4,7 @@ Last updated: 2026-04-30
 
 ## Current Stage
 
-Stage 1.5: B2 omnidirectional SE(2) nominal kinodynamic rollout.
+Stage 2.6: 100x100 oracle random world prepared for Stage 3 dataset collection.
 
 ## Stage 0 Acceptance Criteria
 
@@ -40,15 +40,16 @@ Stage 1.5: B2 omnidirectional SE(2) nominal kinodynamic rollout.
 | S1.5-002 | P0 | done | Add kinodynamic constraints to B2 nominal rollout | Added rollout-internal velocity lag, acceleration limits, lateral/yaw/accel costs, and summary metrics. Verified run `results/sim_results/b2_omni_nominal_2026-04-30_15-46-59/`: success, final distance `0.3212 m`, min clearance `0.4854 m`, mean MPPI `4.7268 ms`, trajectory y-span `1.9814 m`, executed max delta `[0.032, 0.020, 0.048]`. |
 | S1.5-003 | P0 | done | Keep all assistant work on dev | User rule recorded: modify only on `dev`, push `dev`, user merges. Accidental feature branch work migrated back to `dev`. |
 | S1.5-004 | P0 | done | Finalize Pure SE2 and Kinodynamic baselines | Added `config/b2_omni_pure_se2.yaml` and `config/b2_omni_kinodynamic.yaml`; added far-field static obstacle potential, sampling coverage summary metrics, and kinodynamic animation rollout. Verified Pure run `results/sim_results/b2_omni_pure_se2_2026-04-30_16-26-22/` and Kinodynamic run `results/sim_results/b2_omni_kinodynamic_2026-04-30_16-27-08/`. |
+| S2.6-001 | P0 | done | Prepare fixed-map random-task oracle dataset config | `config/b2_omni_oracle_random100_dataset.yaml` uses `scenario.random_seed: auto` for single-run random start/goal, fixed obstacle/terrain/oracle seeds, PNG enabled, GIF disabled. Stage 3 seed modes documented in `docs/agent_memory/STAGE3_SEEDING.md`. |
 
 ## Later Stages
 
 | Stage | Status | Goal |
 | --- | --- | --- |
 | 1.5 | done | B2 omnidirectional SE(2) nominal kinodynamic rollout. |
-| 2 | pending | Oracle residual world. |
-| 3 | pending | Unified evaluation system. |
-| 4 | pending | Oracle dataset generation. |
+| 2 | done | Oracle residual world. |
+| 3 | pending | Parallel Oracle Dataset Generation with explicit episode seed mapping. |
+| 4 | pending | Unified evaluation system. |
 | 5 | pending | Residual velocity FDM training. |
 | 6 | pending | Learned FDM-MPPI integration. |
 | 7 | pending | Paper-ready experiments and figures. |
