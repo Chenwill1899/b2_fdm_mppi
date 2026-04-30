@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as _dt
 import math
 import time
 import warnings
@@ -15,6 +14,7 @@ import numpy as np
 from b2_fdm_mppi.core.jackal import Jackal
 from b2_fdm_mppi.core.obstacle import Obstacle
 from b2_fdm_mppi.simulation import result_io
+from b2_fdm_mppi.simulation.results_path import create_results_path
 
 
 ControllerFactory = Callable[..., object]
@@ -117,7 +117,7 @@ class MppiSimulationRunner:
             runner=self,
         )
 
-        self.results_path = self._create_results_path(config["results"]["root"])
+        self.results_path = create_results_path(config["results"])
         self.state_history: list[np.ndarray] = []
         self.desired_state_history: list[np.ndarray] = []
         self.control_history: list[np.ndarray] = []
@@ -383,8 +383,3 @@ class MppiSimulationRunner:
     def _logn_info(self, dist_type: int, std_n: np.ndarray) -> list[float]:
         std_mean = float(np.mean(std_n))
         return [dist_type, 0.0, std_mean]
-
-    def _create_results_path(self, root: str) -> Path:
-        path = Path(root) / _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        path.mkdir(parents=True, exist_ok=True)
-        return path

@@ -25,11 +25,13 @@ def validate_config(config: dict[str, Any]) -> None:
         if group not in config:
             raise ValueError(f"Missing required config group: {group}")
 
-    _require_len(config["simulation"].get("goal"), 5, "simulation.goal")
-    _require_len(config["simulation"].get("initial_state"), 5, "simulation.initial_state")
-    _require_len(config["mppi"].get("weights"), 5, "mppi.weights")
-    _require_len(config["mppi"].get("std_normal"), 2, "mppi.std_normal")
-    if int(config["robot"].get("state_dim", config["mppi"].get("state_dim", 0))) != int(config["mppi"].get("state_dim", 0)):
+    state_dim = int(config["mppi"].get("state_dim", 0))
+    control_dim = int(config["mppi"].get("control_dim", 0))
+    _require_len(config["simulation"].get("goal"), state_dim, "simulation.goal")
+    _require_len(config["simulation"].get("initial_state"), state_dim, "simulation.initial_state")
+    _require_len(config["mppi"].get("weights"), state_dim, "mppi.weights")
+    _require_len(config["mppi"].get("std_normal"), control_dim, "mppi.std_normal")
+    if int(config["robot"].get("state_dim", state_dim)) != state_dim:
         raise ValueError("robot.state_dim must match mppi.state_dim")
 
     for index, obstacle in enumerate(config["obstacles"].get("virtual", [])):

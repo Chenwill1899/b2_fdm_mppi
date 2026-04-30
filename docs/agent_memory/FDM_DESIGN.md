@@ -28,6 +28,21 @@ y_next     = y + (vx * sin(theta) + vy * cos(theta)) * dt
 theta_next = theta + wz * dt
 ```
 
+Velocity limits:
+
+```text
+max_vx = 1.5
+max_vy = 0.5
+max_wz = 1.0
+```
+
+Current implementation:
+
+```text
+b2_fdm_mppi/core/omni_b2.py
+config/b2_omni_nominal.yaml
+```
+
 ## First Learned FDM Interface
 
 Inputs:
@@ -58,4 +73,3 @@ L = L_res + L_pose + 0.05 * L_smooth
 - Validation loss does not diverge.
 - Learned FDM ADE/FDE improves over nominal SE(2).
 - Checkpoint can be saved and loaded.
-
