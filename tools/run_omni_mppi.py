@@ -29,7 +29,9 @@ def main() -> None:
     print(f"reached_goal={summary.reached_goal}")
     print(f"failed={summary.failed}")
     print(f"run_time={summary.run_time}")
-    print(f"animation={summary.results_path / 'animation.gif'}")
+    animation_path = summary.results_path / "animation.gif"
+    if animation_path.exists():
+        print(f"animation={animation_path}")
 
 
 if __name__ == "__main__":

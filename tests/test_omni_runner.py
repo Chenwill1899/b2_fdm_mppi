@@ -366,6 +366,50 @@ def test_omni_runner_random_start_goal_overrides_fixed_state_and_updates_goal_re
     assert saved_config["terrain"]["goal_relief"]["center"] == pytest.approx(runner.goal[:2].tolist())
 
 
+def test_omni_runner_resolves_auto_scenario_seed_and_records_it(tmp_path):
+    config = make_config(tmp_path, max_steps=1)
+    config["simulation"]["world_mode"] = "oracle"
+    config["scenario"] = {
+        "random_start_goal_enabled": True,
+        "random_seed": "auto",
+        "x_range": [5.0, 20.0],
+        "y_range": [5.0, 20.0],
+        "distance_range": [5.0, 10.0],
+        "min_obstacle_clearance": 1.0,
+        "max_attempts": 500,
+        "start_yaw": 0.0,
+        "goal_yaw": 0.0,
+    }
+    config["obstacles"] = {
+        "random_enabled": True,
+        "random_seed": 123,
+        "num_random": 2,
+        "radius_range": [0.5, 0.7],
+        "x_range": [30.0, 40.0],
+        "y_range": [30.0, 40.0],
+        "min_obstacle_gap": 1.0,
+        "min_start_goal_clearance": 2.0,
+        "virtual": [],
+    }
+    config["oracle_residual"] = {"enabled": False}
+
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    assert isinstance(runner.config["scenario"]["random_seed"], int)
+    assert runner.scenario_random_seed == runner.config["scenario"]["random_seed"]
+    assert runner.obstacle_random_seed == 123
+
+    summary = runner.run()
+    summary_json = json.loads((summary.results_path / "summary.json").read_text())
+    saved_config = load_config(summary.results_path / "config.yaml")
+
+    assert isinstance(summary_json["scenario_random_seed"], int)
+    assert saved_config["scenario"]["random_seed"] == summary_json["scenario_random_seed"]
+    assert saved_config["obstacles"]["random_seed"] == 123
+
+
 def test_omni_runner_fixed_obstacles_record_summary(tmp_path):
     runner = OmniMppiSimulationRunner(
         make_config(tmp_path, max_steps=1),

@@ -70,7 +70,7 @@ cbf:
 
 scenario:
   random_start_goal_enabled: true
-  random_seed: 123
+  random_seed: auto
   x_range: [5.0, 95.0]
   y_range: [5.0, 95.0]
   distance_range: [5.0, 20.0]
@@ -96,7 +96,7 @@ results:
   run_name: "b2_omni_oracle_random100_dataset"
   timestamp_suffix: true
   overwrite: false
-  enable_plots: false
+  enable_plots: true
   enable_animation: false
 
 execution:

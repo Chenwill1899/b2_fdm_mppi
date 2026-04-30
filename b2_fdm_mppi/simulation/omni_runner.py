@@ -133,6 +133,7 @@ class OmniMppiSimulationRunner:
         scenario_cfg = self.config.get("scenario", {})
         if not bool(scenario_cfg.get("random_start_goal_enabled", False)):
             return
+        scenario_cfg["random_seed"] = self._resolve_scenario_seed(scenario_cfg.get("random_seed", 123))
         fixed_obstacles = None
         obstacle_cfg = self.config.get("obstacles", {})
         if not bool(obstacle_cfg.get("random_enabled", False)):
@@ -145,7 +146,12 @@ class OmniMppiSimulationRunner:
         if isinstance(relief_cfg, dict) and bool(relief_cfg.get("enabled", False)):
             relief_cfg["center"] = [float(goal_state[0]), float(goal_state[1])]
         self.scenario_mode = "random_start_goal"
-        self.scenario_random_seed = int(scenario_cfg.get("random_seed", 123))
+        self.scenario_random_seed = int(scenario_cfg["random_seed"])
+
+    def _resolve_scenario_seed(self, value) -> int:
+        if value is None or (isinstance(value, str) and value.lower() == "auto"):
+            return int(np.random.default_rng().integers(0, np.iinfo(np.int32).max))
+        return int(value)
 
     def run(self) -> OmniSimulationSummary:
         if self.world_mode == "oracle":
