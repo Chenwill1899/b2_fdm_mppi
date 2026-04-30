@@ -224,8 +224,8 @@ def test_omni_runner_oracle_animation_legend_describes_nominal_rollouts(tmp_path
     assert "nominal sampled rollouts" in labels
     assert "nominal optimal rollout" in labels
     assert "actual heading" in labels
-    assert "u_cmd" in labels
-    assert "u_real" in labels
+    assert "u_cmd" not in labels
+    assert "u_real" not in labels
 
 
 def test_omni_runner_can_overwrite_named_results_directory(tmp_path):

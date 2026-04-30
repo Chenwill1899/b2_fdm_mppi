@@ -465,8 +465,6 @@ class OmniMppiSimulationRunner:
                 [
                     Patch(facecolor="tab:red", alpha=0.25, label="terrain risk"),
                     Line2D([0], [0], marker="o", color="none", markerfacecolor="tab:green", markersize=5, label="residual path"),
-                    Line2D([0], [0], color="white", linestyle="--", linewidth=1.6, label="u_cmd"),
-                    Line2D([0], [0], color="black", linewidth=1.6, label="u_real"),
                 ]
             )
         else:
