@@ -150,6 +150,26 @@ def test_omni_runner_predict_trajectory_uses_kinodynamic_rollout(tmp_path):
     assert predicted[1, 0] == pytest.approx(0.008, abs=1e-7)
 
 
+def test_omni_runner_predict_trajectory_rotates_body_frame_velocity_by_heading(tmp_path):
+    config = make_config(tmp_path)
+    config["execution"] = {"filter_enabled": False, "filter_alpha": 0.0}
+    config["robot"]["max_ax"] = 1000.0
+    config["robot"]["max_ay"] = 1000.0
+    config["robot"]["max_awz"] = 1000.0
+    config["robot"]["velocity_lag_beta"] = 0.0
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    state = np.array([2.0, 3.0, np.pi / 2.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    controls = np.array([[[1.0, 0.0, 0.0]]], dtype=np.float32)[0]
+
+    predicted = runner._predict_trajectory(state, controls)
+
+    assert predicted[1, 0] == pytest.approx(2.0, abs=1e-6)
+    assert predicted[1, 1] == pytest.approx(3.1, abs=1e-6)
+
+
 def test_omni_runner_applies_execution_low_pass_filter(tmp_path):
     config = make_config(tmp_path, max_steps=2)
     config["execution"] = {"filter_enabled": True, "filter_alpha": 0.5}
@@ -190,6 +210,22 @@ def test_omni_runner_draws_sampled_and_optimized_rollouts(tmp_path):
     runner._draw_predicted_rollouts(ax, np.zeros(6, dtype=np.float32), frame=0)
 
     assert ax.plot_calls == 3
+
+
+def test_omni_runner_oracle_animation_legend_describes_nominal_rollouts(tmp_path):
+    runner = OmniMppiSimulationRunner(
+        make_config(tmp_path),
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    labels = [handle.get_label() for handle in runner._animation_legend_handles(is_oracle=True)]
+
+    assert "terrain risk" in labels
+    assert "nominal sampled rollouts" in labels
+    assert "nominal optimal rollout" in labels
+    assert "actual heading" in labels
+    assert "u_cmd" not in labels
+    assert "u_real" not in labels
 
 
 def test_omni_runner_can_overwrite_named_results_directory(tmp_path):
@@ -242,6 +278,67 @@ def test_omni_runner_oracle_world_records_residuals(tmp_path):
     assert summary_json["mean_residual_norm"] > 0.0
     assert (summary.results_path / "residuals.csv").exists()
     assert (summary.results_path / "terrain.csv").exists()
+
+
+def test_omni_runner_oracle_animation_writes_diagnostic_outputs(tmp_path):
+    config = make_config(tmp_path, enable_plots=True, max_steps=4)
+    config["simulation"]["world_mode"] = "oracle"
+    config["terrain"] = {
+        "enabled": True,
+        "goal_relief": {
+            "enabled": True,
+            "center": [1.0, 0.0],
+            "sigma": [1.0, 0.8],
+            "strength": 0.5,
+            "floor": 0.3,
+        },
+    }
+    config["oracle_residual"] = {
+        "enabled": True,
+        "alpha": 0.5,
+        "residual_scale": 0.6,
+        "noise_std": 0.0,
+        "max_residual_ratio": 0.4,
+        "seed": 7,
+    }
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    summary = runner.run()
+
+    assert (summary.results_path / "oracle_diagnostics.png").exists()
+    assert (summary.results_path / "animation.gif").exists()
+    assert (summary.results_path / "animation.gif").stat().st_size > 0
+
+
+def test_omni_runner_cmd_real_error_uses_executed_minus_commanded_norm(tmp_path):
+    runner = OmniMppiSimulationRunner(
+        make_config(tmp_path),
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    runner.cmd_control_history = [
+        np.array([0.9, 0.0, 0.0], dtype=np.float32),
+        np.array([0.2, 0.2, 0.0], dtype=np.float32),
+    ]
+    runner.control_history = [
+        np.array([0.5, 0.0, 0.0], dtype=np.float32),
+        np.array([0.2, -0.1, 0.4], dtype=np.float32),
+    ]
+    runner.residual_history = [
+        np.array([0.9, 0.0, 0.0], dtype=np.float32),
+        np.array([0.0, 0.0, 0.2], dtype=np.float32),
+    ]
+
+    metrics = runner._summary_metrics()
+
+    cmd_real_errors = np.array([0.4, 0.5], dtype=np.float32)
+    residual_norms = np.array([0.9, 0.2], dtype=np.float32)
+    assert metrics["mean_cmd_real_error"] == pytest.approx(float(np.mean(cmd_real_errors)))
+    assert metrics["max_cmd_real_error"] == pytest.approx(float(np.max(cmd_real_errors)))
+    assert metrics["mean_residual_norm"] == pytest.approx(float(np.mean(residual_norms)))
+    assert metrics["max_residual_norm"] == pytest.approx(float(np.max(residual_norms)))
 
 
 def test_omni_runner_uses_cuda_backend_when_configured(tmp_path, monkeypatch):

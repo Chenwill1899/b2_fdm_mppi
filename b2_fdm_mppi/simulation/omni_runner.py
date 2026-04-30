@@ -124,6 +124,8 @@ class OmniMppiSimulationRunner:
         self.failed = False
 
     def run(self) -> OmniSimulationSummary:
+        if self.world_mode == "oracle":
+            self.oracle_world.reset()
         steps = 0
         while steps < self.max_steps and not goal_reached_xy(self.state, self.goal, self.minimum_distance):
             self.step()
@@ -206,8 +208,17 @@ class OmniMppiSimulationRunner:
             if self.residual_history
             else np.zeros(0, dtype=np.float32)
         )
+        cmd_controls = np.asarray(self.cmd_control_history, dtype=np.float32)
+        real_controls = np.asarray(self.control_history, dtype=np.float32)
+        cmd_real_errors = (
+            np.linalg.norm(real_controls - cmd_controls, axis=1)
+            if len(cmd_controls) and len(real_controls)
+            else np.zeros(0, dtype=np.float32)
+        )
         mean_residual = float(np.mean(residual_norms)) if residual_norms.size else 0.0
         max_residual = float(np.max(residual_norms)) if residual_norms.size else 0.0
+        mean_cmd_real_error = float(np.mean(cmd_real_errors)) if cmd_real_errors.size else 0.0
+        max_cmd_real_error = float(np.max(cmd_real_errors)) if cmd_real_errors.size else 0.0
         mean_terrain = float(np.mean(self.terrain_risk_history)) if self.terrain_risk_history else 0.0
         max_terrain = float(np.max(self.terrain_risk_history)) if self.terrain_risk_history else 0.0
         return {
@@ -229,8 +240,8 @@ class OmniMppiSimulationRunner:
             "raw_controls_csv": "raw_controls",
             "mean_residual_norm": mean_residual,
             "max_residual_norm": max_residual,
-            "mean_cmd_real_error": mean_residual,
-            "max_cmd_real_error": max_residual,
+            "mean_cmd_real_error": mean_cmd_real_error,
+            "max_cmd_real_error": max_cmd_real_error,
             "mean_terrain_risk": mean_terrain,
             "max_terrain_risk": max_terrain,
             **self._control_metrics(),
@@ -358,6 +369,10 @@ class OmniMppiSimulationRunner:
 
     def _plot_results(self) -> None:
         self._plot_trajectory()
+        if self.world_mode == "oracle":
+            from b2_fdm_mppi.visualization.oracle_viewer import plot_oracle_diagnostics
+
+            plot_oracle_diagnostics(self.results_path, self.config)
         if self.config["results"].get("enable_animation", True):
             self._save_animation()
 
@@ -385,8 +400,15 @@ class OmniMppiSimulationRunner:
         from matplotlib.animation import FuncAnimation, PillowWriter
 
         states = np.asarray(self.state_history)
+        residual_norms = (
+            np.linalg.norm(np.asarray(self.residual_history, dtype=np.float32), axis=1)
+            if self.residual_history
+            else np.zeros(0, dtype=np.float32)
+        )
         fig, ax = plt.subplots(figsize=(6, 6))
         xlim, ylim = map_axis_limits()
+        risk_grid = self._terrain_risk_grid(xlim, ylim) if self.world_mode == "oracle" else None
+        max_residual = float(np.max(residual_norms)) if residual_norms.size else 1.0
 
         def update(frame):
             ax.clear()
@@ -394,19 +416,132 @@ class OmniMppiSimulationRunner:
             ax.set_ylim(*ylim)
             ax.set_aspect("equal", adjustable="box")
             ax.grid(True, alpha=0.3)
+            if risk_grid is not None:
+                self._draw_oracle_animation_background(ax, risk_grid, xlim, ylim)
             self._draw_obstacles(ax)
-            ax.scatter([self.init_pose[0]], [self.init_pose[1]], color="green", label="start")
-            ax.scatter([self.goal[0]], [self.goal[1]], color="purple", label="goal")
+            ax.scatter([self.init_pose[0]], [self.init_pose[1]], color="green", label="start", zorder=5)
+            ax.scatter([self.goal[0]], [self.goal[1]], color="purple", marker="*", s=110, label="goal", zorder=5)
             if frame >= 0 and len(states):
                 self._draw_predicted_rollouts(ax, states[frame], frame)
-                ax.plot(states[: frame + 1, 0], states[: frame + 1, 1], color="tab:blue")
-                ax.scatter([states[frame, 0]], [states[frame, 1]], color="red")
-            ax.legend(loc="upper right")
+                if self.world_mode == "oracle" and residual_norms.size:
+                    upto = min(frame + 1, len(states), len(residual_norms))
+                    ax.scatter(
+                        states[:upto, 0],
+                        states[:upto, 1],
+                        c=residual_norms[:upto],
+                        cmap="viridis",
+                        vmin=0.0,
+                        vmax=max_residual,
+                        s=18,
+                        label="residual path",
+                        zorder=4,
+                    )
+                    self._draw_oracle_velocity_arrows(ax, states, frame)
+                else:
+                    ax.plot(states[: frame + 1, 0], states[: frame + 1, 1], color="tab:blue")
+                self._draw_robot_heading(ax, states[frame])
+                ax.scatter([states[frame, 0]], [states[frame, 1]], color="red", zorder=6)
+            ax.legend(handles=self._animation_legend_handles(self.world_mode == "oracle"), loc="upper right", fontsize=7)
 
         frames = max(1, len(states))
         animation = FuncAnimation(fig, update, frames=frames, interval=100, blit=False)
         animation.save(self.results_path / "animation.gif", writer=PillowWriter(fps=5))
         plt.close(fig)
+
+    def _animation_legend_handles(self, is_oracle: bool):
+        from matplotlib.lines import Line2D
+        from matplotlib.patches import Patch
+
+        handles = [
+            Line2D([0], [0], marker="o", color="none", markerfacecolor="green", markersize=6, label="start"),
+            Line2D([0], [0], marker="*", color="none", markerfacecolor="purple", markersize=10, label="goal"),
+            Line2D([0], [0], marker="o", color="none", markerfacecolor="red", markersize=6, label="current state"),
+            Line2D([0], [0], color="tab:cyan", linewidth=1.6, label="actual heading"),
+            Line2D([0], [0], color="black", alpha=0.25, linewidth=1.0, label="nominal sampled rollouts"),
+            Line2D([0], [0], color="orange", linewidth=1.4, label="nominal optimal rollout"),
+        ]
+        if is_oracle:
+            handles.extend(
+                [
+                    Patch(facecolor="tab:red", alpha=0.25, label="terrain risk"),
+                    Line2D([0], [0], marker="o", color="none", markerfacecolor="tab:green", markersize=5, label="residual path"),
+                ]
+            )
+        else:
+            handles.append(Line2D([0], [0], color="tab:blue", linewidth=1.6, label="executed path"))
+        return handles
+
+    def _terrain_risk_grid(self, xlim: tuple[float, float], ylim: tuple[float, float]) -> np.ndarray:
+        grid_x = np.linspace(xlim[0], xlim[1], 80)
+        grid_y = np.linspace(ylim[0], ylim[1], 80)
+        mesh_x, mesh_y = np.meshgrid(grid_x, grid_y)
+        risk_grid = np.zeros_like(mesh_x, dtype=np.float32)
+        for i in range(mesh_x.shape[0]):
+            for j in range(mesh_x.shape[1]):
+                risk_grid[i, j] = self.terrain.risk_cost(float(mesh_x[i, j]), float(mesh_y[i, j]))
+        return risk_grid
+
+    def _draw_oracle_animation_background(self, ax, risk_grid: np.ndarray, xlim, ylim) -> None:
+        ax.imshow(
+            risk_grid,
+            extent=(xlim[0], xlim[1], ylim[0], ylim[1]),
+            origin="lower",
+            cmap="plasma",
+            alpha=0.35,
+            aspect="auto",
+            zorder=0,
+        )
+
+    def _draw_oracle_velocity_arrows(self, ax, states: np.ndarray, frame: int) -> None:
+        if frame >= len(self.cmd_control_history) or frame >= len(self.control_history):
+            return
+        x, y, theta = states[frame, :3]
+        cos_theta = float(np.cos(theta))
+        sin_theta = float(np.sin(theta))
+        cmd = self.cmd_control_history[frame]
+        real = self.control_history[frame]
+        cmd_dx = float(cmd[0] * cos_theta - cmd[1] * sin_theta)
+        cmd_dy = float(cmd[0] * sin_theta + cmd[1] * cos_theta)
+        real_dx = float(real[0] * cos_theta - real[1] * sin_theta)
+        real_dy = float(real[0] * sin_theta + real[1] * cos_theta)
+        ax.arrow(
+            x,
+            y,
+            cmd_dx,
+            cmd_dy,
+            color="white",
+            linestyle="--",
+            width=0.012,
+            length_includes_head=True,
+            alpha=0.8,
+            zorder=7,
+        )
+        ax.arrow(
+            x,
+            y,
+            real_dx,
+            real_dy,
+            color="black",
+            width=0.012,
+            length_includes_head=True,
+            alpha=0.85,
+            zorder=8,
+        )
+
+    def _draw_robot_heading(self, ax, state: np.ndarray) -> None:
+        x, y, theta = state[:3]
+        length = 0.65
+        ax.arrow(
+            float(x),
+            float(y),
+            length * float(np.cos(theta)),
+            length * float(np.sin(theta)),
+            color="tab:cyan",
+            width=0.01,
+            length_includes_head=True,
+            alpha=0.95,
+            zorder=9,
+        )
 
     def _draw_predicted_rollouts(self, ax, state: np.ndarray, frame: int) -> None:
         if frame < len(self.sample_u_history):
@@ -423,7 +558,7 @@ class OmniMppiSimulationRunner:
                 color="orange",
                 alpha=0.75,
                 linewidth=1.4,
-                label="optimized rollout",
+                label="nominal optimal rollout",
             )
 
     def _predict_trajectory(self, state: np.ndarray, controls: np.ndarray) -> np.ndarray:

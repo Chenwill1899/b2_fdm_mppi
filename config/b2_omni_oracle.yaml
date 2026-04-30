@@ -46,10 +46,10 @@ mppi:
 robot:
   state_dim: 6
   max_vx: 1.5
-  max_vy: 0.4
-  max_wz: 0.7
+  max_vy: 0.1
+  max_wz: 1
   max_ax: 0.8
-  max_ay: 0.35
+  max_ay: 0.2
   max_awz: 0.8
   velocity_lag_beta: 0.35
   radius: 0.6
@@ -70,8 +70,8 @@ obstacles:
   num_max: 5
   static_enabled: true
   virtual:
-    - [6.0, 0.5, 0.4, 0.0, 0.0, 0.0, 0.0]
-    - [12.0, -1.0, 0.4, 0.0, 0.0, 0.0, 0.0]
+    - [6.0, -0.5, 0.4, 0.0, 0.0, 0.0, 0.0]
+    - [12.0, 1.0, 0.4, 0.0, 0.0, 0.0, 0.0]
 
 results:
   root: "./results/sim_results"
@@ -87,11 +87,22 @@ execution:
 
 terrain:
   enabled: true
+  friction_base: 0.72
+  slope_scale: 0.10
+  roughness_scale: 0.25
+  friction_slope_scale: 0.18
+  friction_roughness_scale: 0.10
+  goal_relief:
+    enabled: true
+    center: [18.0, 0.0]
+    sigma: [2.0, 1.2]
+    strength: 0.75
+    floor: 0.25
 
 oracle_residual:
   enabled: true
   alpha: 0.35
-  residual_scale: 0.5
-  noise_std: 0.02
-  max_residual_ratio: 0.4
+  residual_scale: 0.35
+  noise_std: 0.012
+  max_residual_ratio: 0.3
   seed: 123
