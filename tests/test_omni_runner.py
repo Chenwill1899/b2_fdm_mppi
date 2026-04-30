@@ -1,6 +1,7 @@
 import json
 
 import numpy as np
+import pytest
 
 from b2_fdm_mppi.config import load_config
 from b2_fdm_mppi.simulation.omni_runner import OmniMppiSimulationRunner
@@ -58,6 +59,10 @@ def test_omni_runner_saves_summary_csv_outputs(tmp_path):
     assert "acceleration_cost" in summary_json
     assert "lateral_usage" in summary_json
     assert "yaw_rate_usage" in summary_json
+    assert "sample_terminal_y_std_mean" in summary_json
+    assert "sample_terminal_y_range_mean" in summary_json
+    assert "sample_terminal_spread_mean" in summary_json
+    assert "sample_terminal_x_range_mean" in summary_json
     assert "vx_variance" in summary_json
     assert "vy_variance" in summary_json
     assert "wz_variance" in summary_json
@@ -89,6 +94,51 @@ def test_omni_runner_summary_reports_control_smoothness_metrics(tmp_path):
     assert metrics["jerk_vy"] == 1.0
     assert metrics["jerk_wz"] == 0.0
     assert metrics["vx_variance"] == np.var([0.0, 1.0, 1.0])
+
+
+def test_omni_runner_reports_sample_terminal_coverage_metrics(tmp_path):
+    runner = OmniMppiSimulationRunner(
+        make_config(tmp_path),
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    runner.state_history = [np.zeros(6, dtype=np.float32)]
+    runner.sample_u_history = [
+        np.array(
+            [
+                [[0.5, -0.2, 0.0], [0.5, -0.2, 0.0]],
+                [[0.5, 0.3, 0.0], [0.5, 0.3, 0.0]],
+                [[0.5, 0.1, 0.0], [0.5, 0.1, 0.0]],
+            ],
+            dtype=np.float32,
+        )
+    ]
+
+    metrics = runner._sample_coverage_metrics()
+
+    assert metrics["sample_terminal_y_std_mean"] > 0.0
+    assert metrics["sample_terminal_y_range_mean"] > 0.0
+    assert metrics["sample_terminal_spread_mean"] > 0.0
+    assert metrics["sample_terminal_x_range_mean"] >= 0.0
+
+
+def test_omni_runner_predict_trajectory_uses_kinodynamic_rollout(tmp_path):
+    config = make_config(tmp_path)
+    config["execution"] = {"filter_enabled": False, "filter_alpha": 0.0}
+    config["robot"]["max_ax"] = 0.8
+    config["robot"]["max_ay"] = 0.5
+    config["robot"]["max_awz"] = 1.2
+    config["robot"]["velocity_lag_beta"] = 0.35
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    controls = np.zeros((2, 3), dtype=np.float32)
+    controls[:, 0] = 1.5
+
+    predicted = runner._predict_trajectory(np.zeros(6, dtype=np.float32), controls)
+
+    assert predicted[1, 3] == pytest.approx(0.08, abs=1e-7)
+    assert predicted[1, 0] == pytest.approx(0.008, abs=1e-7)
 
 
 def test_omni_runner_applies_execution_low_pass_filter(tmp_path):

@@ -21,6 +21,8 @@ def make_controller(seed=1, num_samples=64, horizon_steps=8):
         control_weight=0.01,
         smooth_weight=0.2,
         obstacle_weight=25.0,
+        obstacle_soft_weight=0.0,
+        obstacle_influence_dist=0.0,
         max_ax=0.8,
         max_ay=0.5,
         max_awz=1.2,
@@ -28,6 +30,7 @@ def make_controller(seed=1, num_samples=64, horizon_steps=8):
         lateral_weight=0.2,
         yaw_rate_weight=0.05,
         accel_weight=0.5,
+        jerk_weight=0.0,
         robot_radius=0.6,
         safety_dist=0.3,
         seed=seed,
@@ -78,6 +81,26 @@ def test_omni_mppi_obstacle_cost_prefers_lateral_clearance():
     lateral_cost = controller.trajectory_cost(state, lateral, goal, obstacles)
 
     assert lateral_cost < straight_cost
+
+
+def test_omni_mppi_soft_obstacle_cost_penalizes_far_field_clearance():
+    controller = make_controller(seed=12, num_samples=4, horizon_steps=4)
+    controller.goal_xy_weight = 0.0
+    controller.yaw_weight = 0.0
+    controller.control_weight = 0.0
+    controller.smooth_weight = 0.0
+    controller.obstacle_weight = 0.0
+    controller.obstacle_soft_weight = 10.0
+    controller.obstacle_influence_dist = 2.0
+    controls = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    near_obstacle = np.array([[1.4, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0]], dtype=np.float32)
+    far_obstacle = np.array([[4.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0]], dtype=np.float32)
+
+    assert controller.trajectory_cost(state, controls, goal, near_obstacle) > controller.trajectory_cost(
+        state, controls, goal, far_obstacle
+    )
 
 
 def test_omni_mppi_smooth_cost_penalizes_control_jumps():
@@ -160,6 +183,30 @@ def test_omni_mppi_lateral_yaw_and_accel_costs_penalize_usage():
     )
 
 
+def test_omni_mppi_jerk_cost_penalizes_real_velocity_oscillation():
+    controller = make_controller(seed=13, num_samples=2, horizon_steps=5)
+    controller.goal_xy_weight = 0.0
+    controller.yaw_weight = 0.0
+    controller.control_weight = 0.0
+    controller.smooth_weight = 0.0
+    controller.accel_weight = 0.0
+    controller.lateral_weight = 0.0
+    controller.yaw_rate_weight = 0.0
+    controller.jerk_weight = 10.0
+    steady = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    steady[:, 0] = 0.8
+    oscillating = steady.copy()
+    oscillating[::2, 1] = 0.5
+    oscillating[1::2, 1] = -0.5
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    assert controller.trajectory_cost(state, oscillating, goal, obstacles) > controller.trajectory_cost(
+        state, steady, goal, obstacles
+    )
+
+
 def test_omni_mppi_batch_cost_matches_scalar_costs():
     controller = make_controller(seed=6, num_samples=4, horizon_steps=5)
     state = np.zeros(6, dtype=np.float32)
@@ -190,6 +237,16 @@ def test_omni_mppi_can_be_created_from_config():
     assert controller.lateral_weight == pytest.approx(0.2)
     assert controller.yaw_rate_weight == pytest.approx(0.05)
     assert controller.accel_weight == pytest.approx(0.5)
+    assert controller.jerk_weight == pytest.approx(config["mppi"].get("jerk_weight", 0.0))
+
+
+def test_omni_mppi_from_config_loads_soft_obstacle_params():
+    config = load_config("config/b2_omni_kinodynamic.yaml")
+
+    controller = MppiOmniNumpy.from_config(config, seed=4)
+
+    assert controller.obstacle_soft_weight == pytest.approx(config["mppi"]["obstacle_soft_weight"])
+    assert controller.obstacle_influence_dist == pytest.approx(config["mppi"]["obstacle_influence_dist"])
 
 
 def test_omni_mppi_from_config_accepts_tuning_overrides():

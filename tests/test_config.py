@@ -74,6 +74,34 @@ def test_b2_omni_nominal_config_loads_stage1_parameters():
     assert config["execution"]["filter_alpha"] == pytest.approx(0.6)
 
 
+def test_b2_omni_pure_se2_config_loads_weak_baseline():
+    config = load_config(Path("config/b2_omni_pure_se2.yaml"))
+
+    assert config["mppi"]["state_dim"] == 6
+    assert config["mppi"]["control_dim"] == 3
+    assert config["mppi"]["backend"] == "cuda"
+    assert config["mppi"]["cbf_weight"] == pytest.approx(0.0)
+    assert config["mppi"]["obstacle_soft_weight"] == pytest.approx(0.0)
+    assert config["robot"]["velocity_lag_beta"] == pytest.approx(0.0)
+    assert config["cbf"]["enabled"] is False
+    assert config["execution"]["filter_enabled"] is False
+
+
+def test_b2_omni_kinodynamic_config_loads_main_baseline():
+    config = load_config(Path("config/b2_omni_kinodynamic.yaml"))
+
+    assert config["mppi"]["state_dim"] == 6
+    assert config["mppi"]["control_dim"] == 3
+    assert config["mppi"]["backend"] == "cuda"
+    assert config["mppi"]["cbf_weight"] == pytest.approx(0.0)
+    assert config["mppi"]["obstacle_soft_weight"] > 0.0
+    assert config["mppi"]["obstacle_influence_dist"] > config["robot"]["safety_dist"]
+    assert config["robot"]["velocity_lag_beta"] == pytest.approx(0.35)
+    assert config["cbf"]["enabled"] is False
+    assert config["execution"]["filter_enabled"] is False
+    assert config["execution"]["filter_alpha"] == pytest.approx(0.0)
+
+
 def test_validate_config_rejects_bad_goal_length():
     config = load_config(Path("config/fdm_mppi.yaml"))
     config["simulation"]["goal"] = [1.0, 2.0]
