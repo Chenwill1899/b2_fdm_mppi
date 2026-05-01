@@ -2,6 +2,39 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01: S5-003 Torch CUDA Learned Rollout and Stage 5-B Benchmark
+
+- Goal: make learned-FDM closed-loop benchmarking practical and run the first standard/ID/OOD Stage 5-B comparison.
+- Code changes:
+  - `b2_fdm_mppi/controllers/mppi_omni_learned_torch.py`
+  - `create_omni_controller()` now creates `LearnedFdmMppiOmniTorch` for `fdm.enabled=true` and `mppi.backend=cuda`.
+  - `tools/benchmark_learned_fdm_mppi.py` accepts `--backend cuda` and defaults FDM device to `cuda` for CUDA benchmark CLI runs.
+- Benchmark outputs:
+  - `results/stage5_benchmark/standard_seed123_cuda/stage5_benchmark_summary.json`
+  - `results/stage5_benchmark/id_random_tasks_seed123_cuda/stage5_benchmark_summary.json`
+  - `results/stage5_benchmark/ood_obstacle_seed123_cuda/stage5_benchmark_summary.json`
+  - `results/stage5_benchmark/ood_terrain_seed123_cuda/stage5_benchmark_summary.json`
+- Core results:
+
+| Scenario | Episodes | Nominal success | Learned success | Nominal final dist | Learned final dist | Nominal steps | Learned steps | Nominal mean ms | Learned mean ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| standard | 1 | 1.00 | 1.00 | 0.3461 | 0.3371 | 225.0 | 214.0 | 6.59 | 27.03 |
+| ID random | 20 | 1.00 | 1.00 | 0.6795 | 0.6930 | 137.1 | 155.8 | 6.41 | 50.75 |
+| OOD obstacle | 20 | 1.00 | 1.00 | 0.6768 | 0.6878 | 142.4 | 175.1 | 7.19 | 53.85 |
+| OOD terrain | 20 | 1.00 | 1.00 | 0.6848 | 0.6900 | 141.9 | 153.7 | 6.43 | 51.39 |
+
+- Learned-minus-nominal deltas:
+  - standard: final distance `-0.0090 m`, steps `-11.0`, clearance `+0.0826 m`, mean MPPI `+20.44 ms`.
+  - ID random: final distance `+0.0135 m`, steps `+18.7`, clearance `-0.0366 m`, mean MPPI `+44.34 ms`.
+  - OOD obstacle: final distance `+0.0109 m`, steps `+32.8`, clearance `+0.0276 m`, mean MPPI `+46.67 ms`.
+  - OOD terrain: final distance `+0.0051 m`, steps `+11.8`, clearance `-0.0645 m`, mean MPPI `+44.96 ms`.
+- Conclusion:
+  - Torch CUDA learned rollout reduces the learned standard runtime from NumPy's `~1203 ms/step` to `~27 ms/step`.
+  - Learned-FDM-MPPI improves the single standard scene.
+  - ID/OOD random tasks reach 100% success, but learned does not stably outperform nominal on final distance, steps, or clearance.
+  - Learned consistently reduces terrain risk, command-real error, residual norm, smoothness, and jerk.
+  - Next step should be Stage 5-C profiling/tuning and closed-loop cost calibration before history-conditioned FDM.
+
 ## 2026-05-01: S5-002 Stage 5 Closed-loop Benchmark Runner
 
 - Goal: add the PR #18 benchmark tool and summary schema for paired closed-loop Nominal-MPPI vs Learned-FDM-MPPI evaluation, without CUDA changes or full ID/OOD benchmark claims.

@@ -218,7 +218,14 @@ max_mppi_time_ms
 
 The four gate metrics are `success_rate`, `final_distance`, `min_obstacle_clearance`, and `mean_mppi_time_ms`.
 
-PR #18 is only the benchmark tool and schema. PR #19 should run the full ID/OOD benchmark and summarize results. PR #20 should profile and optimize learned-FDM runtime. Do not start history-conditioned FDM until closed-loop benchmark evidence shows the current MLP residual model is insufficient.
+PR #18 is only the benchmark tool and schema. PR #19 adds a Torch CUDA learned rollout backend, runs the first standard/ID/OOD closed-loop benchmark, and summarizes results. PR #20 should profile and tune learned-FDM runtime and closed-loop cost calibration. Do not start history-conditioned FDM until closed-loop benchmark evidence shows the current MLP residual model is insufficient.
+
+PR #19 result boundary:
+
+- standard scene: learned improves final distance, steps, clearance, terrain risk, and smoothness.
+- ID/OOD random tasks: learned reaches 100% success but does not stably outperform nominal on final distance, steps, or clearance.
+- learned consistently reduces terrain risk, command-real error, residual norm, smoothness, and jerk.
+- Torch CUDA learned rollout makes benchmark practical, but is still slower than nominal CUDA.
 
 ## Failure Modes
 
