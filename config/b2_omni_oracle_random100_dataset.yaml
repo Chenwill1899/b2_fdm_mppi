@@ -60,7 +60,7 @@ robot:
   max_awz: 0.8
   velocity_lag_beta: 0.35
   radius: 0.6
-  safety_dist: 0.5
+  safety_dist: 0.25
   obstacle_state_num: 7
 
 cbf:
@@ -87,7 +87,7 @@ scenario:
 obstacles:
   random_enabled: true
   random_seed: 123
-  num_random: 70
+  num_random: 120
   radius_range: [0.6, 2.0]
   x_range: [8.0, 95.0]
   y_range: [8.0, 95.0]
