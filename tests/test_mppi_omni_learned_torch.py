@@ -1,0 +1,117 @@
+import numpy as np
+import pytest
+import torch
+
+from b2_fdm_mppi.config import load_config
+from b2_fdm_mppi.controllers.mppi_omni_learned_torch import LearnedFdmMppiOmniTorch
+from b2_fdm_mppi.core.terrain import TerrainField
+
+
+class ConstantTorchResidualDynamics:
+    checkpoint_path = "stub/best_model.pt"
+    normalization_path = "stub/normalization.npz"
+    device = "cpu"
+
+    def predict_residual_torch(self, states, commands):
+        residuals = torch.zeros((states.shape[0], 3), dtype=states.dtype, device=states.device)
+        residuals[:, 0] = 0.2
+        residuals[:, 1] = -0.1
+        residuals[:, 2] = 0.05
+        return residuals
+
+
+def make_controller():
+    return LearnedFdmMppiOmniTorch(
+        dt=0.1,
+        horizon_steps=3,
+        num_samples=4,
+        lambda_=0.5,
+        noise_std=np.array([0.0, 0.0, 0.0], dtype=np.float32),
+        max_vx=1.0,
+        max_vy=0.5,
+        max_wz=0.4,
+        max_ax=1000.0,
+        max_ay=1000.0,
+        max_awz=1000.0,
+        velocity_lag_beta=0.0,
+        robot_radius=0.6,
+        safety_dist=0.25,
+        draw_num_traj=2,
+        seed=1,
+        learned_dynamics=ConstantTorchResidualDynamics(),
+        device="cpu",
+    )
+
+
+def test_learned_torch_rollout_applies_residual_to_response_limited_command():
+    controller = make_controller()
+    controls = np.zeros((1, controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, :] = np.array([0.5, 0.2, 0.1], dtype=np.float32)
+    state = np.zeros(6, dtype=np.float32)
+
+    states, real_controls = controller._rollout_batch(state, controls, return_controls=True)
+
+    assert states.shape == (1, controller.horizon_steps + 1, 6)
+    assert real_controls.shape == (1, controller.horizon_steps, 3)
+    assert real_controls[0, 0] == pytest.approx([0.7, 0.1, 0.15], abs=1e-6)
+    assert states[0, 1, 3:] == pytest.approx([0.7, 0.1, 0.15], abs=1e-6)
+    assert np.all(np.isfinite(states))
+
+
+def test_learned_torch_batch_cost_is_finite_and_shape_compatible():
+    controller = make_controller()
+    controls = np.zeros((controller.num_samples, controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, 0] = np.linspace(0.0, 0.5, controller.num_samples)[:, None]
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    costs = controller.trajectory_cost_batch(state, controls, goal, obstacles)
+
+    assert costs.shape == (controller.num_samples,)
+    assert np.all(np.isfinite(costs))
+
+
+def test_learned_torch_compute_control_returns_numpy_controller_outputs():
+    controller = make_controller()
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+
+    control, optimal_u, sample_u, normalizer, min_cost = controller.compute_control(
+        state,
+        [None, None, None, goal, np.empty((0, 7), dtype=np.float32), 0],
+    )
+
+    assert control.shape == (3,)
+    assert optimal_u.shape == (controller.horizon_steps, 3)
+    assert sample_u.shape == (controller.draw_num_traj, controller.horizon_steps, 3)
+    assert np.isfinite(normalizer)
+    assert np.isfinite(min_cost)
+
+
+def test_learned_torch_terrain_features_match_numpy_terrain_with_noise():
+    config = load_config("config/b2_omni_oracle_random100_dataset.yaml")
+    terrain = TerrainField.from_config(config["terrain"])
+    controller = make_controller()
+    controller.terrain = terrain
+    controller._setup_terrain_tensors()
+    states = torch.tensor(
+        [
+            [10.0, 12.0, 0.0, 0.1, 0.0, 0.0],
+            [42.5, 50.0, 0.2, 0.3, -0.1, 0.1],
+        ],
+        dtype=torch.float32,
+    )
+
+    features_t, risks_t = controller._terrain_features_torch(states)
+
+    expected_features = np.asarray([terrain.feature(float(s[0]), float(s[1])) for s in states], dtype=np.float32)
+    expected_risks = np.asarray(
+        [
+            terrain.risk_cost(float(state[0]), float(state[1]), features=expected_features[idx])
+            for idx, state in enumerate(states)
+        ],
+        dtype=np.float32,
+    )
+    assert features_t.detach().cpu().numpy() == pytest.approx(expected_features, abs=1e-6)
+    assert risks_t.detach().cpu().numpy() == pytest.approx(expected_risks, abs=1e-6)

@@ -208,17 +208,78 @@ def test_run_benchmark_writes_summary_and_configures_nominal_and_learned(tmp_pat
 def test_run_benchmark_rejects_non_numpy_backend(tmp_path):
     module = load_benchmark_module()
 
-    with pytest.raises(ValueError, match="only supports the NumPy backend"):
+    with pytest.raises(ValueError, match="supports only numpy or cuda"):
         module.run_benchmark(
             config_path="config/b2_omni_oracle.yaml",
             scenario_name="unit",
             output_dir=tmp_path,
             episodes=1,
             base_seed=123,
-            backend="cuda",
+            backend="bad",
             controllers=("nominal", "learned"),
             fdm_model_dir="model",
             fdm_checkpoint="best_model.pt",
             fdm_normalization="normalization.npz",
             fdm_device="cpu",
         )
+
+
+def test_run_benchmark_allows_cuda_backend_in_run_configs(tmp_path):
+    module = load_benchmark_module()
+    created_configs = []
+
+    class FakeRunner:
+        def __init__(self, config, controller_factory=None):
+            created_configs.append(config)
+            results = Path(config["results"]["root"]) / config["results"]["run_name"]
+            results.mkdir(parents=True, exist_ok=True)
+            self.results_path = results
+
+        def run(self):
+            summary = {
+                "success": True,
+                "reached_goal": True,
+                "failed": False,
+                "final_distance": 0.3,
+                "steps": 2,
+                "arrival_time": 0.2,
+                "path_length": 0.3,
+                "min_obstacle_clearance": 0.4,
+                "mean_terrain_risk": 0.1,
+                "mean_cmd_real_error": 0.0,
+                "mean_residual_norm": 0.0,
+                "control_smoothness": 0.0,
+                "control_jerk": 0.0,
+                "mean_mppi_time_ms": 1.0,
+                "max_mppi_time_ms": 2.0,
+            }
+            (self.results_path / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+            return SimpleNamespace(
+                steps=2,
+                reached_goal=True,
+                failed=False,
+                results_path=self.results_path,
+                run_time=0.2,
+            )
+
+    module.run_benchmark(
+        config_path="config/b2_omni_oracle.yaml",
+        scenario_name="unit",
+        output_dir=tmp_path / "benchmark",
+        episodes=1,
+        base_seed=123,
+        backend="cuda",
+        controllers=("nominal", "learned"),
+        fdm_model_dir="results/fdm_baselines/stage4_mlp_seed123_hardened",
+        fdm_checkpoint="best_model.pt",
+        fdm_normalization="normalization.npz",
+        fdm_device="cuda",
+        runner_cls=FakeRunner,
+    )
+
+    nominal_config, learned_config = created_configs
+    assert nominal_config["mppi"]["backend"] == "cuda"
+    assert "fdm" not in nominal_config or nominal_config["fdm"].get("enabled") is not True
+    assert learned_config["mppi"]["backend"] == "cuda"
+    assert learned_config["fdm"]["enabled"] is True
+    assert learned_config["fdm"]["device"] == "cuda"

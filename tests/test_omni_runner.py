@@ -607,12 +607,36 @@ def test_create_omni_controller_uses_learned_numpy_when_fdm_enabled(tmp_path, mo
     assert isinstance(controller, LearnedFdmMppiOmniNumpy)
 
 
-def test_create_omni_controller_rejects_learned_cuda_backend(tmp_path):
-    from b2_fdm_mppi.simulation.omni_runner import create_omni_controller
+def test_create_omni_controller_uses_learned_torch_for_cuda_backend(tmp_path, monkeypatch):
+    import b2_fdm_mppi.simulation.omni_runner as omni_runner
+    from b2_fdm_mppi.controllers.mppi_omni_learned_torch import LearnedFdmMppiOmniTorch
 
     config = make_config(tmp_path)
     config["mppi"]["backend"] = "cuda"
-    config["fdm"] = {"enabled": True, "model_dir": "stub-model"}
+    config["fdm"] = {
+        "enabled": True,
+        "model_dir": "stub-model",
+        "checkpoint": "best_model.pt",
+        "normalization": "normalization.npz",
+        "device": "cpu",
+    }
 
-    with pytest.raises(RuntimeError, match="NumPy"):
-        create_omni_controller(config, seed=123)
+    class StubDynamics:
+        checkpoint_path = "stub-model/best_model.pt"
+        normalization_path = "stub-model/normalization.npz"
+        device = "cpu"
+
+        def predict_residual_torch(self, states, commands):
+            import torch
+
+            return torch.zeros((len(states), 3), dtype=states.dtype, device=states.device)
+
+    monkeypatch.setattr(
+        omni_runner.LearnedResidualDynamics,
+        "from_artifacts",
+        classmethod(lambda cls, *args, **kwargs: StubDynamics()),
+    )
+
+    controller = omni_runner.create_omni_controller(config, seed=123)
+
+    assert isinstance(controller, LearnedFdmMppiOmniTorch)
