@@ -17,28 +17,27 @@ Nominal B2 omni MPPI
 当前阶段：
 
 ```text
-Stage 3.2: 串行多 episode 数据采集
+Stage 3.3: 合并 episode npz，并准备 train/val/test 切分
 ```
 
-Stage 3.2 的目标很窄：
+Stage 3.3 的目标很窄：
 
-- 串行运行多个 oracle episode；
-- 每个 episode 保存一个 `.npz` 文件；
-- 生成 `manifest.jsonl` 和 `summary.json`；
-- 验证 episode seed 映射和采集统计。
+- 读取 Stage 3.2 生成的 episode `.npz`；
+- 按 episode 级别切分 train/val/test；
+- 合并 transition array；
+- 生成 split manifest 和 dataset summary。
 
-Stage 3.2 不做：
+Stage 3.3 不做：
 
 - 不训练 FDM；
 - 不实现 FDM 网络；
 - 不做并行采集；
-- 不切分 train/val/test；
 - 不修改 MPPI 核心控制逻辑。
 
 下一阶段计划：
 
 ```text
-Stage 3.3: 合并数据集并准备 train/val/test 切分
+Stage 3.4: 数据集质量检查和最小训练前验证
 ```
 
 ## 构建
@@ -216,6 +215,43 @@ print("exec_residuals_match", np.allclose(
 ))
 PY
 ```
+
+### 构建 Train / Val / Test Split
+
+先用 Stage 3.2 生成 episode：
+
+```bash
+python3 tools/generate_oracle_episodes.py \
+  --config config/b2_omni_oracle_random100_dataset.yaml \
+  --episodes 20 \
+  --base-seed 123 \
+  --output datasets/oracle_debug
+```
+
+再合并并切分：
+
+```bash
+python3 tools/build_oracle_dataset.py \
+  --input datasets/oracle_debug \
+  --output datasets/oracle_debug_splits \
+  --train-ratio 0.7 \
+  --val-ratio 0.15 \
+  --test-ratio 0.15 \
+  --seed 123
+```
+
+输出结构：
+
+```text
+datasets/oracle_debug_splits/
+  train.npz
+  val.npz
+  test.npz
+  split_manifest.json
+  dataset_summary.json
+```
+
+切分发生在 episode 级别，同一个 episode 的 transitions 不会跨 split。
 
 主要 shape 预期：
 
