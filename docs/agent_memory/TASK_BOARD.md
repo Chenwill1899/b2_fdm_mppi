@@ -4,7 +4,7 @@ Last updated: 2026-05-01
 
 ## Current Stage
 
-Stage 5: learned residual FDM NumPy closed-loop benchmark.
+Stage 5-C: closed-loop residual-gain calibration, learned cost calibration, and Torch runtime profiling.
 
 ## Stage 0 Acceptance Criteria
 
@@ -52,6 +52,10 @@ Stage 5: learned residual FDM NumPy closed-loop benchmark.
 | S5-002 | P0 | done | Add Stage 5 closed-loop benchmark runner | Added `tools/benchmark_learned_fdm_mppi.py` and `docs/agent_memory/STAGE5_BENCHMARK.md` for paired nominal vs learned NumPy oracle benchmarks. The tool writes `stage5_benchmark_summary.json` with metadata, per-run metrics, per-controller aggregates, and learned-minus-nominal paired deltas. Full ID/OOD benchmark results are deferred to PR #19. |
 | S5-003 | P0 | done | Add Torch CUDA learned rollout and run Stage 5-B benchmark | Added `LearnedFdmMppiOmniTorch` and enabled `fdm.enabled=true` with `mppi.backend=cuda`. Ran standard plus 20-episode ID/OOD obstacle/OOD terrain benchmarks. Learned improves the standard scene and reaches 100% success in ID/OOD, but does not stably beat nominal on random-task final distance/steps/clearance. Torch CUDA learned runtime is practical (`~27 ms` standard, `~51-54 ms` ID/OOD) but still slower than nominal CUDA. |
 | S5-004 | P0 | done | Standardize Stage 5 closed-loop visual eval | Added `tools/visualize_stage5_closed_loop.py` and `docs/agent_memory/STAGE5_VISUAL_EVAL.md`. The tool runs paired nominal/learned oracle closed-loop simulations with plots and GIFs enabled, then writes `closed_loop_nominal_vs_learned.png`, metric CSV/JSON, and `stage5_visual_eval_summary.json`. |
+| S5-005 | P0 | done | Add residual-gain calibration and runtime profiling tools | Added `fdm.residual_gain` to NumPy/Torch learned rollout, `tools/sweep_stage5_calibration.py`, learned-only MPPI cost overrides in the benchmark runner, and `tools/profile_stage5_learned_torch.py`. Verified quick sweeps and profiler on CUDA. |
+| S5-006 | P0 | done | Run Stage 5-C quick residual-gain sweep | Standard scene favors nonzero gain; 5-episode ID quick sweep shows `residual_gain=0.0/0.25/0.5` preserves final distance and improves steps while `0.75/1.0` degrades ID random-task steps/final distance. Best next candidates: `0.25` and `0.5`. |
+| S5-007 | P0 | done | Run Stage 5-C cost sanity grid | Learned-only 5-episode ID grid at `residual_gain=0.5` shows `goal_xy_weight=3.5` improves final distance/steps versus default `2.5`; `smooth_weight=0.5` has best final distance and `smooth_weight=1.0` has fewest steps. |
+| S5-008 | P0 | todo | Run calibrated 20-episode ID/OOD benchmark | Compare nominal CUDA, default learned `residual_gain=1.0`, and calibrated learned candidate `residual_gain=0.5`, `goal_xy_weight=3.5`, with `smooth_weight=0.5/1.0` candidate selection. |
 
 ## Later Stages
 
@@ -61,6 +65,6 @@ Stage 5: learned residual FDM NumPy closed-loop benchmark.
 | 2 | done | Oracle residual world. |
 | 3.5 | done | Parallel Oracle Dataset Generation with explicit episode seed mapping. |
 | 4 | done | Residual velocity FDM training baseline and open-loop/OOD validation. |
-| 5 | in_progress | Learned FDM-MPPI NumPy integration, closed-loop benchmark, and runtime profiling. |
+| 5 | in_progress | Learned FDM-MPPI closed-loop calibration, profiling, and larger calibrated ID/OOD benchmark. |
 | 6 | pending | Unified evaluation system. |
 | 7 | pending | Paper-ready experiments and figures. |

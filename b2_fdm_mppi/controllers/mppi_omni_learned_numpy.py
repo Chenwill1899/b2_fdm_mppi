@@ -11,9 +11,16 @@ from b2_fdm_mppi.core.terrain import TerrainField
 
 
 class LearnedFdmMppiOmniNumpy(MppiOmniNumpy):
-    def __init__(self, *args, learned_dynamics: LearnedResidualDynamics, **kwargs) -> None:
+    def __init__(
+        self,
+        *args,
+        learned_dynamics: LearnedResidualDynamics,
+        residual_gain: float = 1.0,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.learned_dynamics = learned_dynamics
+        self.residual_gain = float(residual_gain)
 
     @classmethod
     def from_config(
@@ -80,6 +87,7 @@ class LearnedFdmMppiOmniNumpy(MppiOmniNumpy):
             draw_num_traj=int(mppi["draw_num_traj"]),
             seed=seed,
             learned_dynamics=learned_dynamics,
+            residual_gain=float(overrides.get("residual_gain", config.get("fdm", {}).get("residual_gain", 1.0))),
         )
 
     def _rollout_batch(
@@ -102,7 +110,7 @@ class LearnedFdmMppiOmniNumpy(MppiOmniNumpy):
             delta = np.clip(lagged - prev_real, -max_delta, max_delta)
             response_command = np.clip(prev_real + delta, -self.max_control, self.max_control)
             residual = self.learned_dynamics.predict_residual_batch(prev, response_command)
-            control = np.clip(response_command + residual, -self.max_control, self.max_control)
+            control = np.clip(response_command + self.residual_gain * residual, -self.max_control, self.max_control)
             real_controls[:, step, :] = control
             theta = prev[:, 2]
             cos_theta = np.cos(theta)

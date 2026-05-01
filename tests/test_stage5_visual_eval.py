@@ -112,6 +112,7 @@ def test_run_visual_eval_enables_visual_outputs_and_writes_summary(tmp_path):
         fdm_checkpoint="best_model.pt",
         fdm_normalization="normalization.npz",
         fdm_device="cuda",
+        fdm_residual_gain=0.5,
         command="python3 tools/visualize_stage5_closed_loop.py --unit-test",
         argv=["python3", "tools/visualize_stage5_closed_loop.py", "--unit-test"],
         runner_cls=FakeRunner,
@@ -121,6 +122,7 @@ def test_run_visual_eval_enables_visual_outputs_and_writes_summary(tmp_path):
     assert saved == summary
     assert summary["metadata"]["backend"] == "cuda"
     assert summary["metadata"]["seed"] == 123
+    assert summary["metadata"]["fdm_residual_gain"] == pytest.approx(0.5)
     assert summary["comparison"]["metrics"]["final_distance"]["delta"] == pytest.approx(-0.2)
     assert Path(summary["comparison"]["overlay_png"]).exists()
 
@@ -132,3 +134,4 @@ def test_run_visual_eval_enables_visual_outputs_and_writes_summary(tmp_path):
     assert learned_config["results"]["enable_animation"] is True
     assert learned_config["fdm"]["enabled"] is True
     assert learned_config["fdm"]["device"] == "cuda"
+    assert learned_config["fdm"]["residual_gain"] == pytest.approx(0.5)

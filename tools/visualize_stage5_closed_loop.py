@@ -52,6 +52,7 @@ def run_visual_eval(
     fdm_checkpoint: str | Path = "best_model.pt",
     fdm_normalization: str | Path = "normalization.npz",
     fdm_device: str | None = None,
+    fdm_residual_gain: float = 1.0,
     command: str | None = None,
     argv: Sequence[str] | None = None,
     runner_cls=OmniMppiSimulationRunner,
@@ -80,6 +81,7 @@ def run_visual_eval(
             fdm_checkpoint=fdm_checkpoint,
             fdm_normalization=fdm_normalization,
             fdm_device=fdm_device,
+            fdm_residual_gain=fdm_residual_gain,
         )
         run_config = _enable_visual_outputs(run_config)
         runner = runner_cls(
@@ -113,6 +115,7 @@ def run_visual_eval(
             "fdm_checkpoint": str(fdm_checkpoint),
             "fdm_normalization": str(fdm_normalization),
             "fdm_device": str(fdm_device),
+            "fdm_residual_gain": float(fdm_residual_gain),
             **current_git_metadata(),
         },
         "runs": {
@@ -341,6 +344,7 @@ def main() -> None:
     parser.add_argument("--fdm-checkpoint", default="best_model.pt")
     parser.add_argument("--fdm-normalization", default="normalization.npz")
     parser.add_argument("--fdm-device", default=None)
+    parser.add_argument("--fdm-residual-gain", type=float, default=1.0)
     args = parser.parse_args()
 
     summary = run_visual_eval(
@@ -353,6 +357,7 @@ def main() -> None:
         fdm_checkpoint=args.fdm_checkpoint,
         fdm_normalization=args.fdm_normalization,
         fdm_device=args.fdm_device or ("cuda" if args.backend == "cuda" else "cpu"),
+        fdm_residual_gain=args.fdm_residual_gain,
         command=shell_join([sys.executable, *sys.argv]),
         argv=[sys.executable, *sys.argv],
     )
