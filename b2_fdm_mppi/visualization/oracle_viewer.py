@@ -66,10 +66,12 @@ def plot_oracle_diagnostics(results_path: Path, config: dict) -> None:
     fig.colorbar(heatmap, ax=ax_map, fraction=0.046, pad=0.04, label="Terrain risk")
 
     du_norm = residuals["du_norm"].to_numpy(dtype=np.float32)
+    action_count = min(len(trajectory), len(residuals), len(terrain))
+    action_trajectory = trajectory.iloc[:action_count]
     scatter = ax_map.scatter(
-        trajectory["x"],
-        trajectory["y"],
-        c=du_norm,
+        action_trajectory["x"],
+        action_trajectory["y"],
+        c=du_norm[:action_count],
         cmap="viridis",
         s=20,
         label="trajectory",
@@ -106,9 +108,9 @@ def plot_oracle_diagnostics(results_path: Path, config: dict) -> None:
             label="end",
         )
 
-    states = trajectory[["x", "y", "theta"]].to_numpy(dtype=np.float32)
-    cmd_controls = residuals[["cmd_vx", "cmd_vy", "cmd_wz"]].to_numpy(dtype=np.float32)
-    real_controls = residuals[["real_vx", "real_vy", "real_wz"]].to_numpy(dtype=np.float32)
+    states = action_trajectory[["x", "y", "theta"]].to_numpy(dtype=np.float32)
+    cmd_controls = residuals.iloc[:action_count][["cmd_vx", "cmd_vy", "cmd_wz"]].to_numpy(dtype=np.float32)
+    real_controls = residuals.iloc[:action_count][["real_vx", "real_vy", "real_wz"]].to_numpy(dtype=np.float32)
     stride = max(10, len(states) // 15 if len(states) else 10)
     for idx in range(0, len(states), stride):
         x, y, theta = states[idx]
@@ -175,9 +177,10 @@ def plot_oracle_diagnostics(results_path: Path, config: dict) -> None:
     ax_du.set_ylabel("residual")
     ax_du.legend(loc="upper right")
 
-    ax_terrain.plot(steps, terrain["risk_cost"], label="risk", color="tab:red")
-    ax_terrain.plot(steps, terrain["roughness"], label="roughness", color="tab:green")
-    ax_terrain.plot(steps, terrain["friction"], label="friction", color="tab:blue")
+    terrain_steps = np.arange(len(terrain))
+    ax_terrain.plot(terrain_steps, terrain["risk_cost"], label="risk", color="tab:red")
+    ax_terrain.plot(terrain_steps, terrain["roughness"], label="roughness", color="tab:green")
+    ax_terrain.plot(terrain_steps, terrain["friction"], label="friction", color="tab:blue")
     ax_terrain.set_ylabel("terrain")
     ax_terrain.set_xlabel("step")
     ax_terrain.legend(loc="upper right")

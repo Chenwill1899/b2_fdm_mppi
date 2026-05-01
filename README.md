@@ -25,7 +25,7 @@ Nominal B2 omni MPPI
 当前阶段：
 
 ```text
-Stage 4: residual FDM training baseline
+Stage 5: learned FDM-MPPI NumPy integration smoke
 ```
 
 Stage 3.5 已完成：
@@ -38,24 +38,25 @@ Stage 3.5 已完成：
 - `trajectory.csv` 保存最终 state，episode npz 不再丢最后一个 transition；
 - `build_oracle_dataset.py` 和 `validate_oracle_dataset.py` 继续复用现有字段和文件格式。
 
-Stage 4 当前目标：
+Stage 4 已基本收口：
 
 - 训练一个最小 residual velocity FDM baseline；
 - 输入：`states + cmd_controls + terrain_features + terrain_risk`；
 - 目标：`exec_residuals = real_controls - cmd_controls`；
 - 输出：`best_model.pt`、`model.pt`、`normalization.npz`、`metrics.json`；
-- 暂不接入 MPPI rollout。
+- 完成 ID/OOD one-step residual eval 和 open-loop rollout eval。
 
-Stage 4 不做：
+Stage 5 当前目标：
 
-- 不把 learned FDM 接入 MPPI；
-- 不训练风险模型；
-- 不修改 MPPI 核心控制逻辑。
+- 先做 NumPy-only learned residual dynamics wrapper；
+- 通过 learned NumPy controller 子类把 residual FDM 接入 MPPI rollout cost；
+- 只跑 closed-loop smoke test，不修改 CUDA kernel；
+- 不宣称完成 Stage 5 大规模 closed-loop benchmark。
 
-下一阶段计划：
+当前 Stage 5 入口：
 
 ```text
-Stage 5: learned FDM-MPPI integration
+LearnedResidualDynamics + LearnedFdmMppiOmniNumpy + standard oracle smoke
 ```
 
 ## 构建
@@ -640,3 +641,45 @@ rollout_compare.gif: 120 frames, 700x700
 ```
 
 这个验证仍属于 Stage 4 open-loop 检查；它证明 learned FDM 能在固定控制序列 replay 中贴近 oracle，不等价于 Stage 5 的闭环 Learned-FDM-MPPI 集成。
+
+## Stage 5 Learned-FDM-MPPI Smoke
+
+PR #17 的目标是最小化闭环接入面：新增 learned residual dynamics wrapper 和 NumPy controller 子类，让 MPPI 采样轨迹成本使用 learned residual correction。CUDA kernel 暂不修改。
+
+配置入口：
+
+```yaml
+fdm:
+  enabled: true
+  model_dir: results/fdm_baselines/stage4_mlp_seed123_hardened
+  checkpoint: best_model.pt
+  normalization: normalization.npz
+  device: cpu
+```
+
+标准 smoke 命令：
+
+```bash
+python3 tools/run_omni_mppi.py \
+  --config config/b2_omni_oracle.yaml \
+  --seed 123 \
+  --backend numpy \
+  --fdm-enabled \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cpu
+```
+
+当前 smoke 结果：
+
+```text
+nominal final_distance: 0.32817 m
+learned final_distance: 0.34299 m
+acceptance threshold: 0.49380 m
+learned reached_goal: true
+learned failed: false
+learned mean_mppi_time_ms: 1143.50
+```
+
+结论：learned-FDM NumPy closed-loop smoke 已通过稳定性阈值，但当前实现不是实时控制性能；后续需要优化 rollout inference / terrain feature batch 或再进入 CUDA learned rollout。完整协议见 `docs/agent_memory/STAGE5_PROTOCOL.md`。

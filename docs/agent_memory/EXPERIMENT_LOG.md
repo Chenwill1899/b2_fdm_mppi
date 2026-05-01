@@ -2,6 +2,56 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01: S5-001 Learned Residual Dynamics Wrapper and NumPy Closed-loop Smoke
+
+- Goal: start Stage 5 with a minimal NumPy-only learned-FDM MPPI smoke path, without CUDA changes or large benchmark claims.
+- Code additions:
+  - `b2_fdm_mppi/core/residual_fdm_model.py`
+  - `b2_fdm_mppi/core/learned_residual_dynamics.py`
+  - `b2_fdm_mppi/controllers/mppi_omni_learned_numpy.py`
+  - FDM config/CLI overrides in `tools/run_omni_mppi.py`
+  - `docs/agent_memory/STAGE5_PROTOCOL.md`
+- Smoke commands:
+
+```bash
+python3 tools/run_omni_mppi.py \
+  --config config/b2_omni_oracle.yaml \
+  --seed 123 \
+  --backend numpy
+
+python3 tools/run_omni_mppi.py \
+  --config config/b2_omni_oracle.yaml \
+  --seed 123 \
+  --backend numpy \
+  --fdm-enabled \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cpu
+```
+
+- Nominal result: `results/sim_results/b2_omni_oracle_2026-05-01_20-41-06`
+  - reached_goal: `true`
+  - failed: `false`
+  - steps: `219`
+  - final_distance: `0.3281706`
+  - min_obstacle_clearance: `0.1524212`
+  - mean_mppi_time_ms: `13.4969`
+- Learned-FDM result: `results/sim_results/b2_omni_oracle_2026-05-01_20-42-31`
+  - reached_goal: `true`
+  - failed: `false`
+  - steps: `209`
+  - final_distance: `0.3429893`
+  - min_obstacle_clearance: `0.1900530`
+  - mean_mppi_time_ms: `1143.4956`
+  - max_mppi_time_ms: `1224.5321`
+- Acceptance:
+  - learned final distance threshold: `0.4938048`
+  - learned final distance: `0.3429893`
+  - required CSV/JSON outputs exist.
+- Known limitation: first NumPy learned rollout is stable but not real-time; runtime is dominated by Python terrain feature evaluation and Torch inference inside the MPPI horizon loop.
+- Boundary: this is Stage 5 entry smoke only. It does not complete Stage 5 closed-loop benchmarking and does not validate CUDA learned rollout.
+
 ## 2026-05-01: S4-005 Multi-seed, OOD, and Stage 4 Protocol Closeout
 
 - Goal: close Stage 4 residual FDM baseline validation without entering Stage 5 closed-loop MPPI integration.

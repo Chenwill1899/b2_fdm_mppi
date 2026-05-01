@@ -20,10 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from b2_fdm_mppi.config import load_config
 from b2_fdm_mppi.core.omni_b2 import OmniB2
+from b2_fdm_mppi.core.residual_fdm_model import FEATURE_NAMES, ResidualFdmMlp, build_feature_vector
 from b2_fdm_mppi.core.terrain import TerrainField
 from b2_fdm_mppi.simulation.omni_runner import OmniMppiSimulationRunner, create_omni_controller
 from b2_fdm_mppi.visualization.utils import map_axis_limits_from_config
-from tools.train_residual_fdm import FEATURE_NAMES, ResidualFdmMlp
 
 
 ResidualPredictor = Callable[[np.ndarray, np.ndarray, np.ndarray, float], np.ndarray]
@@ -54,22 +54,6 @@ class ResidualFdmPredictor:
         with torch.no_grad():
             pred = self.model(tensor).detach().cpu().numpy()[0]
         return (pred * self.target_std + self.target_mean).astype(np.float32, copy=False)
-
-
-def build_feature_vector(
-    state: np.ndarray,
-    command: np.ndarray,
-    terrain_features: np.ndarray,
-    terrain_risk: float,
-) -> np.ndarray:
-    return np.concatenate(
-        [
-            np.asarray(state, dtype=np.float32).reshape(6),
-            np.asarray(command, dtype=np.float32).reshape(3),
-            np.asarray(terrain_features, dtype=np.float32).reshape(4),
-            np.asarray([terrain_risk], dtype=np.float32),
-        ]
-    ).astype(np.float32, copy=False)
 
 
 def load_residual_fdm_predictor(
