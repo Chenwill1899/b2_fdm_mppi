@@ -1,6 +1,81 @@
 # Experiment Log
 
-Last updated: 2026-04-29
+Last updated: 2026-05-01
+
+## 2026-05-01: S4-003 Open-loop Learned FDM Rollout Eval
+
+- Goal: visualize and quantify trained residual FDM effects in the Stage 2 `config/b2_omni_oracle.yaml` oracle simulation environment without yet integrating learned FDM into MPPI rollout.
+- Tool:
+
+```text
+tools/evaluate_residual_fdm_rollout.py
+```
+
+- Command:
+
+```bash
+python3 tools/evaluate_residual_fdm_rollout.py \
+  --config config/b2_omni_oracle.yaml \
+  --model-dir results/fdm_baselines/stage4_mlp_seed123 \
+  --output results/fdm_rollout_eval/stage4_mlp_seed123_b2_omni_oracle_seed123 \
+  --seed 123 \
+  --backend numpy \
+  --device cpu \
+  --checkpoint model.pt \
+  --normalization normalization.npz \
+  --gif-fps 8 \
+  --gif-max-frames 120
+```
+
+- Output directory:
+
+```text
+results/fdm_rollout_eval/stage4_mlp_seed123_b2_omni_oracle_seed123/
+```
+
+- Key artifacts:
+  - `rollout_compare.gif`
+  - `trajectory_compare.png`
+  - `residual_compare.png`
+  - `rollout_metrics.json`
+  - `rollout_replay.npz`
+  - `oracle_run/`
+- Metrics:
+  - `oracle_reached_goal: true`
+  - `oracle_steps: 219`
+  - `nominal_ade_xy: 0.5212535262107849`
+  - `learned_ade_xy: 0.04870650917291641`
+  - `nominal_fde_xy: 0.9190490245819092`
+  - `learned_fde_xy: 0.14395728707313538`
+  - `learned_vs_nominal_ade_improvement_pct: 90.65588879043469`
+  - `nominal_ade_xy_at_1s: 0.019368547946214676`
+  - `learned_ade_xy_at_1s: 0.0010764976032078266`
+  - `nominal_fde_xy_at_1s: 0.03956378623843193`
+  - `learned_fde_xy_at_1s: 0.0011031425092369318`
+  - `nominal_ade_xy_at_2s: 0.04252150282263756`
+  - `learned_ade_xy_at_2s: 0.0010103760287165642`
+  - `nominal_fde_xy_at_2s: 0.09266608953475952`
+  - `learned_fde_xy_at_2s: 0.0012467068154364824`
+  - `nominal_ade_xy_at_4s: 0.09689775109291077`
+  - `learned_ade_xy_at_4s: 0.00154116319026798`
+  - `nominal_fde_xy_at_4s: 0.2138642817735672`
+  - `learned_fde_xy_at_4s: 0.0027648615650832653`
+  - `residual_mse: 1.0517556802369654e-05`
+  - `zero_residual_mse: 0.0009893554961308837`
+  - `residual_mse_improvement_pct: 98.93692845054167`
+  - `rollout_compare.gif: 120 frames, 700x700, 977494 bytes`
+- Reproducibility metadata now written to `rollout_metrics.json` / `.yaml`:
+  - exact command
+  - git SHA / branch / dirty flag
+  - backend and device
+  - checkpoint and normalization artifact paths
+  - GIF enabled/fps/max-frame parameters
+- Parameter snapshot:
+  - `robot.radius: 0.6`
+  - `robot.safety_dist: 0.25`
+  - `obstacle_radii: [0.4, 0.4]`
+  - `visualized_safety_boundary_radii: [1.25, 1.25]`
+- Conclusion: the seed123 learned FDM replay substantially improves over nominal replay in the fixed Stage 2 oracle scene. This is an open-loop Stage 4 validation, not closed-loop learned-FDM MPPI.
 
 ## Startup Inspection
 

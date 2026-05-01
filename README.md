@@ -2,6 +2,14 @@
 
 这是一个 ROS 2 Humble `ament_python` 包，也是 B2 全向 MPPI、oracle residual 仿真和 FDM 数据集准备的本地研发工作区。
 
+项目 Notion 驾驶舱：
+
+```text
+https://www.notion.so/fdm_mppi-3532fb2e849f8188a4fef5bb3ae54264?t=3532fb2e849f8080ac1400a9065381ce
+```
+
+每完成一个小 stage，需要把相关实验数据、输出路径、指标、代码/配置改动、验证命令和结论更新到 Notion 对应数据库中；如果该 stage 改变了项目可见进展，还要同步更新 Notion 首页里的当前阶段、本阶段焦点 checklist、路线图状态、稳定结论或下一步。若暂时无法访问 Notion，先更新 `docs/agent_memory/` 并留下待同步说明。
+
 当前开发线不改动 MPPI 核心控制逻辑，而是在其外围建立可复现的数据链路：
 
 ```text
@@ -488,3 +496,87 @@ TensorBoard 记录：
 - per-epoch `loss/train_standardized`、`loss/val_standardized`、`lr`；
 - final `mse/val_raw`、`mse/test_raw`、zero-residual baseline MSE；
 - val split residual prediction-vs-target scatter 和 residual error histogram。
+
+### Open-loop Rollout 效果验证
+
+训练后可以用同一个 oracle 仿真环境做 open-loop replay，对比 nominal replay、learned FDM replay 和 oracle ground truth：
+
+```bash
+python3 tools/evaluate_residual_fdm_rollout.py \
+  --config config/b2_omni_oracle.yaml \
+  --model-dir results/fdm_baselines/stage4_mlp_seed123 \
+  --output results/fdm_rollout_eval/stage4_mlp_seed123_b2_omni_oracle_seed123 \
+  --seed 123 \
+  --backend numpy \
+  --device cpu \
+  --checkpoint model.pt \
+  --normalization normalization.npz \
+  --gif-fps 8 \
+  --gif-max-frames 120
+```
+
+验证流程：
+
+```text
+run oracle MPPI episode
+  -> collect oracle states, cmd_controls, exec residuals
+  -> replay nominal model with same cmd_controls
+  -> replay learned FDM with same cmd_controls
+  -> compare replay trajectories and residual predictions against oracle
+```
+
+输出：
+
+```text
+rollout_metrics.json
+rollout_metrics.yaml
+rollout_replay.npz
+rollout_compare.gif
+trajectory_compare.png
+residual_compare.png
+oracle_run/
+```
+
+核心指标：
+
+- `nominal_ade_xy` / `learned_ade_xy`: replay 轨迹相对 oracle 的平均 XY 误差。
+- `nominal_fde_xy` / `learned_fde_xy`: replay 终点相对 oracle 的 XY 误差。
+- `horizon_metrics`: `1s`、`2s`、`4s` 窗口内的 ADE/FDE 及改善比例；同时展开为 `nominal_ade_xy_at_1s` 等顶层字段，便于脚本读取。
+- `learned_vs_nominal_ade_improvement_pct`: learned replay 相对 nominal replay 的 ADE 改善比例。
+- `residual_mse` / `zero_residual_mse`: learned residual 相对 oracle residual 的 MSE，以及零 residual baseline MSE。
+- `residual_mse_axis`: `[vx, vy, wz]` 三轴 residual MSE。
+- `command`、`git_sha`、`git_branch`、`git_dirty`、`device`、`checkpoint_path`、`normalization_path`、`gif_parameters`: 复现实验所需的运行元数据。
+
+`rollout_compare.gif` 展示 terrain risk 热力背景、障碍物 safety boundary、oracle / nominal replay / learned FDM replay 三条轨迹同步推进，以及每帧 nominal 和 learned 相对 oracle 的当前 XY error。若只需要 JSON/PNG，可以加 `--no-gif` 跳过 GIF 渲染；此时 metrics 不会复用 output dir 中可能存在的旧 `rollout_compare.gif` 路径。
+
+参数一致性检查：
+
+- eval 会把实际使用的 `robot.radius`、`robot.safety_dist`、障碍物半径和可视化 safety boundary 半径写入 `rollout_metrics.json` 的 `parameter_snapshot`。
+- GIF 中红色 safety boundary 使用 `obstacle_radius + robot.radius + robot.safety_dist`。
+- 当前标准 eval 场景 `config/b2_omni_oracle.yaml` 使用 `robot.safety_dist: 0.25`，与训练 dataset 配置 `config/b2_omni_oracle_random100_dataset.yaml` 的障碍物安全距离一致。
+
+`config/b2_omni_oracle.yaml` seed123 当前参考结果：
+
+```text
+oracle_reached_goal: true
+oracle_steps: 219
+robot_safety_dist: 0.25
+visualized_safety_boundary_radii: [1.25, 1.25]
+nominal_ade_xy: 0.52125
+learned_ade_xy: 0.04871
+nominal_fde_xy: 0.91905
+learned_fde_xy: 0.14396
+learned_vs_nominal_ade_improvement_pct: 90.66
+nominal_ade_xy_at_1s / learned_ade_xy_at_1s: 0.01937 / 0.00108
+nominal_fde_xy_at_1s / learned_fde_xy_at_1s: 0.03956 / 0.00110
+nominal_ade_xy_at_2s / learned_ade_xy_at_2s: 0.04252 / 0.00101
+nominal_fde_xy_at_2s / learned_fde_xy_at_2s: 0.09267 / 0.00125
+nominal_ade_xy_at_4s / learned_ade_xy_at_4s: 0.09690 / 0.00154
+nominal_fde_xy_at_4s / learned_fde_xy_at_4s: 0.21386 / 0.00276
+residual_mse_improvement_pct: 98.94
+checkpoint_path: results/fdm_baselines/stage4_mlp_seed123/model.pt
+normalization_path: results/fdm_baselines/stage4_mlp_seed123/normalization.npz
+rollout_compare.gif: 120 frames, 700x700
+```
+
+这个验证仍属于 Stage 4 open-loop 检查；它证明 learned FDM 能在固定控制序列 replay 中贴近 oracle，不等价于 Stage 5 的闭环 Learned-FDM-MPPI 集成。

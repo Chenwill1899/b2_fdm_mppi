@@ -112,6 +112,7 @@ def test_b2_omni_oracle_config_loads_stage2_parameters():
     assert config["terrain"]["slope_scale"] == pytest.approx(0.10)
     assert config["terrain"]["roughness_scale"] == pytest.approx(0.25)
     assert config["robot"]["max_vy"] == pytest.approx(0.1)
+    assert config["robot"]["safety_dist"] == pytest.approx(0.25)
     assert config["oracle_residual"]["enabled"] is True
     assert config["oracle_residual"]["alpha"] == pytest.approx(0.35)
     assert config["oracle_residual"]["residual_scale"] == pytest.approx(0.35)
