@@ -20,7 +20,7 @@ class ConstantTorchResidualDynamics:
         return residuals
 
 
-def make_controller():
+def make_controller(*, residual_gain=1.0, profile_enabled=False):
     return LearnedFdmMppiOmniTorch(
         dt=0.1,
         horizon_steps=3,
@@ -40,6 +40,8 @@ def make_controller():
         seed=1,
         learned_dynamics=ConstantTorchResidualDynamics(),
         device="cpu",
+        residual_gain=residual_gain,
+        profile_enabled=profile_enabled,
     )
 
 
@@ -56,6 +58,29 @@ def test_learned_torch_rollout_applies_residual_to_response_limited_command():
     assert real_controls[0, 0] == pytest.approx([0.7, 0.1, 0.15], abs=1e-6)
     assert states[0, 1, 3:] == pytest.approx([0.7, 0.1, 0.15], abs=1e-6)
     assert np.all(np.isfinite(states))
+
+
+def test_learned_torch_rollout_scales_residual_with_gain():
+    controller = make_controller(residual_gain=0.5)
+    controls = np.zeros((1, controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, :] = np.array([0.5, 0.2, 0.1], dtype=np.float32)
+    state = np.zeros(6, dtype=np.float32)
+
+    _states, real_controls = controller._rollout_batch(state, controls, return_controls=True)
+
+    assert controller.residual_gain == pytest.approx(0.5)
+    assert real_controls[0, 0] == pytest.approx([0.6, 0.15, 0.125], abs=1e-6)
+
+
+def test_learned_torch_rollout_zero_gain_matches_response_limited_command():
+    controller = make_controller(residual_gain=0.0)
+    controls = np.zeros((1, controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, :] = np.array([0.5, 0.2, 0.1], dtype=np.float32)
+    state = np.zeros(6, dtype=np.float32)
+
+    _states, real_controls = controller._rollout_batch(state, controls, return_controls=True)
+
+    assert real_controls[0, 0] == pytest.approx([0.5, 0.2, 0.1], abs=1e-6)
 
 
 def test_learned_torch_batch_cost_is_finite_and_shape_compatible():
@@ -87,6 +112,30 @@ def test_learned_torch_compute_control_returns_numpy_controller_outputs():
     assert sample_u.shape == (controller.draw_num_traj, controller.horizon_steps, 3)
     assert np.isfinite(normalizer)
     assert np.isfinite(min_cost)
+
+
+def test_learned_torch_profile_records_runtime_buckets():
+    controller = make_controller(profile_enabled=True)
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+
+    controller.compute_control(
+        state,
+        [None, None, None, goal, np.empty((0, 7), dtype=np.float32), 0],
+    )
+
+    profile = controller.profile_summary()
+    assert profile["enabled"] is True
+    assert profile["total_calls"] == 1
+    for bucket in (
+        "sample_candidates_ms",
+        "rollout_total_ms",
+        "fdm_inference_ms",
+        "cost_terms_ms",
+        "cpu_transfer_ms",
+    ):
+        assert bucket in profile["totals_ms"]
+        assert profile["totals_ms"][bucket] >= 0.0
 
 
 def test_learned_torch_terrain_features_match_numpy_terrain_with_noise():

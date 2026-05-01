@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import torch
 
@@ -25,12 +27,19 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
         learned_dynamics: LearnedResidualDynamics,
         terrain: TerrainField | None = None,
         device: str = "cuda",
+        residual_gain: float = 1.0,
+        profile_enabled: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
         self.learned_dynamics = learned_dynamics
         self.terrain = terrain if terrain is not None else getattr(learned_dynamics, "terrain", TerrainField())
         self.torch_device = torch.device(device)
+        self.residual_gain = float(residual_gain)
+        self.profile_enabled = bool(profile_enabled)
+        self._profile_totals_ms: dict[str, float] = {}
+        self._profile_counts: dict[str, int] = {}
+        self._profile_total_calls = 0
         if self.torch_device.type == "cuda" and not torch.cuda.is_available():
             raise RuntimeError("Learned FDM Torch backend requested CUDA, but torch.cuda.is_available() is false")
         self.max_control_t = torch.as_tensor(self.max_control, dtype=torch.float32, device=self.torch_device)
@@ -110,14 +119,19 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
             learned_dynamics=learned_dynamics,
             terrain=terrain,
             device=device,
+            residual_gain=float(overrides.get("residual_gain", fdm.get("residual_gain", 1.0))),
+            profile_enabled=bool(overrides.get("profile_enabled", fdm.get("profile_enabled", False))),
         )
 
     def compute_control(self, state: np.ndarray, cost_params):
+        if self.profile_enabled:
+            self._profile_total_calls += 1
         goal = torch.as_tensor(np.asarray(cost_params[3], dtype=np.float32), device=self.torch_device)
         obstacles = torch.as_tensor(
             np.asarray(cost_params[4], dtype=np.float32).reshape(-1, 7),
             device=self.torch_device,
         )
+        profile_start = self._profile_start()
         nominal = torch.as_tensor(self.nominal_u, dtype=torch.float32, device=self.torch_device)
         noise = torch.randn(
             (self.num_samples, self.horizon_steps, 3),
@@ -126,7 +140,9 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
             generator=self.generator,
         ) * self.noise_std_t
         candidates = torch.clamp(nominal.unsqueeze(0) + noise, -self.max_control_t, self.max_control_t)
+        self._profile_stop("sample_candidates_ms", profile_start)
         costs = self._trajectory_cost_batch_torch(state, candidates, goal, obstacles)
+        profile_start = self._profile_start()
         min_cost_t = torch.min(costs)
         weights = torch.exp(-(costs - min_cost_t) / max(self.lambda_, 1e-6))
         normalizer_t = torch.sum(weights)
@@ -137,11 +153,16 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
             weights = weights / normalizer_t
         nominal = torch.sum(weights[:, None, None] * candidates, dim=0)
         nominal = torch.clamp(nominal, -self.max_control_t, self.max_control_t)
+        self._profile_stop("update_distribution_ms", profile_start)
+        profile_start = self._profile_start()
         self.nominal_u = nominal.detach().cpu().numpy().astype(np.float32)
         command = self.nominal_u[0].copy()
         control = self._apply_velocity_response(state, command).astype(np.float32)
         optimal_u = self.nominal_u.copy()
         sample_u = candidates[: self.draw_num_traj].detach().cpu().numpy().astype(np.float32)
+        normalizer = float(normalizer_t.detach().cpu())
+        min_cost = float(min_cost_t.detach().cpu())
+        self._profile_stop("cpu_transfer_ms", profile_start)
         self.previous_control = command.copy()
         self.previous_control_t = torch.as_tensor(self.previous_control, dtype=torch.float32, device=self.torch_device)
         self._shift_nominal_controls()
@@ -149,8 +170,8 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
             control,
             optimal_u,
             sample_u,
-            float(normalizer_t.detach().cpu()),
-            float(min_cost_t.detach().cpu()),
+            normalizer,
+            min_cost,
         )
 
     def trajectory_cost_batch(
@@ -189,7 +210,10 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
         obstacles: torch.Tensor,
     ) -> torch.Tensor:
         controls = torch.clamp(controls, -self.max_control_t, self.max_control_t)
+        profile_start = self._profile_start()
         states, real_controls = self._rollout_batch_torch(initial_state, controls)
+        self._profile_stop("rollout_total_ms", profile_start)
+        profile_start = self._profile_start()
         final_states = states[:, -1, :]
         xy_error = final_states[:, :2] - goal[:2]
         yaw_error = self._angle_diff_torch(final_states[:, 2], goal[2])
@@ -212,7 +236,10 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
         jerk_cost = self.jerk_weight * torch.sum(jerk * jerk, dim=(1, 2))
         lateral_cost = self.lateral_weight * torch.sum(real_controls[:, :, 1] * real_controls[:, :, 1], dim=1)
         yaw_rate_cost = self.yaw_rate_weight * torch.sum(real_controls[:, :, 2] * real_controls[:, :, 2], dim=1)
+        self._profile_stop("cost_terms_ms", profile_start)
+        profile_start = self._profile_start()
         obstacle_cost = self._obstacle_cost_batch_torch(states[:, 1:, :], obstacles)
+        self._profile_stop("obstacle_cost_ms", profile_start)
         return (
             goal_cost
             + yaw_cost
@@ -241,11 +268,18 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
             for step in range(horizon_steps):
                 prev = states[:, step, :]
                 command = controls[:, step, :]
+                profile_start = self._profile_start()
                 lagged = self.velocity_lag_beta * prev_real + (1.0 - self.velocity_lag_beta) * command
                 delta = torch.clamp(lagged - prev_real, -max_delta, max_delta)
                 response_command = torch.clamp(prev_real + delta, -self.max_control_t, self.max_control_t)
+                self._profile_stop("response_update_ms", profile_start)
                 residual = self._predict_residual_torch(prev, response_command)
-                control = torch.clamp(response_command + residual, -self.max_control_t, self.max_control_t)
+                profile_start = self._profile_start()
+                control = torch.clamp(
+                    response_command + self.residual_gain * residual,
+                    -self.max_control_t,
+                    self.max_control_t,
+                )
                 real_controls[:, step, :] = control
                 theta = prev[:, 2]
                 cos_theta = torch.cos(theta)
@@ -260,17 +294,26 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
                 states[:, step + 1, 4] = vy
                 states[:, step + 1, 5] = wz
                 prev_real = control
+                self._profile_stop("state_integrate_ms", profile_start)
         return states, real_controls
 
     def _predict_residual_torch(self, states: torch.Tensor, commands: torch.Tensor) -> torch.Tensor:
         custom_predictor = getattr(self.learned_dynamics, "predict_residual_torch", None)
         if custom_predictor is not None:
-            return custom_predictor(states, commands).to(dtype=torch.float32, device=self.torch_device)
+            profile_start = self._profile_start()
+            residual = custom_predictor(states, commands).to(dtype=torch.float32, device=self.torch_device)
+            self._profile_stop("fdm_inference_ms", profile_start)
+            return residual
+        profile_start = self._profile_start()
         features, risks = self._terrain_features_torch(states)
+        self._profile_stop("terrain_features_ms", profile_start)
+        profile_start = self._profile_start()
         fdm_features = torch.cat([states, commands, features, risks[:, None]], dim=1)
         standardized = (fdm_features - self.feature_mean_t) / self.feature_std_t
         pred = self.learned_dynamics.model(standardized)
-        return pred * self.target_std_t + self.target_mean_t
+        residual = pred * self.target_std_t + self.target_mean_t
+        self._profile_stop("fdm_inference_ms", profile_start)
+        return residual
 
     def _obstacle_cost_batch_torch(self, states: torch.Tensor, obstacles: torch.Tensor) -> torch.Tensor:
         costs = torch.zeros(states.shape[0], dtype=torch.float32, device=self.torch_device)
@@ -404,3 +447,40 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
     @staticmethod
     def _angle_diff_torch(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         return torch.remainder(a - b + torch.pi, 2.0 * torch.pi) - torch.pi
+
+    def reset_profile(self) -> None:
+        self._profile_totals_ms = {}
+        self._profile_counts = {}
+        self._profile_total_calls = 0
+
+    def profile_summary(self) -> dict:
+        totals = {key: float(value) for key, value in sorted(self._profile_totals_ms.items())}
+        means = {
+            key: float(totals[key] / max(1, self._profile_counts.get(key, 0)))
+            for key in totals
+        }
+        return {
+            "enabled": self.profile_enabled,
+            "total_calls": int(self._profile_total_calls),
+            "totals_ms": totals,
+            "means_ms": means,
+            "counts": {key: int(value) for key, value in sorted(self._profile_counts.items())},
+        }
+
+    def _profile_start(self) -> float | None:
+        if not self.profile_enabled:
+            return None
+        self._profile_sync()
+        return time.perf_counter()
+
+    def _profile_stop(self, bucket: str, started_at: float | None) -> None:
+        if started_at is None:
+            return
+        self._profile_sync()
+        elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+        self._profile_totals_ms[bucket] = self._profile_totals_ms.get(bucket, 0.0) + float(elapsed_ms)
+        self._profile_counts[bucket] = self._profile_counts.get(bucket, 0) + 1
+
+    def _profile_sync(self) -> None:
+        if self.torch_device.type == "cuda":
+            torch.cuda.synchronize(self.torch_device)

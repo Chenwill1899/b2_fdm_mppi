@@ -315,6 +315,8 @@ class OmniMppiSimulationRunner:
             "fdm_checkpoint": fdm_cfg.get("checkpoint", "best_model.pt") if enabled else None,
             "fdm_normalization": fdm_cfg.get("normalization", "normalization.npz") if enabled else None,
             "fdm_device": fdm_cfg.get("device", "cpu") if enabled else None,
+            "fdm_residual_gain": float(fdm_cfg.get("residual_gain", 1.0)) if enabled else None,
+            "fdm_profile_enabled": bool(fdm_cfg.get("profile_enabled", False)) if enabled else None,
         }
         learned = getattr(self.controller, "learned_dynamics", None)
         if learned is not None:
@@ -323,6 +325,9 @@ class OmniMppiSimulationRunner:
         else:
             metadata["fdm_checkpoint_path"] = None
             metadata["fdm_normalization_path"] = None
+        profile_summary = getattr(self.controller, "profile_summary", None)
+        if enabled and callable(profile_summary):
+            metadata["fdm_runtime_profile"] = profile_summary()
         return metadata
 
     def _save_results(self) -> None:

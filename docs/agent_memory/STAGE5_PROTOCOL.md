@@ -77,7 +77,17 @@ fdm:
   checkpoint: best_model.pt
   normalization: normalization.npz
   device: cpu
+  residual_gain: 1.0
+  profile_enabled: false
 ```
+
+`residual_gain` scales the learned residual before rollout integration:
+
+```text
+real_control = clip(response_command + residual_gain * du_hat)
+```
+
+`residual_gain=0.0` keeps the learned backend, artifact loading, terrain features, and Torch rollout path active but disables residual correction. It is the Stage 5-C backend control group.
 
 CLI smoke command:
 
@@ -90,10 +100,11 @@ python3 tools/run_omni_mppi.py \
   --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
   --fdm-checkpoint best_model.pt \
   --fdm-normalization normalization.npz \
-  --fdm-device cpu
+  --fdm-device cpu \
+  --fdm-residual-gain 1.0
 ```
 
-If `fdm.enabled=true` with `mppi.backend=cuda`, controller creation must fail with a clear NumPy-only error.
+If `fdm.enabled=true` with `mppi.backend=cuda`, the learned controller uses the Torch rollout backend from PR #19. If CUDA is requested but unavailable, controller creation fails with a clear Torch CUDA availability error.
 
 ## Closed-loop Smoke Protocol
 
@@ -113,7 +124,8 @@ python3 tools/run_omni_mppi.py \
   --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
   --fdm-checkpoint best_model.pt \
   --fdm-normalization normalization.npz \
-  --fdm-device cpu
+  --fdm-device cpu \
+  --fdm-residual-gain 1.0
 ```
 
 Required outputs:
@@ -183,6 +195,47 @@ The detailed protocol and output schema live in:
 
 ```text
 docs/agent_memory/STAGE5_BENCHMARK.md
+```
+
+## Stage 5-C Calibration And Profiling
+
+Stage 5-C starts after PR #18 and PR #19 are merged. It keeps the MLP residual FDM fixed and calibrates closed-loop use of that model before adding history-conditioned FDM.
+
+Residual-gain sweep tool:
+
+```text
+tools/sweep_stage5_calibration.py
+```
+
+Runtime profile tool:
+
+```text
+tools/profile_stage5_learned_torch.py
+```
+
+Primary question:
+
+```text
+Does random-task degradation come from full residual correction being too strong,
+or from the MLP residual model itself?
+```
+
+The first ablation must include:
+
+```text
+residual_gain = 0.0 / 0.25 / 0.5 / 0.75 / 1.0
+```
+
+Cost calibration should be small and learned-controller-only at first. Supported override keys:
+
+```text
+goal_xy_weight
+obstacle_weight
+obstacle_soft_weight
+smooth_weight
+accel_weight
+lateral_weight
+yaw_rate_weight
 ```
 
 ## Visual Evaluation Protocol

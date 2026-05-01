@@ -214,6 +214,147 @@ array copy / device transfer
 
 Do not replace the MLP model before using the Stage 5-B evidence to tune closed-loop rollout/cost calibration and profile the remaining runtime overhead.
 
+## Stage 5-C Residual Gain And Cost Calibration
+
+Stage 5-C adds:
+
+```text
+fdm.residual_gain
+tools/sweep_stage5_calibration.py
+tools/profile_stage5_learned_torch.py
+```
+
+`fdm.residual_gain` scales the learned residual in both NumPy and Torch learned rollout:
+
+```text
+real_control = clip(response_command + residual_gain * du_hat)
+```
+
+`residual_gain=0.0` is the learned-backend control group: same learned controller path and artifacts, but residual correction disabled.
+
+### Stage 5-C Quick Commands
+
+Standard residual-gain sweep:
+
+```bash
+python3 tools/sweep_stage5_calibration.py \
+  --config config/b2_omni_oracle.yaml \
+  --scenario-name standard_residual_gain_quick \
+  --output results/stage5_calibration/standard_residual_gain_seed123_cuda \
+  --episodes 1 \
+  --base-seed 123 \
+  --backend cuda \
+  --controllers nominal,learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cuda \
+  --residual-gains 0.0,0.25,0.5,0.75,1.0
+```
+
+ID random-task residual-gain quick sweep:
+
+```bash
+python3 tools/sweep_stage5_calibration.py \
+  --config config/b2_omni_oracle_random100_dataset.yaml \
+  --scenario-name id_random_tasks_residual_gain_quick \
+  --output results/stage5_calibration/id_random_tasks_residual_gain_seed123_cuda \
+  --episodes 5 \
+  --base-seed 123 \
+  --backend cuda \
+  --controllers nominal,learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cuda \
+  --residual-gains 0.0,0.25,0.5,0.75,1.0
+```
+
+Small learned-only cost sanity grid:
+
+```bash
+python3 tools/sweep_stage5_calibration.py \
+  --config config/b2_omni_oracle_random100_dataset.yaml \
+  --scenario-name id_random_tasks_cost_quick \
+  --output results/stage5_calibration/id_random_tasks_cost_seed123_cuda \
+  --episodes 5 \
+  --base-seed 123 \
+  --backend cuda \
+  --controllers learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cuda \
+  --residual-gains 0.5 \
+  --cost-grid goal_xy_weight=2.5,3.5 \
+  --cost-grid smooth_weight=0.5,1.0
+```
+
+Runtime profile:
+
+```bash
+python3 tools/profile_stage5_learned_torch.py \
+  --config config/b2_omni_oracle_random100_dataset.yaml \
+  --output results/stage5_profile/id_random_tasks_seed123_cuda_10steps \
+  --steps 10 \
+  --seed 123 \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cuda \
+  --fdm-residual-gain 0.5
+```
+
+### Stage 5-C Quick Results
+
+Standard scene, `episodes=1`, learned controller:
+
+| residual_gain | Success | Final Dist | Steps | Mean MPPI ms |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.00 | 1.00 | 0.3476 | 245.0 | 26.28 |
+| 0.25 | 1.00 | 0.3346 | 240.0 | 24.82 |
+| 0.50 | 1.00 | 0.3439 | 217.0 | 25.27 |
+| 0.75 | 1.00 | 0.3416 | 211.0 | 25.41 |
+| 1.00 | 1.00 | 0.3371 | 214.0 | 25.11 |
+
+ID random tasks, `episodes=5`, learned controller:
+
+| residual_gain | Success | Final Dist | Steps | Mean MPPI ms |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.00 | 1.00 | 0.6826 | 115.2 | 49.89 |
+| 0.25 | 1.00 | 0.6811 | 119.0 | 49.40 |
+| 0.50 | 1.00 | 0.6811 | 121.2 | 49.94 |
+| 0.75 | 1.00 | 0.6927 | 134.4 | 49.63 |
+| 1.00 | 1.00 | 0.6926 | 147.0 | 49.29 |
+
+The matching 5-episode ID nominal baseline in this sweep had success `1.00`, final distance `0.6827`, and steps `125.8`. This quick sweep suggests full residual correction is too strong for ID random tasks: `gain=0.0/0.25/0.5` preserves final distance and reduces steps, while `gain=0.75/1.0` degrades steps and final distance.
+
+Learned-only ID cost sanity grid at `residual_gain=0.5`:
+
+| goal_xy_weight | smooth_weight | Success | Final Dist | Steps | Mean MPPI ms |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 2.5 | 0.5 | 1.00 | 0.6842 | 124.4 | 49.62 |
+| 2.5 | 1.0 | 1.00 | 0.6811 | 121.2 | 48.52 |
+| 3.5 | 0.5 | 1.00 | 0.6707 | 116.0 | 48.54 |
+| 3.5 | 1.0 | 1.00 | 0.6774 | 114.8 | 48.76 |
+
+Early cost conclusion: increasing `goal_xy_weight` from `2.5` to `3.5` helps ID quick metrics at `residual_gain=0.5`; `smooth_weight=0.5` gives the best final distance, while `smooth_weight=1.0` gives the fewest steps. This is not enough for final Stage 5 claims; it identifies candidates for a 20-episode rerun.
+
+Runtime profile with `profile_enabled=true`, `steps=10`, `residual_gain=0.5`:
+
+| Bucket | Total ms | Mean ms | Count |
+| --- | ---: | ---: | ---: |
+| rollout_total | 587.55 | 58.76 | 10 |
+| terrain_features | 399.81 | 1.60 | 250 |
+| fdm_inference | 68.21 | 0.273 | 250 |
+| state_integrate | 68.29 | 0.273 | 250 |
+| obstacle_cost | 46.66 | 4.67 | 10 |
+| sample_candidates | 40.90 | 4.09 | 10 |
+| cost_terms | 31.63 | 3.16 | 10 |
+| update_distribution | 23.56 | 2.36 | 10 |
+
+Profiling uses synchronization around timing buckets, so the profiled `mean_mppi_time_ms` is higher than normal benchmark runtime. Use it for bottleneck proportions, not direct runtime claims. The first optimization target is terrain feature/risk computation inside the Torch rollout loop.
+
 ## Visual Inspection Entry
 
 For single-scene human inspection of learning-before/after closed-loop behavior, use:

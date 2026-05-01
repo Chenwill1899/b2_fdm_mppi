@@ -175,6 +175,8 @@ def test_run_benchmark_writes_summary_and_configures_nominal_and_learned(tmp_pat
         fdm_checkpoint="best_model.pt",
         fdm_normalization="normalization.npz",
         fdm_device="cpu",
+        fdm_residual_gain=0.75,
+        learned_mppi_overrides={"goal_xy_weight": 3.5, "smooth_weight": 0.4},
         command="python3 tools/benchmark_learned_fdm_mppi.py --unit-test",
         argv=["python3", "tools/benchmark_learned_fdm_mppi.py", "--unit-test"],
         runner_cls=FakeRunner,
@@ -188,6 +190,11 @@ def test_run_benchmark_writes_summary_and_configures_nominal_and_learned(tmp_pat
     assert summary["metadata"]["backend"] == "numpy"
     assert summary["metadata"]["seeds"] == [123]
     assert summary["metadata"]["fdm_checkpoint"] == "best_model.pt"
+    assert summary["metadata"]["fdm_residual_gain"] == pytest.approx(0.75)
+    assert summary["metadata"]["learned_mppi_overrides"] == {
+        "goal_xy_weight": 3.5,
+        "smooth_weight": 0.4,
+    }
     assert len(summary["runs"]) == 2
     assert summary["aggregates"]["learned"]["success_rate"] == 1.0
     assert summary["paired_deltas"]["aggregate"]["final_distance_delta_mean"] == pytest.approx(-0.2)
@@ -203,6 +210,11 @@ def test_run_benchmark_writes_summary_and_configures_nominal_and_learned(tmp_pat
     assert learned_config["fdm"]["checkpoint"] == "best_model.pt"
     assert learned_config["fdm"]["normalization"] == "normalization.npz"
     assert learned_config["fdm"]["device"] == "cpu"
+    assert learned_config["fdm"]["residual_gain"] == pytest.approx(0.75)
+    assert learned_config["mppi"]["weights"][0] == pytest.approx(3.5)
+    assert learned_config["mppi"]["smooth_weight"] == pytest.approx(0.4)
+    assert nominal_config["mppi"]["weights"][0] != pytest.approx(3.5)
+    assert nominal_config["mppi"]["smooth_weight"] != pytest.approx(0.4)
 
 
 def test_run_benchmark_rejects_non_numpy_backend(tmp_path):
@@ -274,6 +286,7 @@ def test_run_benchmark_allows_cuda_backend_in_run_configs(tmp_path):
         fdm_checkpoint="best_model.pt",
         fdm_normalization="normalization.npz",
         fdm_device="cuda",
+        fdm_residual_gain=0.25,
         runner_cls=FakeRunner,
     )
 
@@ -283,3 +296,25 @@ def test_run_benchmark_allows_cuda_backend_in_run_configs(tmp_path):
     assert learned_config["mppi"]["backend"] == "cuda"
     assert learned_config["fdm"]["enabled"] is True
     assert learned_config["fdm"]["device"] == "cuda"
+    assert learned_config["fdm"]["residual_gain"] == pytest.approx(0.25)
+
+
+def test_parse_mppi_overrides_rejects_unknown_cost_key():
+    module = load_benchmark_module()
+
+    with pytest.raises(ValueError, match="Unsupported learned MPPI override"):
+        module.parse_learned_mppi_overrides(["bad_weight=1.0"])
+
+
+def test_parse_mppi_overrides_parses_supported_cost_keys():
+    module = load_benchmark_module()
+
+    overrides = module.parse_learned_mppi_overrides(
+        ["goal_xy_weight=4.0", "obstacle_weight=120.5", "yaw_rate_weight=0.03"]
+    )
+
+    assert overrides == {
+        "goal_xy_weight": 4.0,
+        "obstacle_weight": 120.5,
+        "yaw_rate_weight": 0.03,
+    }

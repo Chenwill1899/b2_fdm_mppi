@@ -296,6 +296,28 @@ def test_omni_runner_oracle_world_records_residuals(tmp_path):
     assert (summary.results_path / "terrain.csv").exists()
 
 
+def test_omni_runner_summary_records_fdm_residual_gain(tmp_path):
+    config = make_config(tmp_path, max_steps=1)
+    config["fdm"] = {
+        "enabled": True,
+        "model_dir": "model",
+        "checkpoint": "best_model.pt",
+        "normalization": "normalization.npz",
+        "device": "cpu",
+        "residual_gain": 0.25,
+    }
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    summary = runner.run()
+    summary_json = json.loads((summary.results_path / "summary.json").read_text())
+
+    assert summary_json["fdm_enabled"] is True
+    assert summary_json["fdm_residual_gain"] == pytest.approx(0.25)
+
+
 def test_omni_runner_uses_random_obstacles_and_records_summary(tmp_path):
     config = make_config(tmp_path, max_steps=1)
     config["simulation"]["world_mode"] = "oracle"
@@ -557,6 +579,7 @@ def test_omni_runner_summary_records_fdm_metadata(tmp_path):
         "checkpoint": "best_model.pt",
         "normalization": "normalization.npz",
         "device": "cpu",
+        "residual_gain": 0.5,
     }
     runner = OmniMppiSimulationRunner(
         config,
@@ -586,6 +609,7 @@ def test_create_omni_controller_uses_learned_numpy_when_fdm_enabled(tmp_path, mo
         "checkpoint": "best_model.pt",
         "normalization": "normalization.npz",
         "device": "cpu",
+        "residual_gain": 0.5,
     }
 
     class StubDynamics:
@@ -605,6 +629,7 @@ def test_create_omni_controller_uses_learned_numpy_when_fdm_enabled(tmp_path, mo
     controller = omni_runner.create_omni_controller(config, seed=123)
 
     assert isinstance(controller, LearnedFdmMppiOmniNumpy)
+    assert controller.residual_gain == pytest.approx(0.5)
 
 
 def test_create_omni_controller_uses_learned_torch_for_cuda_backend(tmp_path, monkeypatch):
@@ -619,6 +644,8 @@ def test_create_omni_controller_uses_learned_torch_for_cuda_backend(tmp_path, mo
         "checkpoint": "best_model.pt",
         "normalization": "normalization.npz",
         "device": "cpu",
+        "residual_gain": 0.25,
+        "profile_enabled": True,
     }
 
     class StubDynamics:
@@ -640,3 +667,5 @@ def test_create_omni_controller_uses_learned_torch_for_cuda_backend(tmp_path, mo
     controller = omni_runner.create_omni_controller(config, seed=123)
 
     assert isinstance(controller, LearnedFdmMppiOmniTorch)
+    assert controller.residual_gain == pytest.approx(0.25)
+    assert controller.profile_enabled is True

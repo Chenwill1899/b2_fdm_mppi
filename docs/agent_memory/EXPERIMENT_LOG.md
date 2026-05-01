@@ -1014,3 +1014,83 @@ results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
   - Overlay: `results/stage5_visual_compare_seed123/closed_loop_nominal_vs_learned.png`
   - Learned vs nominal: final distance `0.3371` vs `0.3461`, steps `214` vs `225`, min clearance `0.2024` vs `0.1198`, mean terrain risk `0.4140` vs `0.4289`, mean MPPI time `27.73 ms` vs `7.18 ms`.
 - Boundary: visual eval is single-scene qualitative inspection. Stage 5 improvement claims still require benchmark evidence from `tools/benchmark_learned_fdm_mppi.py`.
+
+### 2026-05-01: Stage 5-C Residual Gain, Cost Calibration, And Runtime Profiling
+
+- Goal: move from adding Stage 5 features to explaining why learned-FDM improves the standard scene but is not stable on ID/OOD random-task final distance and steps.
+- PR chain cleanup:
+  - PR #18 merged into `fdm` after fixing a brittle branch-name test.
+  - PR #19 rebased onto the updated `fdm`, retargeted from `dev` to `fdm`, marked ready, validated, and merged.
+- Code changes:
+  - Added `fdm.residual_gain` to learned NumPy/Torch rollout.
+  - Added `--fdm-residual-gain` to `tools/run_omni_mppi.py`, `tools/benchmark_learned_fdm_mppi.py`, and `tools/visualize_stage5_closed_loop.py`.
+  - Added learned-controller-only MPPI cost overrides to the benchmark runner for:
+    - `goal_xy_weight`
+    - `obstacle_weight`
+    - `obstacle_soft_weight`
+    - `smooth_weight`
+    - `accel_weight`
+    - `lateral_weight`
+    - `yaw_rate_weight`
+  - Added `tools/sweep_stage5_calibration.py` for residual-gain and cost-grid sweeps.
+  - Added `tools/profile_stage5_learned_torch.py` plus Torch controller runtime buckets:
+    - `sample_candidates_ms`
+    - `rollout_total_ms`
+    - `terrain_features_ms`
+    - `fdm_inference_ms`
+    - `state_integrate_ms`
+    - `obstacle_cost_ms`
+    - `cost_terms_ms`
+    - `update_distribution_ms`
+    - `cpu_transfer_ms`
+- Verification:
+  - `python3 -m pytest tests/test_mppi_omni_learned_torch.py::test_learned_torch_rollout_scales_residual_with_gain tests/test_mppi_omni_learned_torch.py::test_learned_torch_profile_records_runtime_buckets tests/test_stage5_benchmark.py::test_parse_mppi_overrides_parses_supported_cost_keys tests/test_stage5_calibration_sweep.py::test_expand_sweep_cases_builds_residual_gain_and_cost_grid_product tests/test_stage5_runtime_profile.py::test_run_profile_enables_learned_torch_profiling_and_writes_summary -q`
+  - result: `5 passed`
+  - `python3 -m pytest tests/test_mppi_omni_learned_numpy.py tests/test_mppi_omni_learned_torch.py tests/test_omni_runner.py tests/test_stage5_benchmark.py tests/test_stage5_visual_eval.py tests/test_stage5_calibration_sweep.py tests/test_stage5_runtime_profile.py -q`
+  - result after fixing NumPy config assertion: targeted Stage 5 suite passed locally.
+  - `python3 -m pytest -q`
+  - result: `147 passed in 20.27s`
+  - `git diff --check`
+  - result: passed
+  - `python3 -m py_compile tools/sweep_stage5_calibration.py tools/profile_stage5_learned_torch.py tools/benchmark_learned_fdm_mppi.py tools/visualize_stage5_closed_loop.py`
+- Standard residual-gain quick sweep:
+  - Command: `python3 tools/sweep_stage5_calibration.py --config config/b2_omni_oracle.yaml --scenario-name standard_residual_gain_quick --output results/stage5_calibration/standard_residual_gain_seed123_cuda --episodes 1 --base-seed 123 --backend cuda --controllers nominal,learned --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --residual-gains 0.0,0.25,0.5,0.75,1.0`
+  - Output: `results/stage5_calibration/standard_residual_gain_seed123_cuda/stage5_calibration_sweep_summary.json`
+  - Learned results:
+    - `gain=0.0`: success `1.00`, final distance `0.3476`, steps `245.0`, mean MPPI `26.28 ms`
+    - `gain=0.25`: success `1.00`, final distance `0.3346`, steps `240.0`, mean MPPI `24.82 ms`
+    - `gain=0.5`: success `1.00`, final distance `0.3439`, steps `217.0`, mean MPPI `25.27 ms`
+    - `gain=0.75`: success `1.00`, final distance `0.3416`, steps `211.0`, mean MPPI `25.41 ms`
+    - `gain=1.0`: success `1.00`, final distance `0.3371`, steps `214.0`, mean MPPI `25.11 ms`
+- ID random residual-gain quick sweep:
+  - Command: `python3 tools/sweep_stage5_calibration.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_tasks_residual_gain_quick --output results/stage5_calibration/id_random_tasks_residual_gain_seed123_cuda --episodes 5 --base-seed 123 --backend cuda --controllers nominal,learned --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --residual-gains 0.0,0.25,0.5,0.75,1.0`
+  - Output: `results/stage5_calibration/id_random_tasks_residual_gain_seed123_cuda/stage5_calibration_sweep_summary.json`
+  - Nominal reference in this sweep: success `1.00`, final distance `0.6827`, steps `125.8`
+  - Learned results:
+    - `gain=0.0`: success `1.00`, final distance `0.6826`, steps `115.2`, mean MPPI `49.89 ms`
+    - `gain=0.25`: success `1.00`, final distance `0.6811`, steps `119.0`, mean MPPI `49.40 ms`
+    - `gain=0.5`: success `1.00`, final distance `0.6811`, steps `121.2`, mean MPPI `49.94 ms`
+    - `gain=0.75`: success `1.00`, final distance `0.6927`, steps `134.4`, mean MPPI `49.63 ms`
+    - `gain=1.0`: success `1.00`, final distance `0.6926`, steps `147.0`, mean MPPI `49.29 ms`
+- Cost sanity grid:
+  - Command: `python3 tools/sweep_stage5_calibration.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_tasks_cost_quick --output results/stage5_calibration/id_random_tasks_cost_seed123_cuda --episodes 5 --base-seed 123 --backend cuda --controllers learned --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --residual-gains 0.5 --cost-grid goal_xy_weight=2.5,3.5 --cost-grid smooth_weight=0.5,1.0`
+  - Output: `results/stage5_calibration/id_random_tasks_cost_seed123_cuda/stage5_calibration_sweep_summary.json`
+  - Learned results:
+    - `goal_xy_weight=2.5`, `smooth_weight=0.5`: final distance `0.6842`, steps `124.4`
+    - `goal_xy_weight=2.5`, `smooth_weight=1.0`: final distance `0.6811`, steps `121.2`
+    - `goal_xy_weight=3.5`, `smooth_weight=0.5`: final distance `0.6707`, steps `116.0`
+    - `goal_xy_weight=3.5`, `smooth_weight=1.0`: final distance `0.6774`, steps `114.8`
+- Runtime profile:
+  - Command: `python3 tools/profile_stage5_learned_torch.py --config config/b2_omni_oracle_random100_dataset.yaml --output results/stage5_profile/id_random_tasks_seed123_cuda_10steps --steps 10 --seed 123 --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --fdm-residual-gain 0.5`
+  - Output: `results/stage5_profile/id_random_tasks_seed123_cuda_10steps/stage5_runtime_profile_summary.json`
+  - Top profile buckets:
+    - `rollout_total_ms`: total `587.55`, mean `58.76`, count `10`
+    - `terrain_features_ms`: total `399.81`, mean `1.60`, count `250`
+    - `fdm_inference_ms`: total `68.21`, mean `0.273`, count `250`
+    - `state_integrate_ms`: total `68.29`, mean `0.273`, count `250`
+    - `obstacle_cost_ms`: total `46.66`, mean `4.67`, count `10`
+  - Note: profiling synchronizes timing buckets, so profiled `mean_mppi_time_ms` is higher than normal benchmark runtime. Use bucket proportions, not direct runtime, for bottleneck conclusions.
+- Conclusion:
+  - The ID random-task issue is not simply "MLP residual bad"; full residual correction appears too strong. Partial or zero residual gain removes the steps/final-distance degradation in the 5-episode ID quick sweep.
+  - `residual_gain=0.5`, `goal_xy_weight=3.5`, and `smooth_weight=0.5/1.0` are the current Stage 5-C candidates for a 20-episode rerun.
+  - The biggest runtime hotspot is terrain feature/risk computation inside the Torch rollout loop, followed by FDM inference/state integration and obstacle cost.

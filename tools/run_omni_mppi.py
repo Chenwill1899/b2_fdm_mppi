@@ -22,6 +22,7 @@ def main() -> None:
     parser.add_argument("--fdm-checkpoint", default=None)
     parser.add_argument("--fdm-normalization", default=None)
     parser.add_argument("--fdm-device", default=None)
+    parser.add_argument("--fdm-residual-gain", type=float, default=None)
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -54,6 +55,9 @@ def apply_cli_overrides(config: dict, args: argparse.Namespace) -> dict:
         config.setdefault("fdm", {})["normalization"] = args.fdm_normalization
     if args.fdm_device is not None:
         config.setdefault("fdm", {})["device"] = args.fdm_device
+    fdm_residual_gain = getattr(args, "fdm_residual_gain", None)
+    if fdm_residual_gain is not None:
+        config.setdefault("fdm", {})["residual_gain"] = float(fdm_residual_gain)
     return config
 
 
