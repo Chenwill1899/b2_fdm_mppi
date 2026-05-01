@@ -84,3 +84,25 @@ def test_residual_world_applies_alpha_lag():
     u_target_2 = model.clip_control(u_cmd + delta_2)
     expected_2 = 0.5 * expected_1 + 0.5 * u_target_2
     assert u_real_2 == pytest.approx(expected_2, abs=1e-6)
+
+
+def test_residual_world_clips_alpha_and_rejects_negative_scales():
+    model = OmniB2(dt=0.1, max_vx=1.0, max_vy=0.5, max_wz=0.5)
+    terrain = TerrainField(enabled=True)
+
+    world = ResidualWorld(
+        model,
+        terrain,
+        enabled=True,
+        alpha=2.0,
+        residual_scale=1.0,
+        noise_std=0.0,
+        max_residual_ratio=0.2,
+        seed=1,
+    )
+    assert world.alpha == 1.0
+
+    with pytest.raises(ValueError, match="residual_scale"):
+        ResidualWorld(model, terrain, residual_scale=-0.1)
+    with pytest.raises(ValueError, match="noise_std"):
+        ResidualWorld(model, terrain, noise_std=-0.1)

@@ -60,7 +60,7 @@ def build_oracle_dataset(
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
     rows = _read_manifest(input_dir / "manifest.jsonl")
-    usable_rows, skipped_rows = _filter_usable_rows(rows)
+    usable_rows, skipped_rows = _filter_usable_rows(rows, input_dir)
     split_rows = _split_rows(
         usable_rows,
         train_ratio=float(train_ratio),
@@ -125,16 +125,27 @@ def _read_manifest(path: Path) -> list[dict]:
     return rows
 
 
-def _filter_usable_rows(rows: list[dict]) -> tuple[list[dict], list[dict]]:
+def _filter_usable_rows(rows: list[dict], input_dir: Path) -> tuple[list[dict], list[dict]]:
     usable = []
     skipped = []
     for row in rows:
-        path = Path(row.get("path", ""))
+        path = _resolve_manifest_path(row.get("path", ""), input_dir)
         if bool(row.get("success", False)) and not bool(row.get("failed", False)) and path.exists():
-            usable.append(row)
+            usable.append({**row, "path": str(path)})
         else:
             skipped.append(row)
     return usable, skipped
+
+
+def _resolve_manifest_path(path_value: str, input_dir: Path) -> Path:
+    path = Path(path_value)
+    if path.is_absolute():
+        return path
+    input_dir = Path(input_dir)
+    if input_dir.name in path.parts:
+        idx = len(path.parts) - 1 - list(reversed(path.parts)).index(input_dir.name)
+        return input_dir / Path(*path.parts[idx + 1 :])
+    return input_dir / path
 
 
 def _split_rows(

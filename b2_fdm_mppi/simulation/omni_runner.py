@@ -322,24 +322,27 @@ class OmniMppiSimulationRunner:
     def _save_trajectory(self) -> None:
         rows = []
         for idx, state in enumerate(self.state_history):
-            rows.append(
-                {
-                    "step": idx,
-                    "x": state[0],
-                    "y": state[1],
-                    "theta": state[2],
-                    "vx": state[3],
-                    "vy": state[4],
-                    "wz": state[5],
-                    "x_des": self.goal[0],
-                    "y_des": self.goal[1],
-                    "theta_des": self.goal[2],
-                }
-            )
+            rows.append(self._trajectory_row(idx, state))
+        if self.state_history:
+            rows.append(self._trajectory_row(len(self.state_history), self.state))
         pd.DataFrame(rows).to_csv(self.results_path / "trajectory.csv", index=False)
         pd.DataFrame(rows).rename(columns={"vx": "dx", "vy": "dy"}).to_csv(
             self.results_path / "results.csv", index=False
         )
+
+    def _trajectory_row(self, step: int, state: np.ndarray) -> dict:
+        return {
+            "step": step,
+            "x": state[0],
+            "y": state[1],
+            "theta": state[2],
+            "vx": state[3],
+            "vy": state[4],
+            "wz": state[5],
+            "x_des": self.goal[0],
+            "y_des": self.goal[1],
+            "theta_des": self.goal[2],
+        }
 
     def _save_controls(self) -> None:
         rows = []

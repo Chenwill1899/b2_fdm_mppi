@@ -166,3 +166,35 @@ def test_build_oracle_dataset_skips_failed_manifest_rows(tmp_path):
     test = np.load(tmp_path / "oracle_dataset" / "test.npz")
     assert val["states"].shape == (0, 6)
     assert test["states"].shape == (0, 6)
+
+
+def test_build_oracle_dataset_resolves_relative_manifest_paths_from_input_dir(tmp_path):
+    input_dir = tmp_path / "oracle_debug"
+    relative_path = Path("episodes") / "episode_000000.npz"
+    write_episode(input_dir / relative_path, episode_id=0, transitions=2)
+    write_manifest(
+        input_dir,
+        [
+            {
+                "episode_id": 0,
+                "seed": 123,
+                "path": str(relative_path),
+                "success": True,
+                "failed": False,
+                "num_transitions": 2,
+            }
+        ],
+    )
+
+    summary = build_oracle_dataset(
+        input_dir=input_dir,
+        output_dir=tmp_path / "oracle_dataset",
+        train_ratio=1.0,
+        val_ratio=0.0,
+        test_ratio=0.0,
+        split_seed=1,
+    )
+
+    assert summary["usable_episodes"] == 1
+    train = np.load(tmp_path / "oracle_dataset" / "train.npz")
+    assert train["states"].shape == (2, 6)

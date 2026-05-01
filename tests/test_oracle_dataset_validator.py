@@ -132,3 +132,80 @@ def test_validate_oracle_dataset_detects_episode_leakage(tmp_path):
     assert quality["pass"] is False
     assert quality["episode_leakage_check"]["pass"] is False
     assert quality["episode_leakage_check"]["overlaps"]
+
+
+def test_validate_oracle_dataset_reports_missing_fields_without_crashing(tmp_path):
+    dataset_dir = tmp_path / "dataset"
+    write_split(dataset_dir / "train.npz", episode_id=0, transitions=2)
+    write_split(dataset_dir / "val.npz", episode_id=1, transitions=2)
+    write_split(dataset_dir / "test.npz", episode_id=2, transitions=2)
+    with np.load(dataset_dir / "train.npz") as original:
+        fields = {field: np.asarray(original[field]) for field in original.files if field != "exec_residuals"}
+    np.savez(dataset_dir / "train.npz", **fields)
+    (dataset_dir / "split_manifest.json").write_text(
+        json.dumps(
+            {
+                "train_episode_ids": [0],
+                "val_episode_ids": [1],
+                "test_episode_ids": [2],
+                "skipped_episode_ids": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (dataset_dir / "dataset_summary.json").write_text(
+        json.dumps(
+            {
+                "splits": {
+                    "train": {"episodes": 1, "transitions": 2},
+                    "val": {"episodes": 1, "transitions": 2},
+                    "test": {"episodes": 1, "transitions": 2},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    quality = validate_oracle_dataset(dataset_dir, dataset_dir)
+
+    assert quality["pass"] is False
+    assert quality["split_shapes"]["train"]["exec_residuals"] == []
+    assert (dataset_dir / "dataset_quality.json").exists()
+
+
+def test_validate_oracle_dataset_detects_manifest_data_mismatch(tmp_path):
+    dataset_dir = tmp_path / "dataset"
+    write_split(dataset_dir / "train.npz", episode_id=9, transitions=2)
+    write_split(dataset_dir / "val.npz", episode_id=1, transitions=2)
+    write_split(dataset_dir / "test.npz", episode_id=2, transitions=2)
+    (dataset_dir / "split_manifest.json").write_text(
+        json.dumps(
+            {
+                "train_episode_ids": [0],
+                "val_episode_ids": [1],
+                "test_episode_ids": [2],
+                "skipped_episode_ids": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (dataset_dir / "dataset_summary.json").write_text(
+        json.dumps(
+            {
+                "splits": {
+                    "train": {"episodes": 1, "transitions": 2},
+                    "val": {"episodes": 1, "transitions": 2},
+                    "test": {"episodes": 1, "transitions": 2},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    quality = validate_oracle_dataset(dataset_dir, dataset_dir)
+
+    assert quality["pass"] is False
+    assert quality["episode_leakage_check"]["pass"] is False
+    assert quality["episode_leakage_check"]["manifest_data_mismatch"] == [
+        {"split": "train", "manifest_only": [0], "data_only": [9]}
+    ]

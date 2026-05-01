@@ -67,7 +67,7 @@ def test_generate_oracle_episodes_writes_manifest_summary_and_npz_files(tmp_path
     assert len(rows) == 2
     assert rows[0]["episode_id"] == 0
     assert rows[0]["seed"] == 123
-    assert rows[0]["path"] == str(first_npz)
+    assert rows[0]["path"] == "episodes/episode_000000.npz"
     assert rows[0]["success"] is True
     assert rows[0]["failed"] is False
     assert rows[0]["num_transitions"] == 1

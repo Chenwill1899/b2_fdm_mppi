@@ -52,6 +52,7 @@ def validate_oracle_dataset(dataset_dir: Path, output_dir: Path) -> dict:
     dataset_dir = Path(dataset_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    _require_dataset_files(dataset_dir)
     split_manifest = json.loads((dataset_dir / "split_manifest.json").read_text(encoding="utf-8"))
     dataset_summary = json.loads((dataset_dir / "dataset_summary.json").read_text(encoding="utf-8"))
     split_data = {split: _load_split(dataset_dir / f"{split}.npz") for split in SPLITS}
@@ -70,14 +71,15 @@ def validate_oracle_dataset(dataset_dir: Path, output_dir: Path) -> dict:
         valid = valid and split_valid
         nan_count += split_nan
         inf_count += split_inf
-        num_transitions[split] = int(data["states"].shape[0])
-        num_episodes[split] = int(len(set(data["episode_ids"].astype(int).tolist())))
+        num_transitions[split] = _field_length(data, "states")
+        num_episodes[split] = _episode_count(data)
         expected_transitions = int(dataset_summary.get("splits", {}).get(split, {}).get("transitions", num_transitions[split]))
         if num_transitions[split] != expected_transitions:
             valid = False
-        diff = data["exec_residuals"] - (data["real_controls"] - data["cmd_controls"])
-        residual_errors.append(diff.reshape(-1))
-        residual_targets.append(data["exec_residuals"].reshape(-1))
+        if _has_required_residual_fields(data):
+            diff = data["exec_residuals"] - (data["real_controls"] - data["cmd_controls"])
+            residual_errors.append(diff.reshape(-1))
+            residual_targets.append(data["exec_residuals"].reshape(-1))
 
     residual_error = np.concatenate(residual_errors) if residual_errors else np.zeros(0, dtype=np.float32)
     residual_target = np.concatenate(residual_targets) if residual_targets else np.zeros(0, dtype=np.float32)
@@ -102,8 +104,27 @@ def validate_oracle_dataset(dataset_dir: Path, output_dir: Path) -> dict:
     (output_dir / "dataset_quality.json").write_text(
         json.dumps(quality, indent=2), encoding="utf-8"
     )
-    _plot_dataset_summary(split_data, quality, output_dir / "dataset_summary.png")
+    if _can_plot(split_data):
+        _plot_dataset_summary(split_data, quality, output_dir / "dataset_summary.png")
     return quality
+
+
+def _require_dataset_files(dataset_dir: Path) -> None:
+    required = [
+        "train.npz",
+        "val.npz",
+        "test.npz",
+        "split_manifest.json",
+        "dataset_summary.json",
+    ]
+    missing = [name for name in required if not (dataset_dir / name).exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"{dataset_dir} is missing split dataset files: {missing}. "
+            "Run tools/build_oracle_dataset.py first, for example: "
+            "python3 tools/build_oracle_dataset.py --input datasets/oracle_debug "
+            "--output datasets/oracle_debug_splits"
+        )
 
 
 def _load_split(path: Path) -> dict[str, np.ndarray]:
@@ -139,20 +160,53 @@ def _validate_split_fields(data: dict[str, np.ndarray], shapes: dict[str, list[i
     return valid, nan_count, inf_count
 
 
+def _field_length(data: dict[str, np.ndarray], field: str) -> int:
+    if field not in data:
+        return 0
+    return int(data[field].shape[0])
+
+
+def _episode_count(data: dict[str, np.ndarray]) -> int:
+    if "episode_ids" not in data:
+        return 0
+    return int(len(set(data["episode_ids"].astype(int).tolist())))
+
+
+def _has_required_residual_fields(data: dict[str, np.ndarray]) -> bool:
+    return all(field in data for field in ("exec_residuals", "real_controls", "cmd_controls"))
+
+
+def _can_plot(split_data: dict[str, dict[str, np.ndarray]]) -> bool:
+    return all(all(field in data for field in REQUIRED_FIELDS) for data in split_data.values())
+
+
 def _episode_leakage(split_manifest: dict, split_data: dict[str, dict[str, np.ndarray]]) -> dict:
     ids = {}
+    mismatches = []
     for split in SPLITS:
         manifest_ids = set(int(value) for value in split_manifest.get(f"{split}_episode_ids", []))
-        data_ids = set(int(value) for value in split_data[split]["episode_ids"].tolist())
-        ids[split] = manifest_ids | data_ids
+        if "episode_ids" in split_data[split]:
+            data_ids = set(int(value) for value in split_data[split]["episode_ids"].tolist())
+        else:
+            data_ids = set()
+        if manifest_ids != data_ids:
+            mismatches.append(
+                {
+                    "split": split,
+                    "manifest_only": sorted(manifest_ids - data_ids),
+                    "data_only": sorted(data_ids - manifest_ids),
+                }
+            )
+        ids[split] = data_ids
     overlaps = []
     for left, right in (("train", "val"), ("train", "test"), ("val", "test")):
         overlap = sorted(ids[left] & ids[right])
         if overlap:
             overlaps.append({"splits": [left, right], "episode_ids": overlap})
     return {
-        "pass": not overlaps,
+        "pass": not overlaps and not mismatches,
         "overlaps": overlaps,
+        "manifest_data_mismatch": mismatches,
     }
 
 

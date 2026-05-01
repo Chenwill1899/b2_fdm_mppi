@@ -23,18 +23,31 @@ def collect_oracle_episode(
     output_path: str | Path,
     backend: str | None = None,
 ) -> dict:
+    output_path = Path(output_path)
     config = load_config(config_path)
     config.setdefault("scenario", {})["random_seed"] = int(seed)
     config.setdefault("oracle_residual", {})["seed"] = int(seed)
     if backend is not None:
         config["mppi"]["backend"] = str(backend).lower()
+    _set_episode_results_path(config, output_path=output_path, episode_id=episode_id)
 
     runner = OmniMppiSimulationRunner(
         config,
         controller_factory=lambda *, config, runner: create_omni_controller(config, seed=seed),
     )
     summary = runner.run()
-    return build_episode_npz(summary.results_path, episode_id, Path(output_path))
+    return build_episode_npz(summary.results_path, episode_id, output_path)
+
+
+def _set_episode_results_path(config: dict, *, output_path: Path, episode_id: int) -> None:
+    output_dir = output_path.parent.parent
+    config["results"] = {
+        **config.get("results", {}),
+        "root": str(output_dir / "raw_results"),
+        "run_name": f"episode_{int(episode_id):06d}",
+        "timestamp_suffix": False,
+        "overwrite": True,
+    }
 
 
 def main() -> None:
