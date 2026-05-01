@@ -2,6 +2,39 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01: S5-003 Torch CUDA Learned Rollout and Stage 5-B Benchmark
+
+- Goal: make learned-FDM closed-loop benchmarking practical and run the first standard/ID/OOD Stage 5-B comparison.
+- Code changes:
+  - `b2_fdm_mppi/controllers/mppi_omni_learned_torch.py`
+  - `create_omni_controller()` now creates `LearnedFdmMppiOmniTorch` for `fdm.enabled=true` and `mppi.backend=cuda`.
+  - `tools/benchmark_learned_fdm_mppi.py` accepts `--backend cuda` and defaults FDM device to `cuda` for CUDA benchmark CLI runs.
+- Benchmark outputs:
+  - `results/stage5_benchmark/standard_seed123_cuda/stage5_benchmark_summary.json`
+  - `results/stage5_benchmark/id_random_tasks_seed123_cuda/stage5_benchmark_summary.json`
+  - `results/stage5_benchmark/ood_obstacle_seed123_cuda/stage5_benchmark_summary.json`
+  - `results/stage5_benchmark/ood_terrain_seed123_cuda/stage5_benchmark_summary.json`
+- Core results:
+
+| Scenario | Episodes | Nominal success | Learned success | Nominal final dist | Learned final dist | Nominal steps | Learned steps | Nominal mean ms | Learned mean ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| standard | 1 | 1.00 | 1.00 | 0.3461 | 0.3371 | 225.0 | 214.0 | 6.59 | 27.03 |
+| ID random | 20 | 1.00 | 1.00 | 0.6795 | 0.6930 | 137.1 | 155.8 | 6.41 | 50.75 |
+| OOD obstacle | 20 | 1.00 | 1.00 | 0.6768 | 0.6878 | 142.4 | 175.1 | 7.19 | 53.85 |
+| OOD terrain | 20 | 1.00 | 1.00 | 0.6848 | 0.6900 | 141.9 | 153.7 | 6.43 | 51.39 |
+
+- Learned-minus-nominal deltas:
+  - standard: final distance `-0.0090 m`, steps `-11.0`, clearance `+0.0826 m`, mean MPPI `+20.44 ms`.
+  - ID random: final distance `+0.0135 m`, steps `+18.7`, clearance `-0.0366 m`, mean MPPI `+44.34 ms`.
+  - OOD obstacle: final distance `+0.0109 m`, steps `+32.8`, clearance `+0.0276 m`, mean MPPI `+46.67 ms`.
+  - OOD terrain: final distance `+0.0051 m`, steps `+11.8`, clearance `-0.0645 m`, mean MPPI `+44.96 ms`.
+- Conclusion:
+  - Torch CUDA learned rollout reduces the learned standard runtime from NumPy's `~1203 ms/step` to `~27 ms/step`.
+  - Learned-FDM-MPPI improves the single standard scene.
+  - ID/OOD random tasks reach 100% success, but learned does not stably outperform nominal on final distance, steps, or clearance.
+  - Learned consistently reduces terrain risk, command-real error, residual norm, smoothness, and jerk.
+  - Next step should be Stage 5-C profiling/tuning and closed-loop cost calibration before history-conditioned FDM.
+
 ## 2026-05-01: S5-002 Stage 5 Closed-loop Benchmark Runner
 
 - Goal: add the PR #18 benchmark tool and summary schema for paired closed-loop Nominal-MPPI vs Learned-FDM-MPPI evaluation, without CUDA changes or full ID/OOD benchmark claims.
@@ -960,3 +993,24 @@ results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
   - `python3 -m pytest -q`
   - result: `53 passed in 2.16s`
 - Conclusion: Trajectory now runs close to the red safety boundary while preserving the Stage 1.5 acceptance thresholds and reducing visible smoothness/jerk metrics versus the prior kinodynamic baseline.
+
+### 2026-05-01: Stage 5 Closed-loop Visual Eval Standardization
+
+- Goal: make the "learning 前后 closed-loop 效果怎么看" workflow repeatable instead of relying on manual ad hoc runs.
+- Added:
+  - `tools/visualize_stage5_closed_loop.py`
+  - `docs/agent_memory/STAGE5_VISUAL_EVAL.md`
+- Standard command:
+  - `python3 tools/visualize_stage5_closed_loop.py --config config/b2_omni_oracle.yaml --scenario-name standard --output results/stage5_visual_eval/standard_seed123_cuda --seed 123 --backend cuda --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda`
+- Outputs:
+  - `stage5_visual_eval_summary.json`
+  - `closed_loop_nominal_vs_learned.png`
+  - `closed_loop_compare_metrics.csv`
+  - `closed_loop_compare_metrics.json`
+  - per-run `trajectory.png` and `animation.gif` for nominal and learned.
+- Current manual visual check before tool standardization:
+  - Nominal: `results/sim_results/b2_omni_oracle_2026-05-01_22-48-39`
+  - Learned: `results/sim_results/b2_omni_oracle_2026-05-01_22-44-09`
+  - Overlay: `results/stage5_visual_compare_seed123/closed_loop_nominal_vs_learned.png`
+  - Learned vs nominal: final distance `0.3371` vs `0.3461`, steps `214` vs `225`, min clearance `0.2024` vs `0.1198`, mean terrain risk `0.4140` vs `0.4289`, mean MPPI time `27.73 ms` vs `7.18 ms`.
+- Boundary: visual eval is single-scene qualitative inspection. Stage 5 improvement claims still require benchmark evidence from `tools/benchmark_learned_fdm_mppi.py`.

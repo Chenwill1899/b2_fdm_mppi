@@ -69,14 +69,15 @@ def run_benchmark(
     fdm_model_dir: str | Path = "results/fdm_baselines/stage4_mlp_seed123_hardened",
     fdm_checkpoint: str | Path = "best_model.pt",
     fdm_normalization: str | Path = "normalization.npz",
-    fdm_device: str = "cpu",
+    fdm_device: str | None = None,
     command: str | None = None,
     argv: Sequence[str] | None = None,
     runner_cls=OmniMppiSimulationRunner,
 ) -> dict:
     backend = str(backend).lower()
-    if backend != "numpy":
-        raise ValueError("Stage 5 benchmark currently only supports the NumPy backend")
+    if backend not in {"numpy", "cuda"}:
+        raise ValueError("Stage 5 benchmark supports only numpy or cuda backends")
+    fdm_device = fdm_device or ("cuda" if backend == "cuda" else "cpu")
     controllers = tuple(_validate_controllers(controllers))
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -380,12 +381,12 @@ def main() -> None:
     parser.add_argument("--output", default="results/stage5_benchmark/standard_seed123")
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--base-seed", type=int, default=123)
-    parser.add_argument("--backend", choices=["numpy"], default="numpy")
+    parser.add_argument("--backend", choices=["numpy", "cuda"], default="numpy")
     parser.add_argument("--controllers", default="nominal,learned")
     parser.add_argument("--fdm-model-dir", default="results/fdm_baselines/stage4_mlp_seed123_hardened")
     parser.add_argument("--fdm-checkpoint", default="best_model.pt")
     parser.add_argument("--fdm-normalization", default="normalization.npz")
-    parser.add_argument("--fdm-device", default="cpu")
+    parser.add_argument("--fdm-device", default=None)
     args = parser.parse_args()
 
     summary = run_benchmark(
@@ -399,7 +400,7 @@ def main() -> None:
         fdm_model_dir=args.fdm_model_dir,
         fdm_checkpoint=args.fdm_checkpoint,
         fdm_normalization=args.fdm_normalization,
-        fdm_device=args.fdm_device,
+        fdm_device=args.fdm_device or ("cuda" if args.backend == "cuda" else "cpu"),
         command=shell_join([sys.executable, *sys.argv]),
         argv=[sys.executable, *sys.argv],
     )

@@ -185,6 +185,31 @@ The detailed protocol and output schema live in:
 docs/agent_memory/STAGE5_BENCHMARK.md
 ```
 
+## Visual Evaluation Protocol
+
+Use the visual evaluation tool when inspecting the closed-loop learning effect for a single scenario:
+
+```text
+tools/visualize_stage5_closed_loop.py
+```
+
+The detailed visual protocol lives in:
+
+```text
+docs/agent_memory/STAGE5_VISUAL_EVAL.md
+```
+
+It runs paired `Nominal-MPPI` and `Learned-FDM-MPPI` oracle-world simulations with the same config and seed, enables `trajectory.png` and `animation.gif` for both runs, and writes:
+
+```text
+closed_loop_nominal_vs_learned.png
+closed_loop_compare_metrics.csv
+closed_loop_compare_metrics.json
+stage5_visual_eval_summary.json
+```
+
+This visual check is useful for human inspection, but benchmark conclusions still come from `tools/benchmark_learned_fdm_mppi.py`.
+
 Run closed-loop ID/OOD benchmarks only after the NumPy smoke is stable:
 
 - ID: `config/b2_omni_oracle_random100_dataset.yaml`
@@ -218,7 +243,14 @@ max_mppi_time_ms
 
 The four gate metrics are `success_rate`, `final_distance`, `min_obstacle_clearance`, and `mean_mppi_time_ms`.
 
-PR #18 is only the benchmark tool and schema. PR #19 should run the full ID/OOD benchmark and summarize results. PR #20 should profile and optimize learned-FDM runtime. Do not start history-conditioned FDM until closed-loop benchmark evidence shows the current MLP residual model is insufficient.
+PR #18 is only the benchmark tool and schema. PR #19 adds a Torch CUDA learned rollout backend, runs the first standard/ID/OOD closed-loop benchmark, and summarizes results. PR #20 should profile and tune learned-FDM runtime and closed-loop cost calibration. Do not start history-conditioned FDM until closed-loop benchmark evidence shows the current MLP residual model is insufficient.
+
+PR #19 result boundary:
+
+- standard scene: learned improves final distance, steps, clearance, terrain risk, and smoothness.
+- ID/OOD random tasks: learned reaches 100% success but does not stably outperform nominal on final distance, steps, or clearance.
+- learned consistently reduces terrain risk, command-real error, residual norm, smoothness, and jerk.
+- Torch CUDA learned rollout makes benchmark practical, but is still slower than nominal CUDA.
 
 ## Failure Modes
 

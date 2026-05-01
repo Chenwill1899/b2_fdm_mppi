@@ -13,6 +13,7 @@ import pandas as pd
 import yaml
 
 from b2_fdm_mppi.controllers.mppi_omni_learned_numpy import LearnedFdmMppiOmniNumpy
+from b2_fdm_mppi.controllers.mppi_omni_learned_torch import LearnedFdmMppiOmniTorch
 from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
 from b2_fdm_mppi.core.learned_residual_dynamics import LearnedResidualDynamics
 from b2_fdm_mppi.core.omni_b2 import OmniB2
@@ -36,9 +37,11 @@ def create_omni_controller(config: dict, seed: int = 123) -> object:
     backend = str(config["mppi"].get("backend", "numpy")).lower()
     fdm_cfg = config.get("fdm", {})
     if bool(fdm_cfg.get("enabled", False)):
-        if backend != "numpy":
-            raise RuntimeError("Learned FDM MPPI is currently supported only for the NumPy backend")
-        return LearnedFdmMppiOmniNumpy.from_config(config, seed=seed)
+        if backend == "numpy":
+            return LearnedFdmMppiOmniNumpy.from_config(config, seed=seed)
+        if backend == "cuda":
+            return LearnedFdmMppiOmniTorch.from_config(config, seed=seed)
+        raise ValueError(f"Unsupported learned FDM MPPI backend: {backend}")
     if backend == "cuda":
         if MppiOmniCuda is None:
             raise RuntimeError("mppi.backend is 'cuda' but PyCUDA controller is unavailable")
