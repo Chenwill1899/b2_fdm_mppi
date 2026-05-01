@@ -185,6 +185,31 @@ The detailed protocol and output schema live in:
 docs/agent_memory/STAGE5_BENCHMARK.md
 ```
 
+## Visual Evaluation Protocol
+
+Use the visual evaluation tool when inspecting the closed-loop learning effect for a single scenario:
+
+```text
+tools/visualize_stage5_closed_loop.py
+```
+
+The detailed visual protocol lives in:
+
+```text
+docs/agent_memory/STAGE5_VISUAL_EVAL.md
+```
+
+It runs paired `Nominal-MPPI` and `Learned-FDM-MPPI` oracle-world simulations with the same config and seed, enables `trajectory.png` and `animation.gif` for both runs, and writes:
+
+```text
+closed_loop_nominal_vs_learned.png
+closed_loop_compare_metrics.csv
+closed_loop_compare_metrics.json
+stage5_visual_eval_summary.json
+```
+
+This visual check is useful for human inspection, but benchmark conclusions still come from `tools/benchmark_learned_fdm_mppi.py`.
+
 Run closed-loop ID/OOD benchmarks only after the NumPy smoke is stable:
 
 - ID: `config/b2_omni_oracle_random100_dataset.yaml`

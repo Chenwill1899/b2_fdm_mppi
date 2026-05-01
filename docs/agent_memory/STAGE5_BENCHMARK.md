@@ -213,3 +213,19 @@ array copy / device transfer
 ```
 
 Do not replace the MLP model before using the Stage 5-B evidence to tune closed-loop rollout/cost calibration and profile the remaining runtime overhead.
+
+## Visual Inspection Entry
+
+For single-scene human inspection of learning-before/after closed-loop behavior, use:
+
+```text
+tools/visualize_stage5_closed_loop.py
+```
+
+Protocol:
+
+```text
+docs/agent_memory/STAGE5_VISUAL_EVAL.md
+```
+
+The visual tool is intentionally separate from the benchmark runner. It enables plots and animation, runs only one paired nominal/learned scenario, and writes `closed_loop_nominal_vs_learned.png` plus per-run GIFs. Benchmark runs should keep plots and animation disabled by default.
