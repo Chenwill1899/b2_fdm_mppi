@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 def load_eval_module():
@@ -84,6 +85,75 @@ def test_compute_rollout_metrics_reports_learned_improvement():
     assert metrics["nominal_fde_xy"] > metrics["learned_fde_xy"]
     assert metrics["learned_vs_nominal_ade_improvement_pct"] > 0.0
     assert metrics["residual_mse"] < metrics["zero_residual_mse"]
+
+
+def test_compute_rollout_metrics_adds_horizon_specific_errors():
+    module = load_eval_module()
+    oracle_states = np.array(
+        [[float(idx), 0.0, 0.0, 0.0, 0.0, 0.0] for idx in range(6)],
+        dtype=np.float32,
+    )
+    nominal_states = oracle_states.copy()
+    nominal_states[:, 0] *= 0.5
+    learned_states = oracle_states.copy()
+    learned_states[:, 0] *= 0.9
+
+    metrics = module.compute_rollout_metrics(
+        oracle_states=oracle_states,
+        nominal_states=nominal_states,
+        learned_states=learned_states,
+        oracle_residuals=np.zeros((5, 3), dtype=np.float32),
+        learned_residuals=np.zeros((5, 3), dtype=np.float32),
+        dt=0.5,
+    )
+
+    assert metrics["horizon_metrics"]["1s"]["state_index"] == 2
+    assert metrics["horizon_metrics"]["2s"]["state_index"] == 4
+    assert metrics["horizon_metrics"]["4s"]["state_index"] == 5
+    assert metrics["nominal_ade_xy_at_1s"] == pytest.approx(np.mean([0.0, 0.5, 1.0]))
+    assert metrics["learned_fde_xy_at_2s"] == pytest.approx(0.4)
+
+
+def test_rollout_gif_metric_does_not_reuse_old_gif_when_generation_is_skipped(tmp_path):
+    module = load_eval_module()
+    (tmp_path / "rollout_compare.gif").write_bytes(b"old gif")
+
+    gif_metrics = module.rollout_gif_metrics(tmp_path, generated_this_run=False)
+
+    assert gif_metrics["rollout_compare_gif"] is None
+    assert gif_metrics["rollout_compare_gif_generated_this_run"] is False
+
+
+def test_resolve_model_artifact_path_supports_relative_and_absolute_paths(tmp_path):
+    module = load_eval_module()
+
+    assert module.resolve_model_artifact_path(tmp_path / "run", "best_model.pt") == tmp_path / "run" / "best_model.pt"
+    assert module.resolve_model_artifact_path(tmp_path / "run", tmp_path / "explicit.pt") == tmp_path / "explicit.pt"
+
+
+def test_build_run_metadata_records_reproducibility_inputs(tmp_path):
+    module = load_eval_module()
+    checkpoint_path = tmp_path / "best_model.pt"
+    normalization_path = tmp_path / "normalization.npz"
+
+    metadata = module.build_run_metadata(
+        command="python3 tools/evaluate_residual_fdm_rollout.py --no-gif",
+        device="cpu",
+        checkpoint_path=checkpoint_path,
+        normalization_path=normalization_path,
+        generate_gif=False,
+        gif_fps=8,
+        gif_max_frames=120,
+        git_metadata={"sha": "abc123", "branch": "dev", "dirty": False},
+    )
+
+    assert metadata["command"] == "python3 tools/evaluate_residual_fdm_rollout.py --no-gif"
+    assert metadata["git_sha"] == "abc123"
+    assert metadata["git_branch"] == "dev"
+    assert metadata["device"] == "cpu"
+    assert metadata["checkpoint_path"] == str(checkpoint_path)
+    assert metadata["normalization_path"] == str(normalization_path)
+    assert metadata["gif_parameters"] == {"enabled": False, "fps": 8, "max_frames": 120}
 
 
 def test_replay_controls_uses_predicted_residuals():

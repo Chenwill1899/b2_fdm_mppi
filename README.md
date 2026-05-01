@@ -509,6 +509,8 @@ python3 tools/evaluate_residual_fdm_rollout.py \
   --seed 123 \
   --backend numpy \
   --device cpu \
+  --checkpoint model.pt \
+  --normalization normalization.npz \
   --gif-fps 8 \
   --gif-max-frames 120
 ```
@@ -539,11 +541,13 @@ oracle_run/
 
 - `nominal_ade_xy` / `learned_ade_xy`: replay 轨迹相对 oracle 的平均 XY 误差。
 - `nominal_fde_xy` / `learned_fde_xy`: replay 终点相对 oracle 的 XY 误差。
+- `horizon_metrics`: `1s`、`2s`、`4s` 窗口内的 ADE/FDE 及改善比例；同时展开为 `nominal_ade_xy_at_1s` 等顶层字段，便于脚本读取。
 - `learned_vs_nominal_ade_improvement_pct`: learned replay 相对 nominal replay 的 ADE 改善比例。
 - `residual_mse` / `zero_residual_mse`: learned residual 相对 oracle residual 的 MSE，以及零 residual baseline MSE。
 - `residual_mse_axis`: `[vx, vy, wz]` 三轴 residual MSE。
+- `command`、`git_sha`、`git_branch`、`git_dirty`、`device`、`checkpoint_path`、`normalization_path`、`gif_parameters`: 复现实验所需的运行元数据。
 
-`rollout_compare.gif` 展示 terrain risk 热力背景、障碍物 safety boundary、oracle / nominal replay / learned FDM replay 三条轨迹同步推进，以及每帧 nominal 和 learned 相对 oracle 的当前 XY error。若只需要 JSON/PNG，可以加 `--no-gif` 跳过 GIF 渲染。
+`rollout_compare.gif` 展示 terrain risk 热力背景、障碍物 safety boundary、oracle / nominal replay / learned FDM replay 三条轨迹同步推进，以及每帧 nominal 和 learned 相对 oracle 的当前 XY error。若只需要 JSON/PNG，可以加 `--no-gif` 跳过 GIF 渲染；此时 metrics 不会复用 output dir 中可能存在的旧 `rollout_compare.gif` 路径。
 
 参数一致性检查：
 
@@ -563,7 +567,15 @@ learned_ade_xy: 0.04871
 nominal_fde_xy: 0.91905
 learned_fde_xy: 0.14396
 learned_vs_nominal_ade_improvement_pct: 90.66
+nominal_ade_xy_at_1s / learned_ade_xy_at_1s: 0.01937 / 0.00108
+nominal_fde_xy_at_1s / learned_fde_xy_at_1s: 0.03956 / 0.00110
+nominal_ade_xy_at_2s / learned_ade_xy_at_2s: 0.04252 / 0.00101
+nominal_fde_xy_at_2s / learned_fde_xy_at_2s: 0.09267 / 0.00125
+nominal_ade_xy_at_4s / learned_ade_xy_at_4s: 0.09690 / 0.00154
+nominal_fde_xy_at_4s / learned_fde_xy_at_4s: 0.21386 / 0.00276
 residual_mse_improvement_pct: 98.94
+checkpoint_path: results/fdm_baselines/stage4_mlp_seed123/model.pt
+normalization_path: results/fdm_baselines/stage4_mlp_seed123/normalization.npz
 rollout_compare.gif: 120 frames, 700x700
 ```
 

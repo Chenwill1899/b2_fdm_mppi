@@ -21,6 +21,8 @@ python3 tools/evaluate_residual_fdm_rollout.py \
   --seed 123 \
   --backend numpy \
   --device cpu \
+  --checkpoint model.pt \
+  --normalization normalization.npz \
   --gif-fps 8 \
   --gif-max-frames 120
 ```
@@ -46,10 +48,28 @@ results/fdm_rollout_eval/stage4_mlp_seed123_b2_omni_oracle_seed123/
   - `nominal_fde_xy: 0.9190490245819092`
   - `learned_fde_xy: 0.14395728707313538`
   - `learned_vs_nominal_ade_improvement_pct: 90.65588879043469`
+  - `nominal_ade_xy_at_1s: 0.019368547946214676`
+  - `learned_ade_xy_at_1s: 0.0010764976032078266`
+  - `nominal_fde_xy_at_1s: 0.03956378623843193`
+  - `learned_fde_xy_at_1s: 0.0011031425092369318`
+  - `nominal_ade_xy_at_2s: 0.04252150282263756`
+  - `learned_ade_xy_at_2s: 0.0010103760287165642`
+  - `nominal_fde_xy_at_2s: 0.09266608953475952`
+  - `learned_fde_xy_at_2s: 0.0012467068154364824`
+  - `nominal_ade_xy_at_4s: 0.09689775109291077`
+  - `learned_ade_xy_at_4s: 0.00154116319026798`
+  - `nominal_fde_xy_at_4s: 0.2138642817735672`
+  - `learned_fde_xy_at_4s: 0.0027648615650832653`
   - `residual_mse: 1.0517556802369654e-05`
   - `zero_residual_mse: 0.0009893554961308837`
   - `residual_mse_improvement_pct: 98.93692845054167`
   - `rollout_compare.gif: 120 frames, 700x700, 977494 bytes`
+- Reproducibility metadata now written to `rollout_metrics.json` / `.yaml`:
+  - exact command
+  - git SHA / branch / dirty flag
+  - backend and device
+  - checkpoint and normalization artifact paths
+  - GIF enabled/fps/max-frame parameters
 - Parameter snapshot:
   - `robot.radius: 0.6`
   - `robot.safety_dist: 0.25`

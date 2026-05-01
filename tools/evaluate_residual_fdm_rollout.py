@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
 
 import numpy as np
 import torch
@@ -35,6 +37,8 @@ class ResidualFdmPredictor:
     target_mean: np.ndarray
     target_std: np.ndarray
     device: torch.device
+    checkpoint_path: Path
+    normalization_path: Path
 
     def __call__(
         self,
@@ -68,10 +72,17 @@ def build_feature_vector(
     ).astype(np.float32, copy=False)
 
 
-def load_residual_fdm_predictor(model_dir: str | Path, device: str = "cpu") -> ResidualFdmPredictor:
+def load_residual_fdm_predictor(
+    model_dir: str | Path,
+    device: str = "cpu",
+    checkpoint_path: str | Path | None = None,
+    normalization_path: str | Path | None = None,
+) -> ResidualFdmPredictor:
     model_dir = Path(model_dir)
-    checkpoint = torch.load(model_dir / "model.pt", map_location=device)
-    normalizer = np.load(model_dir / "normalization.npz")
+    checkpoint_file = resolve_model_artifact_path(model_dir, checkpoint_path or "model.pt")
+    normalization_file = resolve_model_artifact_path(model_dir, normalization_path or "normalization.npz")
+    checkpoint = torch.load(checkpoint_file, map_location=device)
+    normalizer = np.load(normalization_file)
     input_dim = int(checkpoint["input_dim"])
     hidden_dim = int(checkpoint["hidden_dim"])
     if input_dim != len(FEATURE_NAMES):
@@ -86,7 +97,16 @@ def load_residual_fdm_predictor(model_dir: str | Path, device: str = "cpu") -> R
         target_mean=np.asarray(normalizer["target_mean"], dtype=np.float32),
         target_std=np.asarray(normalizer["target_std"], dtype=np.float32),
         device=torch_device,
+        checkpoint_path=checkpoint_file,
+        normalization_path=normalization_file,
     )
+
+
+def resolve_model_artifact_path(model_dir: str | Path, artifact_path: str | Path) -> Path:
+    path = Path(artifact_path)
+    if path.is_absolute():
+        return path
+    return Path(model_dir) / path
 
 
 def replay_controls(
@@ -136,6 +156,8 @@ def compute_rollout_metrics(
     learned_states: np.ndarray,
     oracle_residuals: np.ndarray,
     learned_residuals: np.ndarray,
+    dt: float | None = None,
+    horizons_s: Sequence[float] = (1.0, 2.0, 4.0),
 ) -> dict:
     oracle_states = np.asarray(oracle_states, dtype=np.float32)
     nominal_states = np.asarray(nominal_states, dtype=np.float32)
@@ -166,7 +188,7 @@ def compute_rollout_metrics(
     learned_fde = float(learned_xy_error[-1]) if state_count else 0.0
     residual_mse = float(np.mean(residual_mse_axis))
     zero_residual_mse = float(np.mean(zero_residual_mse_axis))
-    return {
+    metrics = {
         "state_count": int(state_count),
         "residual_count": int(residual_count),
         "nominal_ade_xy": nominal_ade,
@@ -182,6 +204,55 @@ def compute_rollout_metrics(
         "zero_residual_mse_axis": [float(v) for v in zero_residual_mse_axis.tolist()],
         "residual_mse_improvement_pct": _improvement_pct(zero_residual_mse, residual_mse),
     }
+    if dt is not None and float(dt) > 0.0:
+        metrics.update(_horizon_error_metrics(nominal_xy_error, learned_xy_error, dt=float(dt), horizons_s=horizons_s))
+    return metrics
+
+
+def _horizon_error_metrics(
+    nominal_xy_error: np.ndarray,
+    learned_xy_error: np.ndarray,
+    *,
+    dt: float,
+    horizons_s: Sequence[float],
+) -> dict:
+    metrics: dict = {"horizon_metrics": {}}
+    state_count = min(len(nominal_xy_error), len(learned_xy_error))
+    if state_count == 0:
+        return metrics
+    for horizon_s in horizons_s:
+        key = _horizon_key(float(horizon_s))
+        state_index = min(max(0, int(round(float(horizon_s) / dt))), state_count - 1)
+        nominal_window = nominal_xy_error[: state_index + 1]
+        learned_window = learned_xy_error[: state_index + 1]
+        horizon_metrics = {
+            "seconds": float(horizon_s),
+            "state_index": int(state_index),
+            "nominal_ade_xy": float(np.mean(nominal_window)),
+            "learned_ade_xy": float(np.mean(learned_window)),
+            "nominal_fde_xy": float(nominal_xy_error[state_index]),
+            "learned_fde_xy": float(learned_xy_error[state_index]),
+        }
+        horizon_metrics["learned_vs_nominal_ade_improvement_pct"] = _improvement_pct(
+            horizon_metrics["nominal_ade_xy"],
+            horizon_metrics["learned_ade_xy"],
+        )
+        horizon_metrics["learned_vs_nominal_fde_improvement_pct"] = _improvement_pct(
+            horizon_metrics["nominal_fde_xy"],
+            horizon_metrics["learned_fde_xy"],
+        )
+        metrics["horizon_metrics"][key] = horizon_metrics
+        for name, value in horizon_metrics.items():
+            if name in {"seconds", "state_index"}:
+                continue
+            metrics[f"{name}_at_{key}"] = value
+    return metrics
+
+
+def _horizon_key(seconds: float) -> str:
+    if abs(seconds - round(seconds)) <= 1e-9:
+        return f"{int(round(seconds))}s"
+    return f"{seconds:g}s"
 
 
 def evaluate_residual_fdm_rollout(
@@ -192,9 +263,12 @@ def evaluate_residual_fdm_rollout(
     seed: int = 123,
     backend: str | None = None,
     device: str = "cpu",
+    checkpoint: str | Path = "model.pt",
+    normalization: str | Path = "normalization.npz",
     generate_gif: bool = True,
     gif_fps: int = 8,
     gif_max_frames: int = 180,
+    command: str | None = None,
 ) -> dict:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -235,12 +309,18 @@ def evaluate_residual_fdm_rollout(
         terrain=terrain,
         residual_predictor=None,
     )
+    predictor = load_residual_fdm_predictor(
+        model_dir,
+        device=device,
+        checkpoint_path=checkpoint,
+        normalization_path=normalization,
+    )
     learned = replay_controls(
         initial_state=initial_state,
         cmd_controls=cmd_controls,
         robot=_robot_from_config(config),
         terrain=terrain,
-        residual_predictor=load_residual_fdm_predictor(model_dir, device=device),
+        residual_predictor=predictor,
     )
     metrics = compute_rollout_metrics(
         oracle_states=oracle_states,
@@ -248,6 +328,7 @@ def evaluate_residual_fdm_rollout(
         learned_states=learned["states"],
         oracle_residuals=oracle_residuals,
         learned_residuals=learned["predicted_residuals"],
+        dt=1.0 / float(config["simulation"]["sampling_rate"]),
     )
     metrics.update(
         {
@@ -257,6 +338,15 @@ def evaluate_residual_fdm_rollout(
             "seed": int(seed),
             "backend": str(config["mppi"].get("backend", "numpy")).lower(),
             "parameter_snapshot": parameter_snapshot(config),
+            **build_run_metadata(
+                command=command,
+                device=device,
+                checkpoint_path=predictor.checkpoint_path,
+                normalization_path=predictor.normalization_path,
+                generate_gif=generate_gif,
+                gif_fps=gif_fps,
+                gif_max_frames=gif_max_frames,
+            ),
             "oracle_results_path": str(summary.results_path),
             "oracle_reached_goal": bool(summary.reached_goal),
             "oracle_failed": bool(summary.failed),
@@ -277,13 +367,88 @@ def evaluate_residual_fdm_rollout(
             fps=gif_fps,
             max_frames=gif_max_frames,
         )
-    gif_path = output_dir / "rollout_compare.gif"
-    metrics["rollout_compare_gif"] = str(gif_path) if gif_path.exists() else None
-    metrics["rollout_compare_gif_generated_this_run"] = bool(generate_gif)
+    metrics.update(rollout_gif_metrics(output_dir, generated_this_run=generate_gif))
     (output_dir / "rollout_metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     with (output_dir / "rollout_metrics.yaml").open("w", encoding="utf-8") as stream:
         yaml.safe_dump(metrics, stream, sort_keys=False)
     return metrics
+
+
+def build_run_metadata(
+    *,
+    command: str | None,
+    device: str,
+    checkpoint_path: str | Path,
+    normalization_path: str | Path,
+    generate_gif: bool,
+    gif_fps: int,
+    gif_max_frames: int,
+    git_metadata: dict | None = None,
+) -> dict:
+    git = current_git_metadata() if git_metadata is None else git_metadata
+    return {
+        "command": command,
+        "git_sha": git.get("sha"),
+        "git_branch": git.get("branch"),
+        "git_dirty": git.get("dirty"),
+        "device": str(device),
+        "checkpoint_path": str(checkpoint_path),
+        "normalization_path": str(normalization_path),
+        "gif_parameters": {
+            "enabled": bool(generate_gif),
+            "fps": int(gif_fps),
+            "max_frames": int(gif_max_frames),
+        },
+    }
+
+
+def current_git_metadata() -> dict:
+    repo_root = Path(__file__).resolve().parents[1]
+    return {
+        "sha": _git_output(repo_root, "rev-parse", "HEAD"),
+        "branch": _git_output(repo_root, "branch", "--show-current"),
+        "dirty": _git_dirty(repo_root),
+    }
+
+
+def _git_output(repo_root: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repo_root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    output = result.stdout.strip()
+    return output or None
+
+
+def _git_dirty(repo_root: Path) -> bool | None:
+    try:
+        result = subprocess.run(
+            ["git", "status", "--short"],
+            cwd=repo_root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return bool(result.stdout.strip())
+
+
+def rollout_gif_metrics(output_dir: str | Path, *, generated_this_run: bool) -> dict:
+    gif_path = Path(output_dir) / "rollout_compare.gif"
+    generated = bool(generated_this_run)
+    return {
+        "rollout_compare_gif": str(gif_path) if generated and gif_path.exists() else None,
+        "rollout_compare_gif_generated_this_run": generated and gif_path.exists(),
+    }
 
 
 def _states_with_final(runner: OmniMppiSimulationRunner) -> np.ndarray:
@@ -554,6 +719,8 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--backend", choices=["cuda", "numpy"], default=None)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--checkpoint", default="model.pt", help="Checkpoint filename under --model-dir or absolute path.")
+    parser.add_argument("--normalization", default="normalization.npz", help="Normalizer filename under --model-dir or absolute path.")
     parser.add_argument("--no-gif", action="store_true", help="Skip rollout_compare.gif generation.")
     parser.add_argument("--gif-fps", type=int, default=8)
     parser.add_argument("--gif-max-frames", type=int, default=180)
@@ -566,11 +733,18 @@ def main() -> None:
         seed=args.seed,
         backend=args.backend,
         device=args.device,
+        checkpoint=args.checkpoint,
+        normalization=args.normalization,
         generate_gif=not args.no_gif,
         gif_fps=args.gif_fps,
         gif_max_frames=args.gif_max_frames,
+        command=shell_join([sys.executable, *sys.argv]),
     )
     print(json.dumps(metrics, indent=2))
+
+
+def shell_join(argv: Sequence[str]) -> str:
+    return " ".join(shlex.quote(str(arg)) for arg in argv)
 
 
 if __name__ == "__main__":
