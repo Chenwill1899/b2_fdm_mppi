@@ -547,3 +547,72 @@ def test_omni_runner_uses_cuda_backend_when_configured(tmp_path, monkeypatch):
 
     assert isinstance(runner.controller, FakeCudaController)
     assert created == [(config, 123)]
+
+
+def test_omni_runner_summary_records_fdm_metadata(tmp_path):
+    config = make_config(tmp_path, max_steps=1)
+    config["fdm"] = {
+        "enabled": True,
+        "model_dir": "results/fdm_baselines/stage4_mlp_seed123_hardened",
+        "checkpoint": "best_model.pt",
+        "normalization": "normalization.npz",
+        "device": "cpu",
+    }
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    summary = runner.run()
+    summary_json = json.loads((summary.results_path / "summary.json").read_text())
+
+    assert summary_json["fdm_enabled"] is True
+    assert summary_json["fdm_model_dir"] == "results/fdm_baselines/stage4_mlp_seed123_hardened"
+    assert summary_json["fdm_checkpoint"] == "best_model.pt"
+    assert summary_json["fdm_normalization"] == "normalization.npz"
+    assert summary_json["fdm_device"] == "cpu"
+    assert summary_json["controller_type"] == "ConstantOmniController"
+
+
+def test_create_omni_controller_uses_learned_numpy_when_fdm_enabled(tmp_path, monkeypatch):
+    import b2_fdm_mppi.simulation.omni_runner as omni_runner
+    from b2_fdm_mppi.controllers.mppi_omni_learned_numpy import LearnedFdmMppiOmniNumpy
+
+    config = make_config(tmp_path)
+    config["mppi"]["backend"] = "numpy"
+    config["fdm"] = {
+        "enabled": True,
+        "model_dir": "stub-model",
+        "checkpoint": "best_model.pt",
+        "normalization": "normalization.npz",
+        "device": "cpu",
+    }
+
+    class StubDynamics:
+        checkpoint_path = "stub-model/best_model.pt"
+        normalization_path = "stub-model/normalization.npz"
+        device = "cpu"
+
+        def predict_residual_batch(self, states, commands, terrain_features=None, terrain_risk=None):
+            return np.zeros((len(states), 3), dtype=np.float32)
+
+    monkeypatch.setattr(
+        omni_runner.LearnedResidualDynamics,
+        "from_artifacts",
+        classmethod(lambda cls, *args, **kwargs: StubDynamics()),
+    )
+
+    controller = omni_runner.create_omni_controller(config, seed=123)
+
+    assert isinstance(controller, LearnedFdmMppiOmniNumpy)
+
+
+def test_create_omni_controller_rejects_learned_cuda_backend(tmp_path):
+    from b2_fdm_mppi.simulation.omni_runner import create_omni_controller
+
+    config = make_config(tmp_path)
+    config["mppi"]["backend"] = "cuda"
+    config["fdm"] = {"enabled": True, "model_dir": "stub-model"}
+
+    with pytest.raises(RuntimeError, match="NumPy"):
+        create_omni_controller(config, seed=123)

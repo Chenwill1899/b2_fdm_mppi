@@ -16,9 +16,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config/b2_omni_nominal.yaml")
     parser.add_argument("--seed", type=int, default=123)
+    parser.add_argument("--backend", choices=["cuda", "numpy"], default=None)
+    parser.add_argument("--fdm-enabled", action="store_true")
+    parser.add_argument("--fdm-model-dir", default=None)
+    parser.add_argument("--fdm-checkpoint", default=None)
+    parser.add_argument("--fdm-normalization", default=None)
+    parser.add_argument("--fdm-device", default=None)
     args = parser.parse_args()
 
     config = load_config(args.config)
+    config = apply_cli_overrides(config, args)
     runner = OmniMppiSimulationRunner(
         config,
         controller_factory=lambda *, config, runner: create_omni_controller(config, seed=args.seed),
@@ -32,6 +39,22 @@ def main() -> None:
     animation_path = summary.results_path / "animation.gif"
     if animation_path.exists():
         print(f"animation={animation_path}")
+
+
+def apply_cli_overrides(config: dict, args: argparse.Namespace) -> dict:
+    if args.backend is not None:
+        config.setdefault("mppi", {})["backend"] = str(args.backend).lower()
+    if args.fdm_enabled:
+        config.setdefault("fdm", {})["enabled"] = True
+    if args.fdm_model_dir is not None:
+        config.setdefault("fdm", {})["model_dir"] = args.fdm_model_dir
+    if args.fdm_checkpoint is not None:
+        config.setdefault("fdm", {})["checkpoint"] = args.fdm_checkpoint
+    if args.fdm_normalization is not None:
+        config.setdefault("fdm", {})["normalization"] = args.fdm_normalization
+    if args.fdm_device is not None:
+        config.setdefault("fdm", {})["device"] = args.fdm_device
+    return config
 
 
 if __name__ == "__main__":

@@ -1,0 +1,122 @@
+"""NumPy MPPI controller using learned residual FDM rollout dynamics."""
+
+from __future__ import annotations
+
+import numpy as np
+
+from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
+from b2_fdm_mppi.core.learned_residual_dynamics import LearnedResidualDynamics
+from b2_fdm_mppi.core.omni_b2 import OmniB2
+from b2_fdm_mppi.core.terrain import TerrainField
+
+
+class LearnedFdmMppiOmniNumpy(MppiOmniNumpy):
+    def __init__(self, *args, learned_dynamics: LearnedResidualDynamics, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.learned_dynamics = learned_dynamics
+
+    @classmethod
+    def from_config(
+        cls,
+        config: dict,
+        seed: int | None = None,
+        *,
+        learned_dynamics: LearnedResidualDynamics | None = None,
+        **overrides,
+    ) -> "LearnedFdmMppiOmniNumpy":
+        sim = config["simulation"]
+        mppi = config["mppi"]
+        robot = config["robot"]
+        sampling_rate = float(sim["sampling_rate"])
+        dt = 1.0 / sampling_rate
+        horizon_steps = int(float(sim["time_horizon"]) * sampling_rate)
+        if learned_dynamics is None:
+            dynamics_robot = OmniB2(
+                dt,
+                float(robot["max_vx"]),
+                float(robot["max_vy"]),
+                float(robot["max_wz"]),
+            )
+            terrain = TerrainField.from_config(config.get("terrain"))
+            fdm = config.get("fdm", {})
+            learned_dynamics = LearnedResidualDynamics.from_artifacts(
+                fdm["model_dir"],
+                robot=dynamics_robot,
+                terrain=terrain,
+                checkpoint=fdm.get("checkpoint", "best_model.pt"),
+                normalization=fdm.get("normalization", "normalization.npz"),
+                device=fdm.get("device", "cpu"),
+            )
+        return cls(
+            dt=dt,
+            horizon_steps=horizon_steps,
+            num_samples=int(mppi["num_trajectories"]),
+            lambda_=float(mppi["lambda"]),
+            noise_std=np.asarray(mppi["std_normal"], dtype=np.float32),
+            max_vx=float(robot["max_vx"]),
+            max_vy=float(robot["max_vy"]),
+            max_wz=float(robot["max_wz"]),
+            goal_xy_weight=float(overrides.get("goal_xy_weight", mppi["weights"][0])),
+            yaw_weight=float(overrides.get("yaw_weight", mppi["weights"][2])),
+            control_weight=float(overrides.get("control_weight", mppi.get("control_weight", 0.01))),
+            smooth_weight=float(overrides.get("smooth_weight", mppi.get("smooth_weight", 0.2))),
+            obstacle_weight=float(overrides.get("obstacle_weight", mppi.get("obstacle_weight", 25.0))),
+            obstacle_soft_weight=float(
+                overrides.get("obstacle_soft_weight", mppi.get("obstacle_soft_weight", 0.0))
+            ),
+            obstacle_influence_dist=float(
+                overrides.get("obstacle_influence_dist", mppi.get("obstacle_influence_dist", 0.0))
+            ),
+            max_ax=float(overrides.get("max_ax", robot.get("max_ax", 1000.0))),
+            max_ay=float(overrides.get("max_ay", robot.get("max_ay", 1000.0))),
+            max_awz=float(overrides.get("max_awz", robot.get("max_awz", 1000.0))),
+            velocity_lag_beta=float(overrides.get("velocity_lag_beta", robot.get("velocity_lag_beta", 0.0))),
+            lateral_weight=float(overrides.get("lateral_weight", mppi.get("lateral_weight", 0.0))),
+            yaw_rate_weight=float(overrides.get("yaw_rate_weight", mppi.get("yaw_rate_weight", 0.0))),
+            accel_weight=float(overrides.get("accel_weight", mppi.get("accel_weight", 0.0))),
+            jerk_weight=float(overrides.get("jerk_weight", mppi.get("jerk_weight", 0.0))),
+            robot_radius=float(robot["radius"]),
+            safety_dist=float(robot["safety_dist"]),
+            draw_num_traj=int(mppi["draw_num_traj"]),
+            seed=seed,
+            learned_dynamics=learned_dynamics,
+        )
+
+    def _rollout_batch(
+        self,
+        initial_state: np.ndarray,
+        controls: np.ndarray,
+        return_controls: bool = False,
+    ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+        controls = np.clip(np.asarray(controls, dtype=np.float32), -self.max_control, self.max_control)
+        num_samples, horizon_steps, _ = controls.shape
+        states = np.zeros((num_samples, horizon_steps + 1, 6), dtype=np.float32)
+        states[:, 0, :] = np.asarray(initial_state, dtype=np.float32)
+        real_controls = np.zeros((num_samples, horizon_steps, 3), dtype=np.float32)
+        prev_real = np.broadcast_to(states[:, 0, 3:], (num_samples, 3)).copy()
+        max_delta = self.max_accel * self.dt
+        for step in range(horizon_steps):
+            prev = states[:, step, :]
+            command = controls[:, step, :]
+            lagged = self.velocity_lag_beta * prev_real + (1.0 - self.velocity_lag_beta) * command
+            delta = np.clip(lagged - prev_real, -max_delta, max_delta)
+            response_command = np.clip(prev_real + delta, -self.max_control, self.max_control)
+            residual = self.learned_dynamics.predict_residual_batch(prev, response_command)
+            control = np.clip(response_command + residual, -self.max_control, self.max_control)
+            real_controls[:, step, :] = control
+            theta = prev[:, 2]
+            cos_theta = np.cos(theta)
+            sin_theta = np.sin(theta)
+            vx = control[:, 0]
+            vy = control[:, 1]
+            wz = control[:, 2]
+            states[:, step + 1, 0] = prev[:, 0] + (vx * cos_theta - vy * sin_theta) * self.dt
+            states[:, step + 1, 1] = prev[:, 1] + (vx * sin_theta + vy * cos_theta) * self.dt
+            states[:, step + 1, 2] = prev[:, 2] + wz * self.dt
+            states[:, step + 1, 3] = vx
+            states[:, step + 1, 4] = vy
+            states[:, step + 1, 5] = wz
+            prev_real = control
+        if return_controls:
+            return states, real_controls
+        return states

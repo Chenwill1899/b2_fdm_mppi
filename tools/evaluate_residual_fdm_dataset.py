@@ -15,10 +15,9 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from b2_fdm_mppi.core.residual_fdm_model import FEATURE_NAMES, ResidualFdmMlp
 from tools.train_residual_fdm import (
-    FEATURE_NAMES,
     SPLITS,
-    ResidualFdmMlp,
     _axis_metric_fields,
     _zero_residual_mse_axis,
     current_git_metadata,

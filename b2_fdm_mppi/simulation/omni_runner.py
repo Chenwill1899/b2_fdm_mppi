@@ -12,7 +12,9 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from b2_fdm_mppi.controllers.mppi_omni_learned_numpy import LearnedFdmMppiOmniNumpy
 from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
+from b2_fdm_mppi.core.learned_residual_dynamics import LearnedResidualDynamics
 from b2_fdm_mppi.core.omni_b2 import OmniB2
 from b2_fdm_mppi.core.residual_world import ResidualWorld
 from b2_fdm_mppi.core.terrain import TerrainField
@@ -32,6 +34,11 @@ ControllerFactory = Callable[..., object]
 
 def create_omni_controller(config: dict, seed: int = 123) -> object:
     backend = str(config["mppi"].get("backend", "numpy")).lower()
+    fdm_cfg = config.get("fdm", {})
+    if bool(fdm_cfg.get("enabled", False)):
+        if backend != "numpy":
+            raise RuntimeError("Learned FDM MPPI is currently supported only for the NumPy backend")
+        return LearnedFdmMppiOmniNumpy.from_config(config, seed=seed)
     if backend == "cuda":
         if MppiOmniCuda is None:
             raise RuntimeError("mppi.backend is 'cuda' but PyCUDA controller is unavailable")
@@ -263,6 +270,8 @@ class OmniMppiSimulationRunner:
         max_terrain = float(np.max(self.terrain_risk_history)) if self.terrain_risk_history else 0.0
         return {
             "world_mode": self.world_mode,
+            "controller_type": type(self.controller).__name__,
+            **self._fdm_metadata(),
             "success": success,
             "reached_goal": success,
             "failed": self.failed,
@@ -293,6 +302,25 @@ class OmniMppiSimulationRunner:
             **self._control_metrics(),
             **self._sample_coverage_metrics(),
         }
+
+    def _fdm_metadata(self) -> dict:
+        fdm_cfg = self.config.get("fdm", {})
+        enabled = bool(fdm_cfg.get("enabled", False))
+        metadata = {
+            "fdm_enabled": enabled,
+            "fdm_model_dir": fdm_cfg.get("model_dir") if enabled else None,
+            "fdm_checkpoint": fdm_cfg.get("checkpoint", "best_model.pt") if enabled else None,
+            "fdm_normalization": fdm_cfg.get("normalization", "normalization.npz") if enabled else None,
+            "fdm_device": fdm_cfg.get("device", "cpu") if enabled else None,
+        }
+        learned = getattr(self.controller, "learned_dynamics", None)
+        if learned is not None:
+            metadata["fdm_checkpoint_path"] = str(getattr(learned, "checkpoint_path", ""))
+            metadata["fdm_normalization_path"] = str(getattr(learned, "normalization_path", ""))
+        else:
+            metadata["fdm_checkpoint_path"] = None
+            metadata["fdm_normalization_path"] = None
+        return metadata
 
     def _save_results(self) -> None:
         self._save_config()

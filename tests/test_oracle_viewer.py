@@ -156,3 +156,63 @@ def test_plot_oracle_diagnostics_supports_configured_map_size(tmp_path: Path):
     output = tmp_path / "oracle_diagnostics.png"
     assert output.exists()
     assert output.stat().st_size > 0
+
+
+def test_plot_oracle_diagnostics_handles_final_trajectory_state(tmp_path: Path):
+    pd.DataFrame(
+        {
+            "step": [0, 1, 2],
+            "x": [0.0, 0.5, 1.0],
+            "y": [0.0, 0.0, 0.0],
+            "theta": [0.0, 0.0, 0.0],
+            "vx": [0.0, 0.5, 0.5],
+            "vy": [0.0, 0.0, 0.0],
+            "wz": [0.0, 0.0, 0.0],
+            "x_des": [1.0, 1.0, 1.0],
+            "y_des": [0.0, 0.0, 0.0],
+            "theta_des": [0.0, 0.0, 0.0],
+        }
+    ).to_csv(tmp_path / "trajectory.csv", index=False)
+    pd.DataFrame({"step": [0, 1], "vx_cmd": [0.5, 0.5], "vy_cmd": [0.0, 0.0], "wz_cmd": [0.0, 0.0]}).to_csv(
+        tmp_path / "controls.csv", index=False
+    )
+    pd.DataFrame({"step": [0, 1], "vx_cmd": [0.5, 0.5], "vy_cmd": [0.0, 0.0], "wz_cmd": [0.0, 0.0]}).to_csv(
+        tmp_path / "raw_controls.csv", index=False
+    )
+    pd.DataFrame(
+        {
+            "step": [0, 1],
+            "cmd_vx": [0.5, 0.5],
+            "cmd_vy": [0.0, 0.0],
+            "cmd_wz": [0.0, 0.0],
+            "real_vx": [0.4, 0.45],
+            "real_vy": [0.0, 0.0],
+            "real_wz": [0.0, 0.0],
+            "du_vx": [-0.1, -0.05],
+            "du_vy": [0.0, 0.0],
+            "du_wz": [0.0, 0.0],
+            "du_norm": [0.1, 0.05],
+        }
+    ).to_csv(tmp_path / "residuals.csv", index=False)
+    pd.DataFrame(
+        {
+            "step": [0, 1],
+            "x": [0.0, 0.5],
+            "y": [0.0, 0.0],
+            "slope_f": [0.0, 0.0],
+            "slope_l": [0.0, 0.0],
+            "roughness": [0.1, 0.1],
+            "friction": [0.8, 0.8],
+            "risk_cost": [0.1, 0.1],
+        }
+    ).to_csv(tmp_path / "terrain.csv", index=False)
+    config = {
+        "terrain": {"enabled": True},
+        "obstacles": {"virtual": []},
+        "robot": {"radius": 0.4, "safety_dist": 0.2},
+    }
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    plot_oracle_diagnostics(tmp_path, config)
+
+    assert (tmp_path / "oracle_diagnostics.png").exists()
