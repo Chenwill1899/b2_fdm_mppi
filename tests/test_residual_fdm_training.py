@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -81,6 +82,16 @@ def write_dataset(dataset_dir: Path) -> None:
     )
 
 
+def current_git_branch() -> str | None:
+    result = subprocess.run(
+        ["git", "branch", "--show-current"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() or None
+
+
 def test_load_residual_fdm_dataset_builds_expected_features(tmp_path):
     module = load_training_module()
     dataset_dir = tmp_path / "dataset"
@@ -132,7 +143,7 @@ def test_train_residual_fdm_writes_checkpoint_and_metrics(tmp_path):
     assert metrics["argv"] == ["python3", "tools/train_residual_fdm.py", "--unit-test"]
     assert metrics["sys_argv"] == ["python3", "tools/train_residual_fdm.py", "--unit-test"]
     assert metrics["git_sha"]
-    assert metrics["git_branch"] == "dev"
+    assert metrics["git_branch"] == current_git_branch()
     assert isinstance(metrics["git_dirty"], bool)
     assert metrics["device"] == "cpu"
     assert metrics["dataset_dir"] == str(dataset_dir)

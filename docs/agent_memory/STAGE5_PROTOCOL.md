@@ -173,7 +173,19 @@ The learned controller passes the stability smoke but is not real-time in this f
 
 ## Benchmark Protocol
 
-After PR #17, run closed-loop ID/OOD benchmarks only after the NumPy smoke is stable:
+PR #18 adds the first benchmark runner:
+
+```text
+tools/benchmark_learned_fdm_mppi.py
+```
+
+The detailed protocol and output schema live in:
+
+```text
+docs/agent_memory/STAGE5_BENCHMARK.md
+```
+
+Run closed-loop ID/OOD benchmarks only after the NumPy smoke is stable:
 
 - ID: `config/b2_omni_oracle_random100_dataset.yaml`
 - OOD obstacle: `config/b2_omni_oracle_random100_dataset_ood_obstacle.yaml`
@@ -205,6 +217,8 @@ max_mppi_time_ms
 ```
 
 The four gate metrics are `success_rate`, `final_distance`, `min_obstacle_clearance`, and `mean_mppi_time_ms`.
+
+PR #18 is only the benchmark tool and schema. PR #19 should run the full ID/OOD benchmark and summarize results. PR #20 should profile and optimize learned-FDM runtime. Do not start history-conditioned FDM until closed-loop benchmark evidence shows the current MLP residual model is insufficient.
 
 ## Failure Modes
 

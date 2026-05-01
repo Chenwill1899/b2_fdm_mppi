@@ -4,7 +4,7 @@ Last updated: 2026-05-01
 
 ## Current Stage
 
-Stage 5: learned residual FDM NumPy closed-loop smoke.
+Stage 5: learned residual FDM NumPy closed-loop benchmark.
 
 ## Stage 0 Acceptance Criteria
 
@@ -49,6 +49,7 @@ Stage 5: learned residual FDM NumPy closed-loop smoke.
 | S4-004 | P0 | done | Harden residual FDM training baseline | `tools/train_residual_fdm.py` now writes reproducibility metadata, per-axis MSE/RMSE/improvement fields, TensorBoard best-val scalars, and both `best_model.pt` plus final `model.pt`. Hardened seed123 run on `datasets/oracle_stage4_splits` saved under `results/fdm_baselines/stage4_mlp_seed123_hardened/`: val/test MSE `1.000e-05` / `1.005e-05`, zero residual val/test MSE `6.535e-04` / `6.289e-04`, relative improvement `98.47%` / `98.40%`, best epoch `46`, final epoch `50`. |
 | S4-005 | P0 | done | Close Stage 4 benchmark and OOD protocol | Added OOD obstacle/terrain dataset configs, `tools/evaluate_residual_fdm_dataset.py`, and `docs/agent_memory/STAGE4_PROTOCOL.md`. Multi-seed `123/456/789` mean test MSE `1.015e-05` with mean test reduction `98.386%`. Best checkpoint standard open-loop learned ADE/FDE `0.04844/0.08230` vs nominal `0.52125/0.91905`. OOD obstacle/terrain one-step test improvement `57.20x` / `59.64x`; OOD rollout learned ADE/FDE `0.02070/0.04631` and `0.02465/0.05385`, both better than nominal. |
 | S5-001 | P0 | done | Add learned residual dynamics wrapper and NumPy smoke path | Added shared residual FDM model module, `LearnedResidualDynamics`, `LearnedFdmMppiOmniNumpy`, FDM config/CLI overrides, and `docs/agent_memory/STAGE5_PROTOCOL.md`. Standard scene smoke passed stability threshold: nominal final distance `0.3282 m`, learned final distance `0.3430 m` under threshold `0.4938 m`; learned reached goal and failed=false. Runtime is high (`mean_mppi_time_ms=1143.5`) and must be optimized before real-time claims. |
+| S5-002 | P0 | done | Add Stage 5 closed-loop benchmark runner | Added `tools/benchmark_learned_fdm_mppi.py` and `docs/agent_memory/STAGE5_BENCHMARK.md` for paired nominal vs learned NumPy oracle benchmarks. The tool writes `stage5_benchmark_summary.json` with metadata, per-run metrics, per-controller aggregates, and learned-minus-nominal paired deltas. Full ID/OOD benchmark results are deferred to PR #19. |
 
 ## Later Stages
 
@@ -58,6 +59,6 @@ Stage 5: learned residual FDM NumPy closed-loop smoke.
 | 2 | done | Oracle residual world. |
 | 3.5 | done | Parallel Oracle Dataset Generation with explicit episode seed mapping. |
 | 4 | done | Residual velocity FDM training baseline and open-loop/OOD validation. |
-| 5 | in_progress | Learned FDM-MPPI NumPy integration and closed-loop smoke. |
+| 5 | in_progress | Learned FDM-MPPI NumPy integration, closed-loop benchmark, and runtime profiling. |
 | 6 | pending | Unified evaluation system. |
 | 7 | pending | Paper-ready experiments and figures. |
