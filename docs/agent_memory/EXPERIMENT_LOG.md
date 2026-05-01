@@ -1094,3 +1094,52 @@ results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
   - The ID random-task issue is not simply "MLP residual bad"; full residual correction appears too strong. Partial or zero residual gain removes the steps/final-distance degradation in the 5-episode ID quick sweep.
   - `residual_gain=0.5`, `goal_xy_weight=3.5`, and `smooth_weight=0.5/1.0` are the current Stage 5-C candidates for a 20-episode rerun.
   - The biggest runtime hotspot is terrain feature/risk computation inside the Torch rollout loop, followed by FDM inference/state integration and obstacle cost.
+
+### 2026-05-02: S5-008 Calibrated 20-Episode ID/OOD Benchmark
+
+- Goal: rerun the Stage 5-C candidates on full 20-episode ID/OOD suites after the quick residual-gain and cost sweeps.
+- Seed mapping: `seed = base_seed + episode_id`, with `base_seed=123` and `episode_id=0..19`, so seeds are `123..142`.
+- Backend/model:
+  - backend: `cuda`
+  - learned device: `cuda`
+  - model dir: `results/fdm_baselines/stage4_mlp_seed123_hardened`
+  - checkpoint: `best_model.pt`
+  - normalization: `normalization.npz`
+- Commands:
+  - ID default paired rerun:
+    - `python3 tools/benchmark_learned_fdm_mppi.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_tasks_default_20ep --output results/stage5_calibration/s5_008/id_random_default20_seed123_cuda --episodes 20 --base-seed 123 --backend cuda --controllers nominal,learned --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --fdm-residual-gain 1.0`
+  - ID calibrated sweep:
+    - `python3 tools/sweep_stage5_calibration.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_tasks_calibrated_20ep --output results/stage5_calibration/s5_008/id_random_calibrated20_seed123_cuda --episodes 20 --base-seed 123 --backend cuda --controllers learned --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --residual-gains 0.5 --cost-grid goal_xy_weight=3.5 --cost-grid smooth_weight=0.5,1.0`
+  - OOD obstacle calibrated sweep:
+    - `python3 tools/sweep_stage5_calibration.py --config config/b2_omni_oracle_random100_dataset_ood_obstacle.yaml --scenario-name ood_obstacle_calibrated_20ep --output results/stage5_calibration/s5_008/ood_obstacle_calibrated20_seed123_cuda --episodes 20 --base-seed 123 --backend cuda --controllers learned --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --residual-gains 0.5 --cost-grid goal_xy_weight=3.5 --cost-grid smooth_weight=0.5,1.0`
+  - OOD terrain calibrated sweep:
+    - `python3 tools/sweep_stage5_calibration.py --config config/b2_omni_oracle_random100_dataset_ood_terrain.yaml --scenario-name ood_terrain_calibrated_20ep --output results/stage5_calibration/s5_008/ood_terrain_calibrated20_seed123_cuda --episodes 20 --base-seed 123 --backend cuda --controllers learned --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --residual-gains 0.5 --cost-grid goal_xy_weight=3.5 --cost-grid smooth_weight=0.5,1.0`
+- Output summaries:
+  - `results/stage5_calibration/s5_008/id_random_default20_seed123_cuda/stage5_benchmark_summary.json`
+  - `results/stage5_calibration/s5_008/id_random_calibrated20_seed123_cuda/stage5_calibration_sweep_summary.json`
+  - `results/stage5_calibration/s5_008/ood_obstacle_calibrated20_seed123_cuda/stage5_calibration_sweep_summary.json`
+  - `results/stage5_calibration/s5_008/ood_terrain_calibrated20_seed123_cuda/stage5_calibration_sweep_summary.json`
+  - OOD default nominal/learned references are reused from the existing Stage 5-B 20-episode summaries under `results/stage5_benchmark/ood_obstacle_seed123_cuda/` and `results/stage5_benchmark/ood_terrain_seed123_cuda/`.
+- Failure check:
+  - all S5-008 generated `summary.json` files reported success; failed or unsuccessful runs: `0`.
+
+| Scenario | Controller | Success | Final Dist | Delta Final | Steps | Delta Steps | Clearance | Terrain Risk | Smooth | Jerk | MPPI ms |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ID random | nominal CUDA | 1.00 | 0.6795 | +0.0000 | 137.1 | +0.0 | 3.5621 | 0.3285 | 0.003186 | 0.002828 | 4.51 |
+| ID random | learned default `g=1.0` | 1.00 | 0.6930 | +0.0135 | 155.8 | +18.7 | 3.5254 | 0.3121 | 0.002782 | 0.002014 | 48.26 |
+| ID random | calibrated `g=0.5`, `goal=3.5`, `smooth=0.5` | 1.00 | 0.6733 | -0.0062 | 132.0 | -5.1 | 3.5714 | 0.3295 | 0.003493 | 0.003626 | 49.41 |
+| ID random | calibrated `g=0.5`, `goal=3.5`, `smooth=1.0` | 1.00 | 0.6766 | -0.0029 | 129.8 | -7.2 | 3.5750 | 0.3282 | 0.003401 | 0.002862 | 48.97 |
+| OOD obstacle | nominal CUDA | 1.00 | 0.6768 | +0.0000 | 142.3 | +0.0 | 2.7875 | 0.3269 | 0.003156 | 0.002765 | 7.19 |
+| OOD obstacle | learned default `g=1.0` | 1.00 | 0.6878 | +0.0109 | 175.1 | +32.8 | 2.8150 | 0.3133 | 0.002764 | 0.002156 | 53.85 |
+| OOD obstacle | calibrated `g=0.5`, `goal=3.5`, `smooth=0.5` | 1.00 | 0.6717 | -0.0051 | 133.8 | -8.6 | 2.8106 | 0.3318 | 0.003503 | 0.003551 | 49.60 |
+| OOD obstacle | calibrated `g=0.5`, `goal=3.5`, `smooth=1.0` | 1.00 | 0.6775 | +0.0006 | 130.4 | -11.9 | 2.8696 | 0.3302 | 0.003411 | 0.002790 | 49.00 |
+| OOD terrain | nominal CUDA | 1.00 | 0.6848 | +0.0000 | 141.8 | +0.0 | 3.5747 | 0.3633 | 0.003084 | 0.002728 | 6.43 |
+| OOD terrain | learned default `g=1.0` | 1.00 | 0.6900 | +0.0051 | 153.7 | +11.8 | 3.5101 | 0.3409 | 0.002704 | 0.001871 | 51.39 |
+| OOD terrain | calibrated `g=0.5`, `goal=3.5`, `smooth=0.5` | 1.00 | 0.6774 | -0.0074 | 138.4 | -3.4 | 3.5778 | 0.3680 | 0.003434 | 0.003516 | 49.73 |
+| OOD terrain | calibrated `g=0.5`, `goal=3.5`, `smooth=1.0` | 1.00 | 0.6785 | -0.0063 | 130.2 | -11.7 | 3.5788 | 0.3636 | 0.003330 | 0.002775 | 49.22 |
+
+- Conclusion:
+  - The Stage 5-C hypothesis is supported: full residual correction was too strong for random tasks. Reducing residual gain to `0.5` and increasing `goal_xy_weight` to `3.5` removes the default learned controller's final-distance and steps regression on ID/OOD 20-episode runs.
+  - `smooth_weight=1.0` is the better current calibrated candidate for larger benchmarking because it has the best steps across ID/OOD while keeping final distance at or slightly better than nominal. `smooth_weight=0.5` gives the best final distance in most scenarios but increases smoothness/jerk cost metrics.
+  - The calibration trades away part of the default learned controller's lower terrain-risk and smoother-control behavior. Default `g=1.0` remains the conservative/smooth reference, while calibrated `g=0.5`, `goal=3.5`, `smooth=1.0` is the efficiency candidate.
+  - Stage 5-D should compare at least nominal CUDA, learned default `g=1.0`, and calibrated learned `g=0.5/goal=3.5/smooth=1.0` on 50-100 episodes. If terrain-risk/smoothness advantages are required in the same controller, run a small Pareto sweep over obstacle/terrain/smoothness-related weights before the larger benchmark.
