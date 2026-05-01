@@ -53,7 +53,7 @@ robot:
   max_awz: 0.8
   velocity_lag_beta: 0.35
   radius: 0.6
-  safety_dist: 0.5
+  safety_dist: 0.25
   obstacle_state_num: 7
 
 cbf:
