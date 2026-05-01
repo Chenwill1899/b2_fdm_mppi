@@ -82,13 +82,21 @@ shape          = [B, 3]
 Artifacts:
 
 ```text
+best_model.pt
 model.pt
 normalization.npz
 metrics.json
 tensorboard/events.out.tfevents.*
 ```
 
-This baseline validates dataset usability before adding history windows or multi-step rollout prediction.
+Checkpoint policy:
+
+```text
+best_model.pt = checkpoint with minimum validation standardized loss
+model.pt      = final epoch checkpoint
+```
+
+`metrics.json` records exact command, argv, git SHA/branch/dirty flag, device, dataset artifact paths, per-axis MSE/RMSE/improvement, and best/final checkpoint paths. This baseline validates dataset usability before adding history windows or multi-step rollout prediction.
 
 ## Planned Loss
 

@@ -2,6 +2,117 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01: S4-005 Multi-seed, OOD, and Stage 4 Protocol Closeout
+
+- Goal: close Stage 4 residual FDM baseline validation without entering Stage 5 closed-loop MPPI integration.
+- Code/docs additions:
+  - `tools/evaluate_residual_fdm_dataset.py`
+  - `config/b2_omni_oracle_random100_dataset_ood_obstacle.yaml`
+  - `config/b2_omni_oracle_random100_dataset_ood_terrain.yaml`
+  - `docs/agent_memory/STAGE4_PROTOCOL.md`
+- Multi-seed training:
+  - seeds: `123`, `456`, `789`
+  - dataset: `datasets/oracle_stage4_splits`
+  - output summary: `results/fdm_baselines/stage4_seed_benchmark_summary.json`
+  - mean test MSE: `1.0148782469817283e-05`
+  - std test MSE: `2.1833955071817022e-07`
+  - mean test MSE reduction: `98.3862424492059%`
+  - std test MSE reduction: `0.03471816443561322%`
+  - mean test improvement: `61.99551928990127x`
+- Best checkpoint standard open-loop eval:
+  - command uses `--checkpoint best_model.pt`
+  - output: `results/fdm_rollout_eval/stage4_mlp_seed123_hardened_b2_omni_oracle_seed123`
+  - learned ADE/FDE: `0.04843650385737419` / `0.08230284601449966`
+  - nominal ADE/FDE: `0.5212535262107849` / `0.9190490245819092`
+  - residual MSE improvement: `98.53393274580017%`
+  - compared with previous final `model.pt`: ADE slightly better, FDE substantially better, residual MSE slightly worse.
+- OOD datasets:
+  - OOD obstacle: 100/100 episodes, `13680` transitions; split validation pass.
+  - OOD terrain: 100/100 episodes, `15017` transitions; split validation pass.
+- OOD one-step residual eval:
+  - OOD obstacle test MSE: `9.93157664197497e-06`; zero baseline `0.000568110088352114`; improvement `57.202406912014816x`.
+  - OOD terrain test MSE: `1.0731993825174868e-05`; zero baseline `0.0006400654674507678`; improvement `59.640871759478344x`.
+- OOD open-loop rollout eval:
+  - OOD obstacle learned ADE/FDE: `0.020704902708530426` / `0.046311039477586746`; nominal ADE/FDE: `0.22822964191436768` / `0.32846060395240784`; residual MSE improvement `98.24939690291691%`.
+  - OOD terrain learned ADE/FDE: `0.024650704115629196` / `0.05385246500372887`; nominal ADE/FDE: `0.26478996872901917` / `0.39450472593307495`; residual MSE improvement `98.27557548455931%`.
+- Verification:
+
+```bash
+python3 -m pytest -q
+```
+
+- Result before OOD runs: `114 passed, 2 warnings in 20.02s`.
+- Conclusion: Stage 4 ID and OOD open-loop evidence is stable enough to prepare Stage 5 planning, but Stage 5 is not yet implemented or validated.
+
+## 2026-05-01: S4-004 Hardened Residual FDM Training Baseline
+
+- Goal: make the Stage 4.1 one-step residual FDM baseline reproducible and checkpoint-trackable without changing model architecture or integrating learned FDM into MPPI.
+- Tool:
+
+```text
+tools/train_residual_fdm.py
+```
+
+- Command:
+
+```bash
+python3 tools/train_residual_fdm.py \
+  --dataset datasets/oracle_stage4_splits \
+  --output results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --epochs 50 \
+  --batch-size 512 \
+  --hidden-dim 64 \
+  --learning-rate 0.001 \
+  --seed 123 \
+  --device cpu
+```
+
+- Output directory:
+
+```text
+results/fdm_baselines/stage4_mlp_seed123_hardened/
+```
+
+- Required artifacts verified:
+  - `model.pt`
+  - `best_model.pt`
+  - `normalization.npz`
+  - `metrics.json`
+  - `tensorboard/events.out.tfevents.*`
+- Metrics:
+  - `val_mse: 1.000058364297729e-05`
+  - `test_mse: 1.0051174285763409e-05`
+  - `zero_residual_val_mse: 0.0006534629501402378`
+  - `zero_residual_test_mse: 0.0006288914009928703`
+  - `val_mse_relative_improvement_pct: 98.46960204234516`
+  - `test_mse_relative_improvement_pct: 98.40176312318867`
+  - `val_mse_vx/vy/wz: 1.1322053978801705e-05 / 8.929766408982687e-06 / 9.749930541147478e-06`
+  - `test_mse_vx/vy/wz: 1.1244998859183397e-05 / 8.813855856715236e-06 / 1.0094667231896892e-05`
+  - `val_rmse_vx/vy/wz: 0.003364825995323043 / 0.0029882714751144493 / 0.0031224878768615705`
+  - `test_rmse_vx/vy/wz: 0.0033533563573207364 / 0.0029688138804437095 / 0.0031772106055307212`
+  - `val_mse_reduction_pct_vx/vy/wz: 99.16653595010273 / 94.74558556452628 / 97.743111778077`
+  - `test_mse_reduction_pct_vx/vy/wz: 99.13072858537161 / 94.42857479590664 / 97.67866540006683`
+  - `best_epoch: 46`
+  - `best_val_loss: 0.028149016201496124`
+  - `final_epoch: 50`
+  - `final_val_loss: 0.02840588055551052`
+- Reproducibility metadata:
+  - `git_sha: a410272a1ab98132959bfceb17366ee0344d2ca7`
+  - `git_branch: dev`
+  - `git_dirty: true`
+  - `device: cpu`
+  - exact command written in `metrics.json`
+  - `best_checkpoint_path: results/fdm_baselines/stage4_mlp_seed123_hardened/best_model.pt`
+  - `final_checkpoint_path: results/fdm_baselines/stage4_mlp_seed123_hardened/model.pt`
+- Verification:
+
+```bash
+python3 -m pytest -q
+```
+
+- Result: `112 passed, 2 warnings in 18.97s`.
+- Conclusion: hardened Stage 4.1 training baseline remains strongly better than the zero-residual baseline while adding reproducibility metadata and best/final checkpoint tracking. This is still Stage 4.1; no Stage 5 closed-loop MPPI integration was added.
+
 ## 2026-05-01: S4-003 Open-loop Learned FDM Rollout Eval
 
 - Goal: visualize and quantify trained residual FDM effects in the Stage 2 `config/b2_omni_oracle.yaml` oracle simulation environment without yet integrating learned FDM into MPPI rollout.

@@ -43,7 +43,7 @@ Stage 4 当前目标：
 - 训练一个最小 residual velocity FDM baseline；
 - 输入：`states + cmd_controls + terrain_features + terrain_risk`；
 - 目标：`exec_residuals = real_controls - cmd_controls`；
-- 输出：`model.pt`、`normalization.npz`、`metrics.json`；
+- 输出：`best_model.pt`、`model.pt`、`normalization.npz`、`metrics.json`；
 - 暂不接入 MPPI rollout。
 
 Stage 4 不做：
@@ -471,6 +471,7 @@ exec_residuals: [exec_du_vx, exec_du_vy, exec_du_wz]
 
 ```text
 model.pt
+best_model.pt
 normalization.npz
 metrics.json
 tensorboard/events.out.tfevents.*
@@ -481,9 +482,34 @@ tensorboard/events.out.tfevents.*
 - `train_loss` / `val_loss` / `test_loss`: 标准化目标空间的 MSE；
 - `val_mse` / `test_mse`: 原始 residual 单位的 MSE；
 - `zero_residual_val_mse` / `zero_residual_test_mse`: 直接预测零 residual 的 baseline MSE。
+- `val_mse_vx/vy/wz`、`test_mse_vx/vy/wz`: per-axis raw MSE；
+- `val_rmse_vx/vy/wz`、`test_rmse_vx/vy/wz`: per-axis raw RMSE；
+- `val_mse_reduction_pct_vx/vy/wz`、`test_mse_reduction_pct_vx/vy/wz`: 相对 zero-residual 的 per-axis MSE 改善比例；
+- `per_axis_val_mse_reduction_pct` / `per_axis_test_mse_reduction_pct`: per-axis 改善比例字典；
+- `overall_val_mse_reduction_pct` / `overall_test_mse_reduction_pct`: 相对 zero-residual 的整体 MSE 降低比例；
+- `overall_val_improvement_x` / `overall_test_improvement_x`: 相对 zero-residual 的整体 improvement multiplier；
+- `command`、`argv`、`git_sha`、`git_branch`、`git_dirty`、`device`: 复现实验所需运行元数据；
+- `split_manifest_path`、`dataset_summary_path`、`dataset_quality_path`: dataset 构建和质量检查产物路径；
+- `best_epoch`、`best_val_loss`、`final_epoch`、`final_val_loss`: checkpoint 追踪字段；
+- `checkpoint_policy`: `best_model.pt` 基于最低 validation standardized loss，`model.pt` 保存 final epoch；
+- `best_checkpoint_path` / `final_checkpoint_path`: checkpoint 路径。
 - `tensorboard_log_dir`: TensorBoard event log 目录。
 
 用 `val_mse` / `test_mse` 对比 zero-residual baseline，判断 learned residual 是否真正优于零 residual。
+
+Stage 4.1 hardened seed123 baseline 推荐命令：
+
+```bash
+python3 tools/train_residual_fdm.py \
+  --dataset datasets/oracle_stage4_splits \
+  --output results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --epochs 50 \
+  --batch-size 512 \
+  --hidden-dim 64 \
+  --learning-rate 0.001 \
+  --seed 123 \
+  --device cpu
+```
 
 查看训练曲线和 residual 诊断图：
 
@@ -494,8 +520,42 @@ tensorboard --logdir results/fdm_baselines/oracle_stage4_baseline/tensorboard --
 TensorBoard 记录：
 
 - per-epoch `loss/train_standardized`、`loss/val_standardized`、`lr`；
+- per-epoch `loss/best_val_standardized` 和 `checkpoint/best_epoch`；
 - final `mse/val_raw`、`mse/test_raw`、zero-residual baseline MSE；
 - val split residual prediction-vs-target scatter 和 residual error histogram。
+
+Stage 4 multi-seed baseline 使用 seeds `123/456/789`，统一训练设置，输出到：
+
+```text
+results/fdm_baselines/stage4_mlp_seed123_hardened
+results/fdm_baselines/stage4_mlp_seed456_hardened
+results/fdm_baselines/stage4_mlp_seed789_hardened
+```
+
+Stage 4 OOD / cross-map 配置：
+
+```text
+config/b2_omni_oracle_random100_dataset_ood_obstacle.yaml
+config/b2_omni_oracle_random100_dataset_ood_terrain.yaml
+```
+
+OOD residual one-step eval：
+
+```bash
+python3 tools/evaluate_residual_fdm_dataset.py \
+  --dataset datasets/oracle_stage4_ood_obstacle_splits \
+  --model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --output results/fdm_ood_eval/ood_obstacle_seed123 \
+  --checkpoint best_model.pt \
+  --normalization normalization.npz \
+  --device cpu
+```
+
+完整 Stage 4 协议记录在：
+
+```text
+docs/agent_memory/STAGE4_PROTOCOL.md
+```
 
 ### Open-loop Rollout 效果验证
 
