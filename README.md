@@ -17,17 +17,18 @@ Nominal B2 omni MPPI
 当前阶段：
 
 ```text
-Stage 3.3: 合并 episode npz，并准备 train/val/test 切分
+Stage 3.4: 数据集质量检查与数据分布可视化
 ```
 
-Stage 3.3 的目标很窄：
+Stage 3.4 的目标很窄：
 
-- 读取 Stage 3.2 生成的 episode `.npz`；
-- 按 episode 级别切分 train/val/test；
-- 合并 transition array；
-- 生成 split manifest 和 dataset summary。
+- 读取 Stage 3.3 生成的 `train.npz` / `val.npz` / `test.npz`；
+- 检查字段、shape、dtype、NaN/Inf；
+- 检查 `exec_residuals = real_controls - cmd_controls`；
+- 检查 train/val/test episode 无泄漏；
+- 生成 `dataset_quality.json` 和 `dataset_summary.png`。
 
-Stage 3.3 不做：
+Stage 3.4 不做：
 
 - 不训练 FDM；
 - 不实现 FDM 网络；
@@ -37,7 +38,7 @@ Stage 3.3 不做：
 下一阶段计划：
 
 ```text
-Stage 3.4: 数据集质量检查和最小训练前验证
+Stage 3.5: 并行采集加速
 ```
 
 ## 构建
@@ -252,6 +253,39 @@ datasets/oracle_debug_splits/
 ```
 
 切分发生在 episode 级别，同一个 episode 的 transitions 不会跨 split。
+
+### 验证 Dataset 质量并生成可视化
+
+```bash
+python3 tools/validate_oracle_dataset.py \
+  --dataset datasets/oracle_debug_splits \
+  --output datasets/oracle_debug_splits
+```
+
+输出：
+
+```text
+datasets/oracle_debug_splits/
+  dataset_quality.json
+  dataset_summary.png
+```
+
+`dataset_quality.json` 会记录：
+
+```text
+split_shapes
+num_transitions
+num_episodes
+nan_count
+inf_count
+max_exec_residual_error
+mean_exec_residual_error
+zero_residual_baseline_mse
+episode_leakage_check
+pass
+```
+
+`dataset_summary.png` 包含 x-y 空间覆盖、control 分布、residual 分布、terrain risk、roughness/friction、episode length 和 split transition 数量。
 
 主要 shape 预期：
 
