@@ -2,6 +2,43 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01: S5-002 Stage 5 Closed-loop Benchmark Runner
+
+- Goal: add the PR #18 benchmark tool and summary schema for paired closed-loop Nominal-MPPI vs Learned-FDM-MPPI evaluation, without CUDA changes or full ID/OOD benchmark claims.
+- Tool:
+
+```text
+tools/benchmark_learned_fdm_mppi.py
+```
+
+- Standard command:
+
+```bash
+python3 tools/benchmark_learned_fdm_mppi.py \
+  --config config/b2_omni_oracle.yaml \
+  --scenario-name standard \
+  --output results/stage5_benchmark/standard_seed123 \
+  --episodes 1 \
+  --base-seed 123 \
+  --backend numpy \
+  --controllers nominal,learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cpu
+```
+
+- Output:
+  - `stage5_benchmark_summary.json`
+  - `runs/standard_episode_0000_nominal/`
+  - `runs/standard_episode_0000_learned/`
+- Summary schema:
+  - `metadata`: command, argv, git metadata, config/backend/controller/seed/model artifact metadata.
+  - `runs`: per-controller per-episode closed-loop metrics.
+  - `aggregates`: per-controller success rate and mean/std metrics.
+  - `paired_deltas`: learned-minus-nominal matched by `scenario + episode_id + seed`.
+- Boundary: PR #18 provides the runner and protocol only. Full standard/ID/OOD benchmark results belong to PR #19. Runtime profiling and acceleration belong to PR #20.
+
 ## 2026-05-01: S5-001 Learned Residual Dynamics Wrapper and NumPy Closed-loop Smoke
 
 - Goal: start Stage 5 with a minimal NumPy-only learned-FDM MPPI smoke path, without CUDA changes or large benchmark claims.
