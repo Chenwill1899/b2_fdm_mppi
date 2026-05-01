@@ -69,6 +69,16 @@ def write_dataset(dataset_dir: Path) -> None:
         ),
         encoding="utf-8",
     )
+    (dataset_dir / "dataset_quality.json").write_text(
+        json.dumps(
+            {
+                "pass": True,
+                "num_transitions": 54,
+                "zero_residual_baseline_mse": 0.01,
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_load_residual_fdm_dataset_builds_expected_features(tmp_path):
@@ -98,9 +108,13 @@ def test_train_residual_fdm_writes_checkpoint_and_metrics(tmp_path):
         hidden_dim=16,
         learning_rate=1e-2,
         seed=7,
+        device="cpu",
+        command="python3 tools/train_residual_fdm.py --unit-test",
+        argv=["python3", "tools/train_residual_fdm.py", "--unit-test"],
     )
 
     assert (output_dir / "model.pt").exists()
+    assert (output_dir / "best_model.pt").exists()
     assert (output_dir / "metrics.json").exists()
     assert (output_dir / "normalization.npz").exists()
     saved = json.loads((output_dir / "metrics.json").read_text(encoding="utf-8"))
@@ -114,6 +128,50 @@ def test_train_residual_fdm_writes_checkpoint_and_metrics(tmp_path):
     assert metrics["tensorboard_enabled"] is True
     assert metrics["tensorboard_log_dir"] == str(output_dir / "tensorboard")
     assert list((output_dir / "tensorboard").glob("events.out.tfevents.*"))
+    assert metrics["command"] == "python3 tools/train_residual_fdm.py --unit-test"
+    assert metrics["argv"] == ["python3", "tools/train_residual_fdm.py", "--unit-test"]
+    assert metrics["sys_argv"] == ["python3", "tools/train_residual_fdm.py", "--unit-test"]
+    assert metrics["git_sha"]
+    assert metrics["git_branch"] == "dev"
+    assert isinstance(metrics["git_dirty"], bool)
+    assert metrics["device"] == "cpu"
+    assert metrics["dataset_dir"] == str(dataset_dir)
+    assert metrics["split_manifest_path"] == str(dataset_dir / "split_manifest.json")
+    assert metrics["dataset_summary_path"] == str(dataset_dir / "dataset_summary.json")
+    assert metrics["dataset_quality_path"] == str(dataset_dir / "dataset_quality.json")
+    assert metrics["output_dir"] == str(output_dir)
+    assert metrics["batch_size"] == 8
+    assert metrics["hidden_dim"] == 16
+    assert metrics["learning_rate"] == 1e-2
+    assert metrics["weight_decay"] == 1e-5
+
+    best_epoch = int(np.argmin(metrics["val_loss"]) + 1)
+    assert metrics["best_epoch"] == best_epoch
+    assert metrics["best_val_loss"] == metrics["val_loss"][best_epoch - 1]
+    assert metrics["final_epoch"] == 3
+    assert metrics["final_val_loss"] == metrics["val_loss"][-1]
+    assert metrics["checkpoint_policy"] == "best_model.pt tracks minimum validation standardized loss; model.pt stores final epoch"
+    assert metrics["best_checkpoint_path"] == str(output_dir / "best_model.pt")
+    assert metrics["final_checkpoint_path"] == str(output_dir / "model.pt")
+
+    for split in ("val", "test"):
+        for axis in ("vx", "vy", "wz"):
+            for name in (
+                f"{split}_mse_{axis}",
+                f"{split}_rmse_{axis}",
+                f"zero_residual_{split}_mse_{axis}",
+                f"{split}_mse_reduction_pct_{axis}",
+            ):
+                assert name in metrics
+                assert np.isfinite(metrics[name])
+        assert f"{split}_mse_relative_improvement_pct" in metrics
+        assert np.isfinite(metrics[f"{split}_mse_relative_improvement_pct"])
+        assert f"per_axis_{split}_mse_reduction_pct" in metrics
+        assert set(metrics[f"per_axis_{split}_mse_reduction_pct"]) == {"vx", "vy", "wz"}
+    assert metrics["overall_val_mse_reduction_pct"] == metrics["val_mse_relative_improvement_pct"]
+    assert metrics["overall_test_mse_reduction_pct"] == metrics["test_mse_relative_improvement_pct"]
+    assert np.isfinite(metrics["overall_val_improvement_x"])
+    assert np.isfinite(metrics["overall_test_improvement_x"])
 
 
 def test_train_residual_fdm_writes_tensorboard_to_custom_log_dir(tmp_path):

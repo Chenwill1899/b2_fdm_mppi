@@ -6,8 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import shlex
+import subprocess
 import sys
 from pathlib import Path
+from typing import Sequence
 
 import numpy as np
 import torch
@@ -34,6 +37,7 @@ FEATURE_NAMES = [
     "terrain_risk",
 ]
 TARGET_NAMES = ["exec_du_vx", "exec_du_vy", "exec_du_wz"]
+TARGET_AXES = ("vx", "vy", "wz")
 SPLITS = ("train", "val", "test")
 
 
@@ -76,6 +80,8 @@ def train_residual_fdm(
     seed: int = 123,
     device: str = "cpu",
     tensorboard_log_dir: str | Path | None = None,
+    command: str | None = None,
+    argv: Sequence[str] | None = None,
 ) -> dict:
     _set_seed(seed)
     dataset_dir = Path(dataset_dir)
@@ -121,6 +127,8 @@ def train_residual_fdm(
 
     history_train = []
     history_val = []
+    best_epoch = 0
+    best_val_loss = float("inf")
     n_train = int(train_tensor_x.shape[0])
     writer = SummaryWriter(log_dir=str(tensorboard_log_dir))
     try:
@@ -141,30 +149,59 @@ def train_residual_fdm(
             history_train.append(train_loss)
             history_val.append(val_loss)
             step = epoch + 1
+            if best_epoch == 0 or val_loss < best_val_loss:
+                best_epoch = step
+                best_val_loss = val_loss
+                _save_checkpoint(
+                    output_dir / "best_model.pt",
+                    model=model,
+                    input_dim=train_x.shape[1],
+                    hidden_dim=hidden_dim,
+                    epoch=best_epoch,
+                    val_loss=best_val_loss,
+                    checkpoint_type="best",
+                )
             writer.add_scalar("loss/train_standardized", train_loss, step)
             writer.add_scalar("loss/val_standardized", val_loss, step)
+            writer.add_scalar("loss/best_val_standardized", best_val_loss, step)
+            writer.add_scalar("checkpoint/best_epoch", best_epoch, step)
             writer.add_scalar("lr", float(optimizer.param_groups[0]["lr"]), step)
     finally:
         writer.flush()
 
-    val_mse = _eval_raw_mse(
+    val_mse_axis = _eval_raw_mse_axis(
         model,
         val_tensor_x,
         arrays["val_targets"],
         y_mean,
         y_std,
     )
-    test_mse = _eval_raw_mse(
+    test_mse_axis = _eval_raw_mse_axis(
         model,
         test_tensor_x,
         arrays["test_targets"],
         y_mean,
         y_std,
     )
-    zero_val_mse = _zero_residual_mse(arrays["val_targets"])
-    zero_test_mse = _zero_residual_mse(arrays["test_targets"])
+    zero_val_mse_axis = _zero_residual_mse_axis(arrays["val_targets"])
+    zero_test_mse_axis = _zero_residual_mse_axis(arrays["test_targets"])
+    val_mse = float(np.mean(val_mse_axis))
+    test_mse = float(np.mean(test_mse_axis))
+    zero_val_mse = float(np.mean(zero_val_mse_axis))
+    zero_test_mse = float(np.mean(zero_test_mse_axis))
+    final_epoch = int(epochs)
+    final_val_loss = float(history_val[-1]) if history_val else 0.0
+    if best_epoch == 0:
+        best_val_loss = final_val_loss
     metrics = {
+        "command": command,
+        "argv": [str(item) for item in argv] if argv is not None else None,
+        "sys_argv": [str(item) for item in argv] if argv is not None else None,
+        **current_git_metadata(),
         "dataset_dir": str(dataset_dir),
+        "split_manifest_path": _artifact_path(dataset_dir / "split_manifest.json"),
+        "dataset_summary_path": _artifact_path(dataset_dir / "dataset_summary.json"),
+        "dataset_quality_path": _artifact_path(dataset_dir / "dataset_quality.json"),
         "output_dir": str(output_dir),
         "epochs": int(epochs),
         "batch_size": int(batch_size),
@@ -172,6 +209,7 @@ def train_residual_fdm(
         "learning_rate": float(learning_rate),
         "weight_decay": float(weight_decay),
         "seed": int(seed),
+        "device": str(device),
         "feature_names": FEATURE_NAMES,
         "target_names": TARGET_NAMES,
         "train_transitions": int(arrays["train_features"].shape[0]),
@@ -186,7 +224,16 @@ def train_residual_fdm(
         "zero_residual_test_mse": zero_test_mse,
         "tensorboard_enabled": True,
         "tensorboard_log_dir": str(tensorboard_log_dir),
+        "best_epoch": int(best_epoch),
+        "best_val_loss": float(best_val_loss),
+        "final_epoch": int(final_epoch),
+        "final_val_loss": float(final_val_loss),
+        "checkpoint_policy": "best_model.pt tracks minimum validation standardized loss; model.pt stores final epoch",
+        "best_checkpoint_path": str(output_dir / "best_model.pt"),
+        "final_checkpoint_path": str(output_dir / "model.pt"),
     }
+    metrics.update(_axis_metric_fields("val", val_mse_axis, zero_val_mse_axis))
+    metrics.update(_axis_metric_fields("test", test_mse_axis, zero_test_mse_axis))
     _write_tensorboard_final_diagnostics(
         writer=writer,
         model=model,
@@ -199,18 +246,17 @@ def train_residual_fdm(
         step=int(epochs),
     )
     writer.close()
-    (output_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "input_dim": int(train_x.shape[1]),
-            "hidden_dim": int(hidden_dim),
-            "feature_names": FEATURE_NAMES,
-            "target_names": TARGET_NAMES,
-            "metrics": metrics,
-        },
+    _save_checkpoint(
         output_dir / "model.pt",
+        model=model,
+        input_dim=train_x.shape[1],
+        hidden_dim=hidden_dim,
+        epoch=final_epoch,
+        val_loss=final_val_loss,
+        checkpoint_type="final",
+        metrics=metrics,
     )
+    (output_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     return metrics
 
 
@@ -261,6 +307,20 @@ def _eval_raw_mse(
     pred_raw = pred * target_std + target_mean
     diff = pred_raw - np.asarray(targets, dtype=np.float32)
     return float(np.mean(diff * diff))
+
+
+def _eval_raw_mse_axis(
+    model: nn.Module,
+    features: torch.Tensor,
+    targets: np.ndarray,
+    target_mean: np.ndarray,
+    target_std: np.ndarray,
+) -> np.ndarray:
+    if int(features.shape[0]) == 0:
+        return np.zeros(len(TARGET_AXES), dtype=np.float32)
+    pred_raw = _predict_raw(model, features, target_mean, target_std)
+    diff = pred_raw - np.asarray(targets, dtype=np.float32)
+    return np.mean(diff * diff, axis=0, dtype=np.float64).astype(np.float32)
 
 
 def _write_tensorboard_final_diagnostics(
@@ -366,6 +426,111 @@ def _zero_residual_mse(targets: np.ndarray) -> float:
     return float(np.mean(np.asarray(targets, dtype=np.float32) ** 2))
 
 
+def _zero_residual_mse_axis(targets: np.ndarray) -> np.ndarray:
+    targets = np.asarray(targets, dtype=np.float32)
+    if targets.size == 0:
+        return np.zeros(len(TARGET_AXES), dtype=np.float32)
+    return np.mean(targets * targets, axis=0, dtype=np.float64).astype(np.float32)
+
+
+def _axis_metric_fields(split: str, mse_axis: np.ndarray, zero_mse_axis: np.ndarray) -> dict:
+    fields: dict[str, float] = {}
+    per_axis_reduction: dict[str, float] = {}
+    for idx, axis in enumerate(TARGET_AXES):
+        mse = float(mse_axis[idx])
+        zero_mse = float(zero_mse_axis[idx])
+        fields[f"{split}_mse_{axis}"] = mse
+        fields[f"{split}_rmse_{axis}"] = float(np.sqrt(mse))
+        fields[f"zero_residual_{split}_mse_{axis}"] = zero_mse
+        reduction = _improvement_pct(zero_mse, mse)
+        fields[f"{split}_mse_reduction_pct_{axis}"] = reduction
+        per_axis_reduction[axis] = reduction
+    baseline = float(np.mean(zero_mse_axis))
+    candidate = float(np.mean(mse_axis))
+    reduction = _improvement_pct(baseline, candidate)
+    fields[f"per_axis_{split}_mse_reduction_pct"] = per_axis_reduction
+    fields[f"{split}_mse_relative_improvement_pct"] = reduction
+    fields[f"overall_{split}_mse_reduction_pct"] = reduction
+    fields[f"overall_{split}_improvement_x"] = float(baseline / candidate) if candidate > 1e-12 else 0.0
+    return fields
+
+
+def _improvement_pct(baseline: float, candidate: float) -> float:
+    if baseline <= 1e-12:
+        return 0.0
+    return float((1.0 - candidate / baseline) * 100.0)
+
+
+def _save_checkpoint(
+    path: Path,
+    *,
+    model: nn.Module,
+    input_dim: int,
+    hidden_dim: int,
+    epoch: int,
+    val_loss: float,
+    checkpoint_type: str,
+    metrics: dict | None = None,
+) -> None:
+    payload = {
+        "model_state_dict": model.state_dict(),
+        "input_dim": int(input_dim),
+        "hidden_dim": int(hidden_dim),
+        "feature_names": FEATURE_NAMES,
+        "target_names": TARGET_NAMES,
+        "epoch": int(epoch),
+        "val_loss": float(val_loss),
+        "checkpoint_type": str(checkpoint_type),
+    }
+    if metrics is not None:
+        payload["metrics"] = metrics
+    torch.save(payload, path)
+
+
+def current_git_metadata() -> dict:
+    repo_root = Path(__file__).resolve().parents[1]
+    return {
+        "git_sha": _git_output(repo_root, "rev-parse", "HEAD"),
+        "git_branch": _git_output(repo_root, "branch", "--show-current"),
+        "git_dirty": _git_dirty(repo_root),
+    }
+
+
+def _git_output(repo_root: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repo_root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    output = result.stdout.strip()
+    return output or None
+
+
+def _git_dirty(repo_root: Path) -> bool | None:
+    try:
+        result = subprocess.run(
+            ["git", "status", "--short"],
+            cwd=repo_root,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return bool(result.stdout.strip())
+
+
+def _artifact_path(path: Path) -> str | None:
+    return str(path) if path.exists() else None
+
+
 def _set_seed(seed: int) -> None:
     random.seed(int(seed))
     np.random.seed(int(seed))
@@ -397,8 +562,14 @@ def main() -> None:
         seed=args.seed,
         device=args.device,
         tensorboard_log_dir=args.tensorboard_log_dir,
+        command=shell_join([sys.executable, *sys.argv]),
+        argv=[sys.executable, *sys.argv],
     )
     print(json.dumps(metrics, indent=2))
+
+
+def shell_join(argv: Sequence[str]) -> str:
+    return " ".join(shlex.quote(str(arg)) for arg in argv)
 
 
 if __name__ == "__main__":

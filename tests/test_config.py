@@ -154,6 +154,26 @@ def test_b2_omni_oracle_random100_dataset_config_loads_stage3_prep_parameters():
     assert config["results"]["enable_animation"] is False
 
 
+def test_b2_omni_oracle_random100_ood_configs_load_and_change_one_axis():
+    base = load_config(Path("config/b2_omni_oracle_random100_dataset.yaml"))
+    ood_obstacle = load_config(Path("config/b2_omni_oracle_random100_dataset_ood_obstacle.yaml"))
+    ood_terrain = load_config(Path("config/b2_omni_oracle_random100_dataset_ood_terrain.yaml"))
+
+    assert ood_obstacle["simulation"]["world_mode"] == "oracle"
+    assert ood_obstacle["scenario"]["random_seed"] == "auto"
+    assert ood_obstacle["obstacles"]["random_seed"] != base["obstacles"]["random_seed"]
+    assert ood_obstacle["terrain"]["noise_seed"] == base["terrain"]["noise_seed"]
+    assert ood_obstacle["robot"]["safety_dist"] == pytest.approx(base["robot"]["safety_dist"])
+    assert ood_obstacle["results"]["run_name"] == "b2_omni_oracle_random100_dataset_ood_obstacle"
+
+    assert ood_terrain["simulation"]["world_mode"] == "oracle"
+    assert ood_terrain["scenario"]["random_seed"] == "auto"
+    assert ood_terrain["obstacles"]["random_seed"] == base["obstacles"]["random_seed"]
+    assert ood_terrain["terrain"]["noise_seed"] != base["terrain"]["noise_seed"]
+    assert ood_terrain["robot"]["safety_dist"] == pytest.approx(base["robot"]["safety_dist"])
+    assert ood_terrain["results"]["run_name"] == "b2_omni_oracle_random100_dataset_ood_terrain"
+
+
 def test_validate_config_rejects_bad_goal_length():
     config = load_config(Path("config/fdm_mppi.yaml"))
     config["simulation"]["goal"] = [1.0, 2.0]
