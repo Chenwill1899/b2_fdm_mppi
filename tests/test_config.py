@@ -148,7 +148,7 @@ def test_b2_omni_oracle_random100_dataset_config_loads_stage3_prep_parameters():
     assert config["obstacles"]["y_range"] == [8.0, 95.0]
     assert config["terrain"]["noise_enabled"] is True
     assert config["terrain"]["noise_seed"] == 123
-    assert config["results"]["enable_plots"] is True
+    assert config["results"]["enable_plots"] is False
     assert config["results"]["enable_animation"] is False
 
 
