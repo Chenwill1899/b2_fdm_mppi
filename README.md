@@ -8,8 +8,8 @@
 Nominal B2 omni MPPI
   -> Oracle residual world
   -> Oracle episode npz collection
-  -> Future FDM dataset generation
-  -> Future FDM training
+  -> Oracle dataset generation
+  -> Residual FDM training baseline
 ```
 
 ## 当前阶段
@@ -17,28 +17,37 @@ Nominal B2 omni MPPI
 当前阶段：
 
 ```text
-Stage 3.4: 数据集质量检查与数据分布可视化
+Stage 4: residual FDM training baseline
 ```
 
-Stage 3.4 的目标很窄：
+Stage 3.5 已完成：
 
-- 读取 Stage 3.3 生成的 `train.npz` / `val.npz` / `test.npz`；
-- 检查字段、shape、dtype、NaN/Inf；
-- 检查 `exec_residuals = real_controls - cmd_controls`；
-- 检查 train/val/test episode 无泄漏；
-- 生成 `dataset_quality.json` 和 `dataset_summary.png`。
+- `tools/generate_oracle_episodes.py` 支持 `--num-workers` 并行采集；
+- 每个 episode 使用独立 seed：`seed = base_seed + episode_id`；
+- 每个 episode 写入独立 raw result 目录：`raw_results/episode_XXXXXX`；
+- manifest 按 `episode_id` 排序，episode path 使用相对路径；
+- 单个 episode 失败会记录 `error` 并继续采集；
+- `trajectory.csv` 保存最终 state，episode npz 不再丢最后一个 transition；
+- `build_oracle_dataset.py` 和 `validate_oracle_dataset.py` 继续复用现有字段和文件格式。
 
-Stage 3.4 不做：
+Stage 4 当前目标：
 
-- 不训练 FDM；
-- 不实现 FDM 网络；
-- 不做并行采集；
+- 训练一个最小 residual velocity FDM baseline；
+- 输入：`states + cmd_controls + terrain_features + terrain_risk`；
+- 目标：`exec_residuals = real_controls - cmd_controls`；
+- 输出：`model.pt`、`normalization.npz`、`metrics.json`；
+- 暂不接入 MPPI rollout。
+
+Stage 4 不做：
+
+- 不把 learned FDM 接入 MPPI；
+- 不训练风险模型；
 - 不修改 MPPI 核心控制逻辑。
 
 下一阶段计划：
 
 ```text
-Stage 3.5: 并行采集加速
+Stage 5: learned FDM-MPPI integration
 ```
 
 ## 构建
@@ -51,7 +60,7 @@ colcon build --packages-select b2_fdm_mppi
 source install/setup.bash
 ```
 
-仿真使用的 Python 依赖包括 `numpy`、`pandas`、`matplotlib`、`seaborn`、`PyYAML`、`jinja2`、`cvxpy`、`casadi` 和 `pycuda`。
+仿真和训练使用的 Python 依赖记录在 `requirements.txt`。主要包括 `numpy`、`scipy`、`pandas`、`matplotlib`、`seaborn`、`PyYAML`、`jinja2`、`casadi`、`torch` 和 `pytest`。
 
 真实 CUDA MPPI controller 需要 NVIDIA CUDA/PyCUDA 运行环境。单元测试通过 fake controller 和 CUDA skip helper 保留非 GPU 环境覆盖。
 
@@ -182,10 +191,36 @@ seed = base_seed + episode_id
 datasets/oracle_debug/
   manifest.jsonl
   summary.json
+  raw_results/
+    episode_000000/
+    episode_000001/
+    ...
   episodes/
     episode_000000.npz
     episode_000001.npz
     ...
+```
+
+### 并行多 Episode 采集
+
+Stage 3.5 支持并行采集：
+
+```bash
+python3 tools/generate_oracle_episodes.py \
+  --config config/b2_omni_oracle_random100_dataset.yaml \
+  --episodes 500 \
+  --base-seed 123 \
+  --output datasets/oracle_stage3 \
+  --backend numpy \
+  --num-workers 4
+```
+
+建议先用 `--backend numpy` 建立可复现基线。CUDA backend 可用，但多个 worker 会同时创建 CUDA/PyCUDA 上下文，吞吐和显存风险需要单独评估。
+
+`manifest.jsonl` 中的 `path` 是相对采集目录的路径，例如：
+
+```text
+episodes/episode_000000.npz
 ```
 
 无 CUDA 环境调试时可用 NumPy backend：
@@ -305,10 +340,10 @@ steps (T,) int64
 transition 数量：
 
 ```text
-T = len(trajectory.csv) - 1
+T = len(residuals.csv)
 ```
 
-最后一行 trajectory 没有 next state，因此会被丢弃。
+`trajectory.csv` 会额外保存最终 state，因此 `next_states[t]` 来自第 `t + 1` 行 trajectory。
 
 ## Episode NPZ 字段
 
@@ -361,6 +396,7 @@ error
 ```
 
 `error` 只在该 episode 采集失败时出现。单个 episode 失败不会中断整体串行采集。
+单个 episode 失败也不会中断并行采集。
 
 `summary.json` 至少包含：
 
@@ -390,3 +426,50 @@ datasets/oracle_debug/episodes/
 ```
 
 除非任务明确要求，不要提交生成的 result 目录或 debug dataset。
+
+## Stage 4 Residual FDM Baseline
+
+训练最小 residual velocity FDM：
+
+```bash
+python3 tools/train_residual_fdm.py \
+  --dataset datasets/oracle_stage3_splits \
+  --output results/fdm_baselines/oracle_stage3_baseline \
+  --epochs 50 \
+  --batch-size 512 \
+  --hidden-dim 64 \
+  --learning-rate 0.001 \
+  --seed 123
+```
+
+输入特征：
+
+```text
+states:           6
+cmd_controls:     3
+terrain_features: 4
+terrain_risk:     1
+total:           14
+```
+
+训练目标：
+
+```text
+exec_residuals: [exec_du_vx, exec_du_vy, exec_du_wz]
+```
+
+输出：
+
+```text
+model.pt
+normalization.npz
+metrics.json
+```
+
+`metrics.json` 包含：
+
+- `train_loss` / `val_loss` / `test_loss`: 标准化目标空间的 MSE；
+- `val_mse` / `test_mse`: 原始 residual 单位的 MSE；
+- `zero_residual_val_mse` / `zero_residual_test_mse`: 直接预测零 residual 的 baseline MSE。
+
+用 `val_mse` / `test_mse` 对比 zero-residual baseline，判断 learned residual 是否真正优于零 residual。

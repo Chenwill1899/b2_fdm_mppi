@@ -1,6 +1,6 @@
 # FDM Design
 
-Last updated: 2026-04-29
+Last updated: 2026-05-01
 
 ## Model Role
 
@@ -60,6 +60,34 @@ du_hat:   [B, N, 3]
 ```
 
 Risk prediction is deferred until residual velocity prediction is validated.
+
+## Stage 4 Baseline Interface
+
+The first training baseline is a one-step residual regressor over the Stage 3 oracle dataset.
+
+Inputs:
+
+```text
+features = concat(states, cmd_controls, terrain_features, terrain_risk)
+shape    = [B, 14]
+```
+
+Targets:
+
+```text
+exec_residuals = real_controls - cmd_controls
+shape          = [B, 3]
+```
+
+Artifacts:
+
+```text
+model.pt
+normalization.npz
+metrics.json
+```
+
+This baseline validates dataset usability before adding history windows or multi-step rollout prediction.
 
 ## Planned Loss
 

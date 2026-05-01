@@ -55,6 +55,12 @@ cover/
 
 # Runtime simulation outputs
 results/
+datasets/
+checkpoints/
+runs/
+*.pt
+*.pth
+*.ckpt
 
 # Translations
 *.mo
