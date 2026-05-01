@@ -993,3 +993,24 @@ results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
   - `python3 -m pytest -q`
   - result: `53 passed in 2.16s`
 - Conclusion: Trajectory now runs close to the red safety boundary while preserving the Stage 1.5 acceptance thresholds and reducing visible smoothness/jerk metrics versus the prior kinodynamic baseline.
+
+### 2026-05-01: Stage 5 Closed-loop Visual Eval Standardization
+
+- Goal: make the "learning 前后 closed-loop 效果怎么看" workflow repeatable instead of relying on manual ad hoc runs.
+- Added:
+  - `tools/visualize_stage5_closed_loop.py`
+  - `docs/agent_memory/STAGE5_VISUAL_EVAL.md`
+- Standard command:
+  - `python3 tools/visualize_stage5_closed_loop.py --config config/b2_omni_oracle.yaml --scenario-name standard --output results/stage5_visual_eval/standard_seed123_cuda --seed 123 --backend cuda --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda`
+- Outputs:
+  - `stage5_visual_eval_summary.json`
+  - `closed_loop_nominal_vs_learned.png`
+  - `closed_loop_compare_metrics.csv`
+  - `closed_loop_compare_metrics.json`
+  - per-run `trajectory.png` and `animation.gif` for nominal and learned.
+- Current manual visual check before tool standardization:
+  - Nominal: `results/sim_results/b2_omni_oracle_2026-05-01_22-48-39`
+  - Learned: `results/sim_results/b2_omni_oracle_2026-05-01_22-44-09`
+  - Overlay: `results/stage5_visual_compare_seed123/closed_loop_nominal_vs_learned.png`
+  - Learned vs nominal: final distance `0.3371` vs `0.3461`, steps `214` vs `225`, min clearance `0.2024` vs `0.1198`, mean terrain risk `0.4140` vs `0.4289`, mean MPPI time `27.73 ms` vs `7.18 ms`.
+- Boundary: visual eval is single-scene qualitative inspection. Stage 5 improvement claims still require benchmark evidence from `tools/benchmark_learned_fdm_mppi.py`.
