@@ -7,4 +7,5 @@ PyYAML
 jinja2
 casadi
 torch
+tensorboard
 pytest

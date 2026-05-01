@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch import nn
+from torch.utils.tensorboard import SummaryWriter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -74,11 +75,13 @@ def train_residual_fdm(
     weight_decay: float = 1e-5,
     seed: int = 123,
     device: str = "cpu",
+    tensorboard_log_dir: str | Path | None = None,
 ) -> dict:
     _set_seed(seed)
     dataset_dir = Path(dataset_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    tensorboard_log_dir = Path(tensorboard_log_dir) if tensorboard_log_dir is not None else output_dir / "tensorboard"
     arrays = load_residual_fdm_dataset(dataset_dir)
 
     x_mean, x_std = _normalization(arrays["train_features"])
@@ -119,21 +122,47 @@ def train_residual_fdm(
     history_train = []
     history_val = []
     n_train = int(train_tensor_x.shape[0])
-    for _epoch in range(int(epochs)):
-        model.train()
-        order = torch.randperm(n_train, device=torch_device)
-        batch_losses = []
-        for start in range(0, n_train, int(batch_size)):
-            idx = order[start : start + int(batch_size)]
-            pred = model(train_tensor_x[idx])
-            loss = loss_fn(pred, train_tensor_y[idx])
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            batch_losses.append(float(loss.detach().cpu()))
-        history_train.append(float(np.mean(batch_losses)) if batch_losses else 0.0)
-        history_val.append(_eval_loss(model, loss_fn, val_tensor_x, val_tensor_y))
+    writer = SummaryWriter(log_dir=str(tensorboard_log_dir))
+    try:
+        for epoch in range(int(epochs)):
+            model.train()
+            order = torch.randperm(n_train, device=torch_device)
+            batch_losses = []
+            for start in range(0, n_train, int(batch_size)):
+                idx = order[start : start + int(batch_size)]
+                pred = model(train_tensor_x[idx])
+                loss = loss_fn(pred, train_tensor_y[idx])
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                batch_losses.append(float(loss.detach().cpu()))
+            train_loss = float(np.mean(batch_losses)) if batch_losses else 0.0
+            val_loss = _eval_loss(model, loss_fn, val_tensor_x, val_tensor_y)
+            history_train.append(train_loss)
+            history_val.append(val_loss)
+            step = epoch + 1
+            writer.add_scalar("loss/train_standardized", train_loss, step)
+            writer.add_scalar("loss/val_standardized", val_loss, step)
+            writer.add_scalar("lr", float(optimizer.param_groups[0]["lr"]), step)
+    finally:
+        writer.flush()
 
+    val_mse = _eval_raw_mse(
+        model,
+        val_tensor_x,
+        arrays["val_targets"],
+        y_mean,
+        y_std,
+    )
+    test_mse = _eval_raw_mse(
+        model,
+        test_tensor_x,
+        arrays["test_targets"],
+        y_mean,
+        y_std,
+    )
+    zero_val_mse = _zero_residual_mse(arrays["val_targets"])
+    zero_test_mse = _zero_residual_mse(arrays["test_targets"])
     metrics = {
         "dataset_dir": str(dataset_dir),
         "output_dir": str(output_dir),
@@ -151,23 +180,25 @@ def train_residual_fdm(
         "train_loss": history_train,
         "val_loss": history_val,
         "test_loss": _eval_loss(model, loss_fn, test_tensor_x, test_tensor_y),
-        "val_mse": _eval_raw_mse(
-            model,
-            val_tensor_x,
-            arrays["val_targets"],
-            y_mean,
-            y_std,
-        ),
-        "test_mse": _eval_raw_mse(
-            model,
-            test_tensor_x,
-            arrays["test_targets"],
-            y_mean,
-            y_std,
-        ),
-        "zero_residual_val_mse": _zero_residual_mse(arrays["val_targets"]),
-        "zero_residual_test_mse": _zero_residual_mse(arrays["test_targets"]),
+        "val_mse": val_mse,
+        "test_mse": test_mse,
+        "zero_residual_val_mse": zero_val_mse,
+        "zero_residual_test_mse": zero_test_mse,
+        "tensorboard_enabled": True,
+        "tensorboard_log_dir": str(tensorboard_log_dir),
     }
+    _write_tensorboard_final_diagnostics(
+        writer=writer,
+        model=model,
+        val_features=val_tensor_x,
+        val_targets=arrays["val_targets"],
+        target_mean=y_mean,
+        target_std=y_std,
+        metrics=metrics,
+        seed=seed,
+        step=int(epochs),
+    )
+    writer.close()
     (output_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     torch.save(
         {
@@ -232,6 +263,103 @@ def _eval_raw_mse(
     return float(np.mean(diff * diff))
 
 
+def _write_tensorboard_final_diagnostics(
+    *,
+    writer: SummaryWriter,
+    model: nn.Module,
+    val_features: torch.Tensor,
+    val_targets: np.ndarray,
+    target_mean: np.ndarray,
+    target_std: np.ndarray,
+    metrics: dict,
+    seed: int,
+    step: int,
+) -> None:
+    writer.add_scalar("mse/val_raw", float(metrics["val_mse"]), step)
+    writer.add_scalar("mse/test_raw", float(metrics["test_mse"]), step)
+    writer.add_scalar("baseline/zero_residual_val_mse", float(metrics["zero_residual_val_mse"]), step)
+    writer.add_scalar("baseline/zero_residual_test_mse", float(metrics["zero_residual_test_mse"]), step)
+    if int(val_features.shape[0]) == 0:
+        writer.flush()
+        return
+    predictions = _predict_raw(model, val_features, target_mean, target_std)
+    targets = np.asarray(val_targets, dtype=np.float32)
+    indices = _diagnostic_sample_indices(len(targets), seed=seed, max_points=5000)
+    pred_sample = predictions[indices]
+    target_sample = targets[indices]
+    writer.add_figure(
+        "diagnostics/val_prediction_vs_target",
+        _prediction_scatter_figure(pred_sample, target_sample),
+        global_step=step,
+        close=True,
+    )
+    writer.add_figure(
+        "diagnostics/val_error_histogram",
+        _error_histogram_figure(pred_sample - target_sample),
+        global_step=step,
+        close=True,
+    )
+    writer.flush()
+
+
+def _predict_raw(
+    model: nn.Module,
+    features: torch.Tensor,
+    target_mean: np.ndarray,
+    target_std: np.ndarray,
+) -> np.ndarray:
+    model.eval()
+    with torch.no_grad():
+        pred = model(features).detach().cpu().numpy()
+    return (pred * target_std + target_mean).astype(np.float32, copy=False)
+
+
+def _diagnostic_sample_indices(count: int, *, seed: int, max_points: int) -> np.ndarray:
+    if count <= max_points:
+        return np.arange(count)
+    rng = np.random.default_rng(int(seed))
+    return np.sort(rng.choice(count, size=int(max_points), replace=False))
+
+
+def _prediction_scatter_figure(predictions: np.ndarray, targets: np.ndarray):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 3, figsize=(12, 3.5))
+    for idx, name in enumerate(TARGET_NAMES):
+        ax = axes[idx]
+        ax.scatter(targets[:, idx], predictions[:, idx], s=6, alpha=0.35)
+        low = float(min(np.min(targets[:, idx]), np.min(predictions[:, idx])))
+        high = float(max(np.max(targets[:, idx]), np.max(predictions[:, idx])))
+        ax.plot([low, high], [low, high], color="black", linewidth=1.0, alpha=0.6)
+        ax.set_title(name)
+        ax.set_xlabel("target")
+        ax.set_ylabel("prediction")
+        ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    return fig
+
+
+def _error_histogram_figure(errors: np.ndarray):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, axes = plt.subplots(1, 3, figsize=(12, 3.5))
+    for idx, name in enumerate(TARGET_NAMES):
+        ax = axes[idx]
+        ax.hist(errors[:, idx], bins=40, alpha=0.8)
+        ax.set_title(f"{name} error")
+        ax.set_xlabel("prediction - target")
+        ax.set_ylabel("count")
+        ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    return fig
+
+
 def _zero_residual_mse(targets: np.ndarray) -> float:
     if targets.size == 0:
         return 0.0
@@ -255,6 +383,7 @@ def main() -> None:
     parser.add_argument("--weight-decay", type=float, default=1e-5)
     parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--tensorboard-log-dir", default=None)
     args = parser.parse_args()
 
     metrics = train_residual_fdm(
@@ -267,6 +396,7 @@ def main() -> None:
         weight_decay=args.weight_decay,
         seed=args.seed,
         device=args.device,
+        tensorboard_log_dir=args.tensorboard_log_dir,
     )
     print(json.dumps(metrics, indent=2))
 

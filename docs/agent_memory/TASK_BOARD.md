@@ -44,6 +44,7 @@ Stage 4: residual velocity FDM training baseline.
 | S3.5-001 | P0 | done | Add parallel oracle episode generation | `tools/generate_oracle_episodes.py` supports `--num-workers`; manifest stays sorted by `episode_id`; single episode failures do not stop the run. |
 | S3.5-002 | P0 | done | Harden parallel collection outputs | `collect_oracle_episode.py` writes raw results to `raw_results/episode_XXXXXX`; `trajectory.csv` includes final state; dataset builder resolves relative manifest paths; validator reports missing fields and manifest/data mismatches. |
 | S4-001 | P0 | done | Start residual FDM training baseline | Added `tools/train_residual_fdm.py`, requirements docs, and tests. Short run on `datasets/oracle_stage3_splits`: val_mse `1.093e-05`, test_mse `1.104e-05`, zero residual val/test MSE `6.823e-04` / `6.438e-04`. |
+| S4-002 | P0 | done | Add TensorBoard training visualization | Residual FDM training writes scalar curves and val residual diagnostic figures under `tensorboard/` in the run output. |
 
 ## Later Stages
 

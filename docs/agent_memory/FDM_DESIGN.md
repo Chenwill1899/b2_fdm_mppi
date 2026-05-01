@@ -85,6 +85,7 @@ Artifacts:
 model.pt
 normalization.npz
 metrics.json
+tensorboard/events.out.tfevents.*
 ```
 
 This baseline validates dataset usability before adding history windows or multi-step rollout prediction.

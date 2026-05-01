@@ -439,7 +439,8 @@ python3 tools/train_residual_fdm.py \
   --batch-size 512 \
   --hidden-dim 64 \
   --learning-rate 0.001 \
-  --seed 123
+  --seed 123 \
+  --tensorboard-log-dir results/fdm_baselines/oracle_stage3_baseline/tensorboard
 ```
 
 输入特征：
@@ -464,6 +465,7 @@ exec_residuals: [exec_du_vx, exec_du_vy, exec_du_wz]
 model.pt
 normalization.npz
 metrics.json
+tensorboard/events.out.tfevents.*
 ```
 
 `metrics.json` 包含：
@@ -471,5 +473,18 @@ metrics.json
 - `train_loss` / `val_loss` / `test_loss`: 标准化目标空间的 MSE；
 - `val_mse` / `test_mse`: 原始 residual 单位的 MSE；
 - `zero_residual_val_mse` / `zero_residual_test_mse`: 直接预测零 residual 的 baseline MSE。
+- `tensorboard_log_dir`: TensorBoard event log 目录。
 
 用 `val_mse` / `test_mse` 对比 zero-residual baseline，判断 learned residual 是否真正优于零 residual。
+
+查看训练曲线和 residual 诊断图：
+
+```bash
+tensorboard --logdir results/fdm_baselines/oracle_stage4_baseline/tensorboard --port 6006
+```
+
+TensorBoard 记录：
+
+- per-epoch `loss/train_standardized`、`loss/val_standardized`、`lr`；
+- final `mse/val_raw`、`mse/test_raw`、zero-residual baseline MSE；
+- val split residual prediction-vs-target scatter 和 residual error histogram。

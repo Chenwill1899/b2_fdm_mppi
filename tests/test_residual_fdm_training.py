@@ -111,3 +111,29 @@ def test_train_residual_fdm_writes_checkpoint_and_metrics(tmp_path):
     assert metrics["zero_residual_val_mse"] >= 0.0
     assert metrics["val_mse"] >= 0.0
     assert metrics["test_mse"] >= 0.0
+    assert metrics["tensorboard_enabled"] is True
+    assert metrics["tensorboard_log_dir"] == str(output_dir / "tensorboard")
+    assert list((output_dir / "tensorboard").glob("events.out.tfevents.*"))
+
+
+def test_train_residual_fdm_writes_tensorboard_to_custom_log_dir(tmp_path):
+    module = load_training_module()
+    dataset_dir = tmp_path / "dataset"
+    output_dir = tmp_path / "run"
+    tensorboard_dir = tmp_path / "tb_custom"
+    write_dataset(dataset_dir)
+
+    metrics = module.train_residual_fdm(
+        dataset_dir=dataset_dir,
+        output_dir=output_dir,
+        tensorboard_log_dir=tensorboard_dir,
+        epochs=2,
+        batch_size=8,
+        hidden_dim=16,
+        learning_rate=1e-2,
+        seed=7,
+    )
+
+    assert metrics["tensorboard_enabled"] is True
+    assert metrics["tensorboard_log_dir"] == str(tensorboard_dir)
+    assert list(tensorboard_dir.glob("events.out.tfevents.*"))
