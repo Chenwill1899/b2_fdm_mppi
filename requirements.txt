@@ -1,0 +1,11 @@
+numpy
+scipy
+pandas
+matplotlib
+seaborn
+PyYAML
+jinja2
+casadi
+torch
+tensorboard
+pytest

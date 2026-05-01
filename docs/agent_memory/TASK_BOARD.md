@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-04-30
+Last updated: 2026-05-01
 
 ## Current Stage
 
-Stage 2.6: 100x100 oracle random world prepared for Stage 3 dataset collection.
+Stage 4: residual velocity FDM training baseline.
 
 ## Stage 0 Acceptance Criteria
 
@@ -41,6 +41,10 @@ Stage 2.6: 100x100 oracle random world prepared for Stage 3 dataset collection.
 | S1.5-003 | P0 | done | Keep all assistant work on dev | User rule recorded: modify only on `dev`, push `dev`, user merges. Accidental feature branch work migrated back to `dev`. |
 | S1.5-004 | P0 | done | Finalize Pure SE2 and Kinodynamic baselines | Added `config/b2_omni_pure_se2.yaml` and `config/b2_omni_kinodynamic.yaml`; added far-field static obstacle potential, sampling coverage summary metrics, and kinodynamic animation rollout. Verified Pure run `results/sim_results/b2_omni_pure_se2_2026-04-30_16-26-22/` and Kinodynamic run `results/sim_results/b2_omni_kinodynamic_2026-04-30_16-27-08/`. |
 | S2.6-001 | P0 | done | Prepare fixed-map random-task oracle dataset config | `config/b2_omni_oracle_random100_dataset.yaml` uses `scenario.random_seed: auto` for single-run random start/goal, fixed obstacle/terrain/oracle seeds, PNG enabled, GIF disabled. Stage 3 seed modes documented in `docs/agent_memory/STAGE3_SEEDING.md`. |
+| S3.5-001 | P0 | done | Add parallel oracle episode generation | `tools/generate_oracle_episodes.py` supports `--num-workers`; manifest stays sorted by `episode_id`; single episode failures do not stop the run. |
+| S3.5-002 | P0 | done | Harden parallel collection outputs | `collect_oracle_episode.py` writes raw results to `raw_results/episode_XXXXXX`; `trajectory.csv` includes final state; dataset builder resolves relative manifest paths; validator reports missing fields and manifest/data mismatches. |
+| S4-001 | P0 | done | Start residual FDM training baseline | Added `tools/train_residual_fdm.py`, requirements docs, and tests. Short run on `datasets/oracle_stage3_splits`: val_mse `1.093e-05`, test_mse `1.104e-05`, zero residual val/test MSE `6.823e-04` / `6.438e-04`. |
+| S4-002 | P0 | done | Add TensorBoard training visualization | Residual FDM training writes scalar curves and val residual diagnostic figures under `tensorboard/` in the run output. |
 
 ## Later Stages
 
@@ -48,8 +52,8 @@ Stage 2.6: 100x100 oracle random world prepared for Stage 3 dataset collection.
 | --- | --- | --- |
 | 1.5 | done | B2 omnidirectional SE(2) nominal kinodynamic rollout. |
 | 2 | done | Oracle residual world. |
-| 3 | pending | Parallel Oracle Dataset Generation with explicit episode seed mapping. |
-| 4 | pending | Unified evaluation system. |
-| 5 | pending | Residual velocity FDM training. |
-| 6 | pending | Learned FDM-MPPI integration. |
+| 3.5 | done | Parallel Oracle Dataset Generation with explicit episode seed mapping. |
+| 4 | in_progress | Residual velocity FDM training baseline. |
+| 5 | pending | Learned FDM-MPPI integration. |
+| 6 | pending | Unified evaluation system. |
 | 7 | pending | Paper-ready experiments and figures. |

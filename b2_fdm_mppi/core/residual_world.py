@@ -26,10 +26,16 @@ class ResidualWorld:
         self.model = model
         self.terrain = terrain
         self.enabled = bool(enabled)
-        self.alpha = float(alpha)
+        self.alpha = float(np.clip(alpha, 0.0, 1.0))
         self.residual_scale = float(residual_scale)
         self.noise_std = float(noise_std)
         self.max_residual_ratio = float(max_residual_ratio)
+        if self.residual_scale < 0.0:
+            raise ValueError("residual_scale must be >= 0")
+        if self.noise_std < 0.0:
+            raise ValueError("noise_std must be >= 0")
+        if self.max_residual_ratio < 0.0:
+            raise ValueError("max_residual_ratio must be >= 0")
         self.rng = np.random.default_rng(seed)
         self.max_control = np.array(
             [model.max_vx, model.max_vy, model.max_wz],

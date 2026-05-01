@@ -79,6 +79,21 @@ def test_omni_runner_saves_summary_csv_outputs(tmp_path):
     assert "max_terrain_risk" in summary_json
 
 
+def test_omni_runner_trajectory_includes_final_state_after_last_action(tmp_path):
+    runner = OmniMppiSimulationRunner(
+        make_config(tmp_path, max_steps=3),
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    summary = runner.run()
+    trajectory = pd.read_csv(summary.results_path / "trajectory.csv")
+
+    assert len(trajectory) == summary.steps + 1
+    assert trajectory.iloc[-1]["step"] == summary.steps
+    assert trajectory.iloc[-1]["x"] == pytest.approx(float(runner.state[0]))
+    assert trajectory.iloc[-1]["y"] == pytest.approx(float(runner.state[1]))
+
+
 def test_omni_runner_summary_reports_control_smoothness_metrics(tmp_path):
     runner = OmniMppiSimulationRunner(
         make_config(tmp_path),

@@ -31,10 +31,15 @@ def build_episode_npz(results_path: Path, episode_id: int, output_path: Path) ->
     if len(trajectory) < 2:
         raise ValueError("trajectory.csv must contain at least 2 rows")
 
-    num_transitions = len(trajectory) - 1
-    if len(residuals) < num_transitions or len(terrain) < num_transitions:
+    num_transitions = len(residuals)
+    if len(terrain) < num_transitions:
         raise ValueError(
-            "residuals.csv and terrain.csv must contain at least len(trajectory)-1 rows: "
+            "terrain.csv must contain at least len(residuals) rows: "
+            f"trajectory={len(trajectory)}, residuals={len(residuals)}, terrain={len(terrain)}"
+        )
+    if len(trajectory) < num_transitions + 1:
+        raise ValueError(
+            "trajectory.csv must contain one more row than residuals.csv to provide next_states: "
             f"trajectory={len(trajectory)}, residuals={len(residuals)}, terrain={len(terrain)}"
         )
 
