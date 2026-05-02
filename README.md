@@ -10,7 +10,7 @@ https://www.notion.so/fdm_mppi-3532fb2e849f8188a4fef5bb3ae54264?t=3532fb2e849f80
 
 每完成一个小 stage，需要把相关实验数据、输出路径、指标、代码/配置改动、验证命令和结论更新到 Notion 对应数据库中；如果该 stage 改变了项目可见进展，还要同步更新 Notion 首页里的当前阶段、本阶段焦点 checklist、路线图状态、稳定结论或下一步。若暂时无法访问 Notion，先更新 `docs/agent_memory/` 并留下待同步说明。
 
-当前开发线不改动 MPPI 核心控制逻辑，而是在其外围建立可复现的数据链路：
+当前开发线围绕 learned-FDM-MPPI 建立可复现的数据链路、同 backend benchmark、风险感知 cost 消融和论文级图表：
 
 ```text
 Nominal B2 omni MPPI
@@ -18,6 +18,8 @@ Nominal B2 omni MPPI
   -> Oracle episode npz collection
   -> Oracle dataset generation
   -> Residual FDM training baseline
+  -> Learned-FDM-MPPI closed-loop benchmark
+  -> Risk-aware same-backend Torch ablation
 ```
 
 ## 当前阶段
@@ -25,7 +27,7 @@ Nominal B2 omni MPPI
 当前阶段：
 
 ```text
-Stage 5: learned FDM-MPPI NumPy integration smoke
+Stage S5-E5 / S6: paper-ready risk-aware learned-FDM-MPPI result package
 ```
 
 Stage 3.5 已完成：
@@ -46,17 +48,21 @@ Stage 4 已基本收口：
 - 输出：`best_model.pt`、`model.pt`、`normalization.npz`、`metrics.json`；
 - 完成 ID/OOD one-step residual eval 和 open-loop rollout eval。
 
-Stage 5 当前目标：
+Stage 5 / S6 已完成：
 
-- 先做 NumPy-only learned residual dynamics wrapper；
-- 通过 learned NumPy controller 子类把 residual FDM 接入 MPPI rollout cost；
-- 只跑 closed-loop smoke test，不修改 CUDA kernel；
-- 不宣称完成 Stage 5 大规模 closed-loop benchmark。
+- learned residual dynamics wrapper 和 Torch learned-FDM-MPPI closed-loop benchmark；
+- Stage 5-D 50-episode ID/OOD benchmark 与三种 operating mode framing；
+- Stage 5-E explicit terrain-risk MPPI cost、same-backend Torch 2x2 risk-aware ablation；
+- `low_friction_patch` strong result、`safe_corridor` supporting result、`risk_band` stress-test limitation；
+- 固定双障碍标准图 `config/b2_omni_oracle.yaml` 的 risk-aware trajectory/risk/GIF 可视化。
 
-当前 Stage 5 入口：
+当前 paper-ready risk-aware 入口：
 
 ```text
-LearnedResidualDynamics + LearnedFdmMppiOmniNumpy + standard oracle smoke
+tools/sweep_stage5_e_risk_cost.py
+tools/analyze_stage5_e_risk_aware.py
+tools/plot_stage5_e_risk_aware_results.py
+docs/agent_memory/STAGE5_E_RISK_AWARE_RESULTS.md
 ```
 
 ## 构建

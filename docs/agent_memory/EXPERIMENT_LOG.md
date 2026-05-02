@@ -1320,3 +1320,57 @@ Cross-scenario learned deltas versus nominal:
 - Verification:
   - GIF frame counts: nominal `225`, default `214`, efficiency `211`, balanced `230`.
   - Zip package includes the seed123 oracle HTML, CSV/JSON summary, copied GIFs, and per-run artifacts.
+
+### 2026-05-02: S5-E5 / S6 Risk-Aware Learned-FDM-MPPI Result Package
+
+- Goal: complete a paper-ready risk-aware learned-FDM-MPPI result package using same-backend Torch comparisons, explicit terrain-risk MPPI cost, paired statistics, Nature-style figures, and a fixed two-obstacle visual benchmark.
+- Baseline check:
+  - Branch created from latest `origin/fdm`: `codex/s5-e5-risk-aware-result-package`.
+  - PR #26 baseline was present on `fdm`: `MppiOmniTorch`, Torch learned controller reuse, `create_omni_controller(... backend=torch)`, Torch benchmark path, risk-aware analyzer, and Torch MPPI tests.
+  - Initial validation: `python3 -m pytest -q` passed with `173 passed`.
+- Official method:
+  - Backend: `torch`.
+  - Device: `cuda`.
+  - Seed mapping: `seed = 123 + episode_id`.
+  - Learned setting: `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75`.
+  - Risk cost: `terrain_risk_mode=excess`, `terrain_risk_power=2.0`, `terrain_risk_threshold=0.3`.
+- Risk-weight selection:
+  - Command template: `python3 tools/sweep_stage5_e_risk_cost.py --configs <map.yaml> --episodes 10 --base-seed 123 --backend torch --controllers nominal,learned --risk-weights 0,0.5,1,3,5,10 --risk-power 2.0 --risk-threshold 0.3 --risk-mode excess --fdm-device cuda --fdm-residual-gain 0.5 --learned-goal-xy-weight 3.0 --learned-smooth-weight 0.75`.
+  - Selected official weights: low_friction_patch `10`, safe_corridor `0.5`, risk_band `5`, two_obstacle_standard `3`.
+- Official 50-episode outputs:
+  - `results/stage5_e_risk_aware/s5_e5_official_50ep_low_friction_w10`
+  - `results/stage5_e_risk_aware/s5_e5_official_50ep_safe_corridor_w0_5`
+  - `results/stage5_e_risk_aware/s5_e5_official_50ep_risk_band_w5`
+  - `results/stage5_e_risk_aware/s5_e5_official_50ep_two_obstacle_w3`
+  - Each output contains `stage5_e_risk_sweep_summary.json`, per-case `stage5_benchmark_summary.json`, and `analysis/` paired statistics.
+- Fixed two-obstacle visual command:
+  - `python3 tools/visualize_stage5_closed_loop.py --config config/b2_omni_oracle.yaml --scenario-name two_obstacle_standard --output results/stage5_e_risk_aware/s5_e5_two_obstacle_visual_seed123 --seed 123 --backend torch --fdm-device cuda --fdm-residual-gain 0.5 --risk-aware-2x2 --risk-weight 3 --risk-power 2.0 --risk-threshold 0.3 --risk-mode excess --learned-goal-xy-weight 3.0 --learned-smooth-weight 0.75`
+  - Output: `results/stage5_e_risk_aware/s5_e5_two_obstacle_visual_seed123/stage5_e_visual_eval_summary.json`.
+  - Seed123 metrics: risk-aware learned final `0.3394`, steps `220`, cumulative risk `94.31`, excess `31.74`, exposure `0.7909`, mean MPPI `26.53 ms`; it has the lowest risk metrics among the four visual cases.
+- Paper figure command:
+  - `python3 tools/plot_stage5_e_risk_aware_results.py --sweep-summary results/stage5_e_risk_aware/s5_e5_official_50ep_low_friction_w10/stage5_e_risk_sweep_summary.json,results/stage5_e_risk_aware/s5_e5_official_50ep_safe_corridor_w0_5/stage5_e_risk_sweep_summary.json,results/stage5_e_risk_aware/s5_e5_official_50ep_risk_band_w5/stage5_e_risk_sweep_summary.json,results/stage5_e_risk_aware/s5_e5_official_50ep_two_obstacle_w3/stage5_e_risk_sweep_summary.json --visual-summary results/stage5_e_risk_aware/s5_e5_two_obstacle_visual_seed123/stage5_e_visual_eval_summary.json --output figures/stage5_e --tables-output tables/stage5_e`
+  - Generated `8` case figures, `table_s5e_main_results.csv`, `table_s5e_paired_stats.csv`, and copied `fig_s5e_two_obstacle_animation.gif`.
+- Key risk-on learned-minus-nominal deltas:
+  - low_friction_patch, weight `10`: final `-0.0127`, cumulative risk `-9.1263`, excess risk `-3.7318`, exposure `-0.0204`, runtime `+21.57 ms`.
+  - safe_corridor, weight `0.5`: final `-0.0019`, cumulative risk `-2.2375`, excess risk `+0.0040`, exposure `+0.0033`, runtime `+27.94 ms`.
+  - risk_band, weight `5`: final `-0.0002`, cumulative risk `-3.3511`, excess risk `-0.3686`, exposure `+0.0005`, runtime `+21.08 ms`.
+  - two_obstacle_standard, weight `3`: final `-0.0071`, cumulative risk `-7.6334`, excess risk `-2.7628`, exposure `+0.0139`, runtime `+17.65 ms`.
+- Statistical boundary:
+  - low_friction_patch supports the strongest risk-aware claim: cumulative risk, excess risk, and exposure have bootstrap CIs below zero and Wilcoxon p-values below `0.001`.
+  - safe_corridor supports cumulative-risk reduction but not excess/exposure improvement.
+  - risk_band remains a stress-test limitation: cumulative risk improves, while excess/exposure are not clean wins.
+  - two_obstacle_standard is strong visual continuity evidence; final/cumulative/excess improve significantly, but exposure does not.
+- Tracked package:
+  - `tools/plot_stage5_e_risk_aware_results.py`
+  - `tools/analyze_stage5_e_risk_aware.py`
+  - `tools/visualize_stage5_closed_loop.py`
+  - `docs/agent_memory/NATURE_FIGURE_STYLE.md`
+  - `docs/agent_memory/STAGE5_E_RISK_AWARE_PROTOCOL.md`
+  - `docs/agent_memory/STAGE5_E_RISK_AWARE_RESULTS.md`
+  - `figures/stage5_e/`
+  - `tables/stage5_e/`
+- Boundary:
+  - Do not claim learned-FDM-MPPI dominates all maps or metrics.
+  - Do not label closed-loop trajectories as GT.
+  - Do not use backend `cuda` PyCUDA-vs-Torch mixed runs as official risk-aware evidence.
+  - Do not claim learned Torch runtime is equivalent to nominal Torch.
