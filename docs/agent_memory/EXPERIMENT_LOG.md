@@ -1374,3 +1374,49 @@ Cross-scenario learned deltas versus nominal:
   - Do not label closed-loop trajectories as GT.
   - Do not use backend `cuda` PyCUDA-vs-Torch mixed runs as official risk-aware evidence.
   - Do not claim learned Torch runtime is equivalent to nominal Torch.
+
+### 2026-05-03: S6-002 Runtime Profiling And First Terrain Sampling Optimization
+
+- Goal: execute the next Stage 6 step after the paper-ready Stage 5 package by profiling learned Torch/CUDA runtime and applying a low-risk optimization.
+- Branch:
+  - `codex/s6-runtime-profiling`
+  - Base: `origin/fdm @ 16b043b` after PR #27 was merged into `fdm`.
+- Root-cause method:
+  - Used existing `tools/profile_stage5_learned_torch.py` runtime buckets.
+  - Re-ran 20-step profile on standard, ID random, and low_friction_patch configs.
+  - Confirmed rollout-side terrain feature computation remains the largest learned runtime bucket, especially on noise-enabled random terrain.
+- Pre-optimization commands:
+  - `python3 tools/profile_stage5_learned_torch.py --config config/b2_omni_oracle.yaml --output results/stage6_runtime_profile/standard_seed123_g05_20steps --steps 20 --seed 123 --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --fdm-residual-gain 0.5`
+  - `python3 tools/profile_stage5_learned_torch.py --config config/b2_omni_oracle_random100_dataset.yaml --output results/stage6_runtime_profile/id_random_seed123_g05_20steps --steps 20 --seed 123 --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --fdm-residual-gain 0.5`
+  - `python3 tools/profile_stage5_learned_torch.py --config config/b2_omni_oracle_low_friction_patch.yaml --output results/stage6_runtime_profile/low_friction_seed123_g05_20steps --steps 20 --seed 123 --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --fdm-residual-gain 0.5`
+- Key pre-optimization buckets:
+  - Standard: `rollout_total_ms=992.23`, `terrain_features_ms=357.61`, `fdm_inference_ms=177.20`, `state_integrate_ms=163.97`, `obstacle_cost_ms=32.47`.
+  - ID random auto-seed: `rollout_total_ms=1315.42`, `terrain_features_ms=784.27`, `fdm_inference_ms=142.68`, `state_integrate_ms=155.78`, `obstacle_cost_ms=68.05`.
+  - low_friction_patch: `rollout_total_ms=1072.69`, `terrain_features_ms=445.62`, `fdm_inference_ms=162.27`, `state_integrate_ms=166.90`, `obstacle_cost_ms=6.80`.
+- Change:
+  - Added `MppiOmniTorch._bilinear_sample_many_torch()` and `noise_fields_t`.
+  - `MppiOmniTorch._terrain_features_torch()` now samples noise, x-gradient, and y-gradient terrain fields in one pass instead of recomputing bilinear indices/weights three times.
+- TDD evidence:
+  - Red test first: `python3 -m pytest tests/test_mppi_omni_torch.py::test_nominal_torch_bilinear_sample_many_matches_individual_samples -q` failed with missing `_bilinear_sample_many_torch`.
+  - After implementation: same test passed.
+  - Targeted regression passed: `python3 -m pytest tests/test_mppi_omni_torch.py::test_nominal_torch_batch_cost_matches_numpy_with_terrain_risk tests/test_mppi_omni_learned_torch.py::test_learned_torch_rollout_scales_residual_with_gain -q`.
+- Microbenchmark:
+  - 1024 CPU query points, 32x32 noise grids.
+  - Three individual samplers: `0.369392 ms/call`.
+  - Batched sampler: `0.187556 ms/call`.
+  - Sampling subroutine speedup: `1.970x`.
+- Post-optimization profile:
+  - ID random auto-seed `terrain_features_ms` went from `784.27` to `525.28` (`-33.02%`).
+  - Standard and low_friction are within profiling variance because they do not stress the repeated noise-grid path as strongly.
+  - Caveat: `config/b2_omni_oracle_random100_dataset.yaml` uses `scenario.random_seed: auto`, so this is hotspot evidence, not a paired trajectory benchmark.
+- Post-merge smoke:
+  - Command: `python3 tools/profile_stage5_learned_torch.py --config config/b2_omni_oracle_random100_dataset.yaml --output results/stage6_runtime_profile/post_merge_id_random_batched_noise_5steps --steps 5 --seed 123 --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --fdm-residual-gain 0.5`
+  - Output: `results/stage6_runtime_profile/post_merge_id_random_batched_noise_5steps/`.
+  - Key buckets: `rollout_total_ms=273.69`, `terrain_features_ms=166.17`, `fdm_inference_ms=41.39`, `obstacle_cost_ms=35.35`.
+- Output:
+  - Raw profile outputs: `results/stage6_runtime_profile/` (not tracked).
+  - Tracked protocol: `docs/agent_memory/STAGE6_RUNTIME_PROFILE.md`.
+- Boundary:
+  - This is first-pass runtime optimization, not full learned-runtime closure.
+  - Learned Torch remains slower than nominal.
+  - Next candidates: paired runtime profiler with fixed scenario seeds, Torch compile/horizon-loop fusion, safe terrain/risk caching where timestep semantics match, and dense-obstacle cost profiling.

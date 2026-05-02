@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-05-02
+Last updated: 2026-05-03
 
 ## Current Stage
 
-Stage S5-E5 / S6: paper-ready risk-aware learned-FDM-MPPI result package completed; next focus is Draft PR review, runtime profiling/optimization, and optional 100-episode confirmation.
+Stage 6: PR #27 merged the paper-ready Stage 5-E risk-aware result package into `fdm`; runtime profiling/optimization is now in progress. First S6-002 terrain-noise sampling optimization completed; next focus is paired runtime profiling and larger learned rollout optimization.
 
 ## Stage 0 Acceptance Criteria
 
@@ -60,11 +60,11 @@ Stage S5-E5 / S6: paper-ready risk-aware learned-FDM-MPPI result package complet
 | S5-010 | P0 | done | Run Stage 5-D 50/100 episode ID/OOD benchmark | Completed the 50-episode official matrix for nominal CUDA, default learned `g=1.0`, current efficiency `0.5/3.5/1.0`, and balanced `0.5/3.0/0.75` across ID random, OOD obstacle, and OOD terrain. Output: `results/stage5_d/s5_010_parallel`; official errors `0`; all official groups success `1.0`. Aggressive efficiency was stopped and excluded from official reporting to keep runtime bounded. |
 | S5-011 | P0 | done | Record Stage 5-D paper-result framing and runtime next step | Stage 5-D is framed as three learned-FDM operating modes: default conservative/smooth, current efficiency, and balanced operating-point candidate. Stage 5-E replaces post-hoc risk interpretation with explicit terrain-risk MPPI cost before risk-aware claims. |
 | S6-001 | P0 | done | Build paper-ready Stage 5 result package | Added `tools/plot_stage5_results.py`, generated `docs/agent_memory/STAGE6_RESULT_PACKAGE.md`, `figures/stage5/`, `tables/stage5/`, and `results/stage6_result_package/stage5_result_package.zip`. Package includes main result table, operating modes table, paired delta boxplots, Pareto scatter, trajectory gallery, runtime table, failure/trade-off analysis, and fixed `config/b2_omni_oracle.yaml` seed123 parameter GIFs with dashed goal-tolerance circles. |
-| S6-002 | P0 | todo | Profile and optimize learned Torch/CUDA runtime | Use S5-010 runtime boundary (`~52-61 ms` learned vs `~5.8-6.4 ms` nominal CUDA) to prioritize terrain feature/risk computation, FDM inference, rollout loop, obstacle cost, and synchronization. |
 | S5-E1 | P0 | done | Add risk-aware terrain MPPI groundwork | PR #25 added finite-band/ellipse terrain risk fields, risk-aware MPPI cost controls, risk metrics, shared override support, and risk-cost sweep tooling. |
 | S5-E2 | P0 | done | Add same-backend Torch nominal baseline and analysis | PR #26 added `MppiOmniTorch`, Torch same-backend benchmark support, learned Torch reuse of nominal rollout/cost/risk logic, and risk-aware paired analysis with bootstrap CI, Wilcoxon, Pareto, deltas, and curves. |
 | S5-E3/E4 | P0 | done | Run risk-weight selection and official 50-episode Torch ablation | Ran 10-episode risk-weight sweeps and 50-episode official same-backend Torch ablations for low_friction_patch, safe_corridor, risk_band, and fixed two-obstacle standard scene. Selected weights: `10`, `0.5`, `5`, and `3`. |
 | S5-E5 | P0 | done | Package paper-ready risk-aware results and figures | Added protocol/results docs, Nature-style figure rules, `tools/plot_stage5_e_risk_aware_results.py`, fixed two-obstacle risk-aware visual mode, tracked `figures/stage5_e/` and `tables/stage5_e/`. low_friction_patch is the strong claim; safe_corridor supporting; risk_band limitation; fixed two-obstacle visual continuity. |
+| S6-002 | P0 | in_progress | Profile and optimize learned Torch/CUDA runtime | First pass completed on `codex/s6-runtime-profiling`: added batched Torch bilinear sampling for noise/grad terrain fields. Microbenchmark improves the noise-grid sampling subroutine from `0.369392 ms` to `0.187556 ms` per call (`1.97x`). 20-step ID random profile reduced `terrain_features_ms` from `784.27` to `525.28` in the noise-heavy run, but learned Torch remains slower than nominal. Details: `docs/agent_memory/STAGE6_RUNTIME_PROFILE.md`. |
 | S6-003 | P0 | done | Frame risk-aware result package for paper/Draft PR | Prepared Stage 5-E / S6 interpretation boundaries: explicit terrain-risk cost enables planner-risk claims, learned-vs-nominal benefits are map-level, and learned runtime remains an offline benchmark limitation. |
 
 ## Later Stages
@@ -77,5 +77,5 @@ Stage S5-E5 / S6: paper-ready risk-aware learned-FDM-MPPI result package complet
 | 4 | done | Residual velocity FDM training baseline and open-loop/OOD validation. |
 | 5 | done | Stage 5-D 50-episode benchmark completed and packaged with calibrated operating-mode framing. |
 | 5-E | done | Explicit terrain-risk MPPI cost, same-backend Torch risk-aware ablation, fixed two-obstacle visual evidence, and Nature-style paper figures completed. |
-| 6 | done | Paper-ready risk-aware Stage 5-E result package completed; next runtime profiling/optimization and optional 100-episode confirmation. |
+| 6 | in_progress | Paper-ready risk-aware Stage 5-E package merged via PR #27; runtime profiling/optimization started, and first terrain-noise sampling optimization completed. |
 | 7 | pending | Paper-ready experiments and figures. |
