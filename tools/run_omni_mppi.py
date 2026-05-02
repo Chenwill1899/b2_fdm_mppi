@@ -16,7 +16,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config/b2_omni_nominal.yaml")
     parser.add_argument("--seed", type=int, default=123)
-    parser.add_argument("--backend", choices=["cuda", "numpy"], default=None)
+    parser.add_argument("--backend", choices=["cuda", "numpy", "torch"], default=None)
     parser.add_argument("--fdm-enabled", action="store_true")
     parser.add_argument("--fdm-model-dir", default=None)
     parser.add_argument("--fdm-checkpoint", default=None)

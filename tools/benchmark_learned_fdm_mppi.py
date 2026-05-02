@@ -104,8 +104,8 @@ def run_benchmark(
     runner_cls=OmniMppiSimulationRunner,
 ) -> dict:
     backend = str(backend).lower()
-    if backend not in {"numpy", "cuda"}:
-        raise ValueError("Stage 5 benchmark supports only numpy or cuda backends")
+    if backend not in {"numpy", "cuda", "torch"}:
+        raise ValueError("Stage 5 benchmark supports only numpy, cuda, or torch backends")
     fdm_device = fdm_device or ("cuda" if backend == "cuda" else "cpu")
     controllers = tuple(_validate_controllers(controllers))
     mppi_overrides = _validate_mppi_overrides(mppi_overrides or {})
@@ -209,6 +209,8 @@ def prepare_run_config(
     config = copy.deepcopy(base_config)
     config.setdefault("simulation", {})["world_mode"] = "oracle"
     config.setdefault("mppi", {})["backend"] = str(backend).lower()
+    if str(backend).lower() == "torch":
+        config.setdefault("mppi", {})["device"] = str(fdm_device)
     _apply_mppi_overrides(config, mppi_overrides or {})
     _apply_episode_seed(config, seed)
     safe_scenario = _safe_name(scenario_name)
@@ -509,7 +511,7 @@ def main() -> None:
     parser.add_argument("--output", default="results/stage5_benchmark/standard_seed123")
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--base-seed", type=int, default=123)
-    parser.add_argument("--backend", choices=["numpy", "cuda"], default="numpy")
+    parser.add_argument("--backend", choices=["numpy", "cuda", "torch"], default="numpy")
     parser.add_argument("--controllers", default="nominal,learned")
     parser.add_argument("--fdm-model-dir", default="results/fdm_baselines/stage4_mlp_seed123_hardened")
     parser.add_argument("--fdm-checkpoint", default="best_model.pt")

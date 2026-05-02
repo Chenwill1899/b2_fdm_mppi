@@ -190,7 +190,7 @@ def main() -> None:
     parser.add_argument("--output", default="results/stage5_calibration/id_random_tasks_quick_seed123_cuda")
     parser.add_argument("--episodes", type=int, default=5)
     parser.add_argument("--base-seed", type=int, default=123)
-    parser.add_argument("--backend", choices=["numpy", "cuda"], default="cuda")
+    parser.add_argument("--backend", choices=["numpy", "cuda", "torch"], default="cuda")
     parser.add_argument("--controllers", default="nominal,learned")
     parser.add_argument("--fdm-model-dir", default="results/fdm_baselines/stage4_mlp_seed123_hardened")
     parser.add_argument("--fdm-checkpoint", default="best_model.pt")

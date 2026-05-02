@@ -208,7 +208,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=Path("config/b2_omni_oracle.yaml"))
     parser.add_argument("--output", type=Path, default=Path("results/stage6_result_package/seed123_oracle_param_gifs"))
     parser.add_argument("--seed", type=int, default=123)
-    parser.add_argument("--backend", default="cuda", choices=["cuda", "numpy"])
+    parser.add_argument("--backend", default="cuda", choices=["cuda", "numpy", "torch"])
     parser.add_argument("--fdm-model-dir", type=Path, default=Path("results/fdm_baselines/stage4_mlp_seed123_hardened"))
     parser.add_argument("--fdm-checkpoint", default="best_model.pt")
     parser.add_argument("--fdm-normalization", default="normalization.npz")
