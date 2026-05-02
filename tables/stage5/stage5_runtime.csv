@@ -1,0 +1,13 @@
+scenario,controller,runtime_ms,delta_runtime_ms
+id_random,nominal,6.428,+0.000
+id_random,default g1.0,57.691,+51.263
+id_random,current 0.5/3.5/1.0,60.987,+54.558
+id_random,balanced 0.5/3.0/0.75,58.519,+52.090
+ood_obstacle,nominal,6.065,+0.000
+ood_obstacle,default g1.0,53.893,+47.828
+ood_obstacle,current 0.5/3.5/1.0,52.856,+46.791
+ood_obstacle,balanced 0.5/3.0/0.75,52.361,+46.296
+ood_terrain,nominal,5.792,+0.000
+ood_terrain,default g1.0,53.437,+47.646
+ood_terrain,current 0.5/3.5/1.0,53.403,+47.612
+ood_terrain,balanced 0.5/3.0/0.75,52.698,+46.907

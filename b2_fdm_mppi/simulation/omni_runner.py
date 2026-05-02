@@ -481,6 +481,7 @@ class OmniMppiSimulationRunner:
         self._draw_obstacles(ax)
         ax.scatter([self.init_pose[0]], [self.init_pose[1]], color="green", label="start")
         ax.scatter([self.goal[0]], [self.goal[1]], color="purple", label="goal")
+        self._draw_goal_tolerance(ax)
         xlim, ylim = map_axis_limits_from_config(self.config)
         ax.set_xlim(*xlim)
         ax.set_ylim(*ylim)
@@ -516,6 +517,7 @@ class OmniMppiSimulationRunner:
             self._draw_obstacles(ax)
             ax.scatter([self.init_pose[0]], [self.init_pose[1]], color="green", label="start", zorder=5)
             ax.scatter([self.goal[0]], [self.goal[1]], color="purple", marker="*", s=110, label="goal", zorder=5)
+            self._draw_goal_tolerance(ax)
             if frame >= 0 and len(states):
                 self._draw_predicted_rollouts(ax, states[frame], frame)
                 if self.world_mode == "oracle" and residual_norms.size:
@@ -550,6 +552,7 @@ class OmniMppiSimulationRunner:
         handles = [
             Line2D([0], [0], marker="o", color="none", markerfacecolor="green", markersize=6, label="start"),
             Line2D([0], [0], marker="*", color="none", markerfacecolor="purple", markersize=10, label="goal"),
+            Line2D([0], [0], color="#f59e0b", linestyle="--", linewidth=1.2, label="goal tolerance"),
             Line2D([0], [0], marker="o", color="none", markerfacecolor="red", markersize=6, label="current state"),
             Line2D([0], [0], color="tab:cyan", linewidth=1.6, label="actual heading"),
             Line2D([0], [0], color="black", alpha=0.25, linewidth=1.0, label="nominal sampled rollouts"),
@@ -565,6 +568,24 @@ class OmniMppiSimulationRunner:
         else:
             handles.append(Line2D([0], [0], color="tab:blue", linewidth=1.6, label="executed path"))
         return handles
+
+    def _draw_goal_tolerance(self, ax) -> None:
+        from matplotlib.patches import Circle
+
+        if self.minimum_distance <= 0.0:
+            return
+        ax.add_patch(
+            Circle(
+                (float(self.goal[0]), float(self.goal[1])),
+                self.minimum_distance,
+                fill=False,
+                linestyle="--",
+                linewidth=1.2,
+                edgecolor="#f59e0b",
+                alpha=0.95,
+                zorder=4,
+            )
+        )
 
     def _terrain_risk_grid(self, xlim: tuple[float, float], ylim: tuple[float, float]) -> np.ndarray:
         resolution = int(self.config.get("visualization", {}).get("terrain_grid_resolution", 100))

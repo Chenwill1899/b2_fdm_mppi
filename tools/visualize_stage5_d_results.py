@@ -11,6 +11,8 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import yaml
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -281,6 +283,140 @@ def plot_episode_distributions(rows: list[dict[str, Any]], output_path: Path) ->
     plt.close(fig)
 
 
+def _load_episode_runs(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    frames = []
+    for row in rows:
+        source = Path(row["source_dir"]) / "stage5_benchmark_summary.json"
+        if not source.exists():
+            continue
+        data = _load_json(source)
+        run_df = pd.DataFrame(data.get("runs", []))
+        run_df["scenario_key"] = row["scenario"]
+        run_df["controller_key"] = row["controller"]
+        run_df["source_dir"] = row["source_dir"]
+        frames.append(run_df)
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
+
+def _choose_typical_episodes(run_df: pd.DataFrame) -> dict[str, int]:
+    choices = {}
+    current = run_df[run_df["controller_key"] == "current 0.5/3.5/1.0"]
+    nominal = run_df[run_df["controller_key"] == "nominal"][
+        ["scenario_key", "episode_id", "steps"]
+    ].rename(columns={"steps": "nominal_steps"})
+    paired = current.merge(nominal, on=["scenario_key", "episode_id"], how="inner")
+    paired["delta_steps"] = paired["steps"] - paired["nominal_steps"]
+    for scenario, sub in paired.groupby("scenario_key"):
+        median_delta = sub["delta_steps"].median()
+        idx = (sub["delta_steps"] - median_delta).abs().idxmin()
+        choices[scenario] = int(sub.loc[idx, "episode_id"])
+    return choices
+
+
+def _run_path(run_df: pd.DataFrame, scenario: str, controller: str, episode_id: int) -> Path:
+    row = run_df[
+        (run_df["scenario_key"] == scenario)
+        & (run_df["controller_key"] == controller)
+        & (run_df["episode_id"] == episode_id)
+    ].iloc[0]
+    return Path(row["results_path"])
+
+
+def _load_config(config_path: Path) -> dict[str, Any]:
+    return yaml.safe_load(config_path.read_text(encoding="utf-8"))
+
+
+def _load_obstacles(config_path: Path) -> list[tuple[float, float, float]]:
+    config = _load_config(config_path)
+    obstacles = []
+    for item in config.get("obstacles", {}).get("virtual", []):
+        if len(item) >= 3:
+            obstacles.append((float(item[0]), float(item[1]), float(item[2])))
+    return obstacles
+
+
+def _load_goal_tolerance(config_path: Path) -> float:
+    config = _load_config(config_path)
+    return float(config.get("simulation", {}).get("minimum_distance", 0.0))
+
+
+def plot_trajectory_gallery(rows: list[dict[str, Any]], output_path: Path) -> None:
+    run_df = _load_episode_runs(rows)
+    choices = _choose_typical_episodes(run_df)
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
+    fig.suptitle("S5-010 typical trajectory gallery", fontsize=16, fontweight="bold")
+
+    for ax, scenario in zip(axes, SCENARIO_LABELS):
+        episode_id = choices.get(scenario, 0)
+        trajectories = {}
+        for controller in CONTROLLER_ORDER:
+            path = _run_path(run_df, scenario, controller, episode_id)
+            trajectories[controller] = pd.read_csv(path / "trajectory.csv")
+
+        ref = next(iter(trajectories.values()))
+        goal_x = float(ref["x_des"].iloc[0])
+        goal_y = float(ref["y_des"].iloc[0])
+        start_x = float(ref["x"].iloc[0])
+        start_y = float(ref["y"].iloc[0])
+        all_x = np.concatenate([df["x"].to_numpy() for df in trajectories.values()])
+        all_y = np.concatenate([df["y"].to_numpy() for df in trajectories.values()])
+        config_path = _run_path(run_df, scenario, "nominal", episode_id) / "config.yaml"
+        goal_tolerance = _load_goal_tolerance(config_path)
+        xmin = min(float(all_x.min()), goal_x - goal_tolerance, start_x) - 3.0
+        xmax = max(float(all_x.max()), goal_x + goal_tolerance, start_x) + 3.0
+        ymin = min(float(all_y.min()), goal_y - goal_tolerance, start_y) - 3.0
+        ymax = max(float(all_y.max()), goal_y + goal_tolerance, start_y) + 3.0
+
+        for ox, oy, radius in _load_obstacles(config_path):
+            if xmin - radius <= ox <= xmax + radius and ymin - radius <= oy <= ymax + radius:
+                ax.add_patch(plt.Circle((ox, oy), radius, color="#9ca3af", alpha=0.28, linewidth=0))
+
+        for controller, df in trajectories.items():
+            ax.plot(
+                df["x"],
+                df["y"],
+                color=COLORS[controller],
+                linewidth=2.0,
+                label=CONTROLLER_LABELS[controller].replace("\n", " "),
+            )
+        ax.scatter([start_x], [start_y], marker="o", s=70, color="#111827", label="Start")
+        ax.scatter(
+            [goal_x],
+            [goal_y],
+            marker="*",
+            s=130,
+            color="#f59e0b",
+            edgecolor="#111827",
+            linewidth=0.5,
+            label="Goal",
+        )
+        if goal_tolerance > 0.0:
+            ax.add_patch(
+                plt.Circle(
+                    (goal_x, goal_y),
+                    goal_tolerance,
+                    fill=False,
+                    linestyle="--",
+                    linewidth=1.4,
+                    edgecolor="#f59e0b",
+                    alpha=0.95,
+                    label="Goal tolerance",
+                )
+            )
+        ax.set_title(f"{SCENARIO_LABELS.get(scenario, scenario)} episode {episode_id:04d}")
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(ymin, ymax)
+        ax.grid(alpha=0.2)
+        ax.set_xlabel("x [m]")
+        ax.set_ylabel("y [m]")
+    axes[0].legend(fontsize=7, loc="best")
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
 def create_summary_gif(rows: list[dict[str, Any]], output_path: Path) -> None:
     width, height = 1200, 720
     bg = "#f8fafc"
@@ -431,6 +567,9 @@ def write_html(output_dir: Path) -> None:
   <img src="s5_010_tradeoff_scatter.png" alt="Tradeoff scatter plot">
   <h2>Runtime</h2>
   <img src="s5_010_runtime_bars.png" alt="Runtime bar chart">
+  <h2>Typical Trajectory Gallery</h2>
+  <p>The dashed circle around each goal is the configured arrival tolerance from <code>simulation.minimum_distance</code>. A trajectory is counted as successful once it enters this circle, so it does not need to end exactly on the star marker.</p>
+  <img src="s5_010_trajectory_gallery.png" alt="Typical trajectory gallery with goal tolerance circles">
   <h2>Episode Distributions</h2>
   <img src="s5_010_episode_distributions.png" alt="Episode distribution boxplots">
   <p>Metrics CSV: <a href="s5_010_visual_metrics.csv">s5_010_visual_metrics.csv</a></p>
@@ -479,6 +618,7 @@ def main() -> None:
     plot_metric_deltas(rows, output_dir / "s5_010_metric_deltas.png")
     plot_tradeoff(rows, output_dir / "s5_010_tradeoff_scatter.png")
     plot_runtime(rows, output_dir / "s5_010_runtime_bars.png")
+    plot_trajectory_gallery(rows, output_dir / "s5_010_trajectory_gallery.png")
     plot_episode_distributions(rows, output_dir / "s5_010_episode_distributions.png")
     create_summary_gif(rows, gif_dir / "s5_010_summary_slides.gif")
     write_html(output_dir)
@@ -495,6 +635,7 @@ def main() -> None:
             "s5_010_metric_deltas.png",
             "s5_010_tradeoff_scatter.png",
             "s5_010_runtime_bars.png",
+            "s5_010_trajectory_gallery.png",
             "s5_010_episode_distributions.png",
             "gifs/s5_010_summary_slides.gif",
         ],

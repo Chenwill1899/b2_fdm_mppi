@@ -1256,3 +1256,67 @@ Cross-scenario learned deltas versus nominal:
   - Balanced `0.5/3.0/0.75` is a balanced operating-point candidate: it improves steps, keeps cross-scenario final distance essentially tied with nominal, and keeps terrain risk essentially tied/slightly lower than nominal, with a small smoothness/jerk penalty.
   - Learned runtime remains much slower than nominal CUDA: learned controllers are roughly `52-61 ms` per MPPI step versus nominal `5.8-6.4 ms`. This is acceptable for offline Stage 5 benchmarking, but should not be claimed as equivalent to the nominal real-time envelope.
   - Next step: record Stage 5-D result framing for paper figures and run focused runtime profiling/optimization. Expand to `100` episodes only if the paper needs tighter confidence intervals or if candidate differences remain too small.
+
+### 2026-05-02: S6-001 Paper-Ready Stage 5 Result Package
+
+- Goal: organize S5-010 into paper-ready figures, tables, and a compressed result package without adding new algorithms or tuning more parameters.
+- Source result:
+  - `results/stage5_d/s5_010_parallel/s5_010_official_50ep_summary.json`
+  - `results/stage5_d/s5_010_parallel/s5_010_official_50ep_summary.csv`
+- Command:
+  - `python3 tools/plot_stage5_results.py`
+- Generated tracked files:
+  - `tools/plot_stage5_results.py`
+  - `docs/agent_memory/STAGE6_RESULT_PACKAGE.md`
+  - `figures/stage5/stage5_main_result_bars.png`
+  - `figures/stage5/stage5_paired_delta_boxplots.png`
+  - `figures/stage5/stage5_pareto_scatter.png`
+  - `figures/stage5/stage5_trajectory_gallery.png`
+  - `figures/stage5/stage5_runtime_bars.png`
+  - `figures/stage5/stage5_failure_tradeoff_analysis.png`
+  - `tables/stage5/stage5_main_results.csv/md`
+  - `tables/stage5/stage5_operating_modes.csv/md`
+  - `tables/stage5/stage5_paired_delta_summary.csv/md`
+  - `tables/stage5/stage5_paired_episode_deltas.csv`
+  - `tables/stage5/stage5_runtime.csv/md`
+  - `tables/stage5/stage5_result_package_manifest.json`
+- Visualization note:
+  - trajectory gallery plots the goal marker and a dashed goal-tolerance circle from `simulation.minimum_distance`, so successful trajectories do not need to terminate exactly on the star marker.
+- Generated local package:
+  - `results/stage6_result_package/stage5_result_package.zip`
+- Style:
+  - white background
+  - unified font
+  - fixed controller colors: nominal blue, default learned orange, efficiency green, balanced purple
+- Key package metrics:
+  - official aggregate rows: `12`
+  - paired episode delta rows: `450`
+  - zip files included: `19`
+- Conclusion:
+  - S6-001 packages Stage 5-D around the claim that learned-FDM-MPPI supports multiple calibrated operating modes. It preserves the boundary that no controller is an all-metric winner.
+  - The most important new figure is `stage5_paired_delta_boxplots.png`, which shows per-episode learned-minus-nominal deltas for final distance, steps, clearance, terrain risk, smoothness, jerk, and runtime.
+  - Next step is S6-002 runtime profiling/optimization, unless a 100-episode confirmation is needed for tighter confidence intervals.
+
+### 2026-05-02: S6-001 Addendum - Seed123 Oracle Parameter GIFs
+
+- Goal: run the fixed `seed=123` scene from `config/b2_omni_oracle.yaml` for the Stage 5 operating modes and save inspectable GIFs.
+- Command:
+  - `python3 tools/run_stage5_seed123_param_gifs.py`
+  - `python3 tools/plot_stage5_results.py`
+- Output:
+  - `results/stage6_result_package/seed123_oracle_param_gifs/index.html`
+  - `results/stage6_result_package/seed123_oracle_param_gifs/gifs/nominal_seed123_animation.gif`
+  - `results/stage6_result_package/seed123_oracle_param_gifs/gifs/default_g10_seed123_animation.gif`
+  - `results/stage6_result_package/seed123_oracle_param_gifs/gifs/efficiency_g05_goal35_smooth10_seed123_animation.gif`
+  - `results/stage6_result_package/seed123_oracle_param_gifs/gifs/balanced_g05_goal30_smooth075_seed123_animation.gif`
+  - Repacked zip: `results/stage6_result_package/stage5_result_package.zip`
+- Metrics:
+  - Nominal CUDA: success `true`, final distance `0.3461`, steps `225`, mean MPPI `5.26 ms`.
+  - Default learned `g=1.0`: success `true`, final distance `0.3371`, steps `214`, mean MPPI `25.63 ms`.
+  - Efficiency `0.5/3.5/1.0`: success `true`, final distance `0.3484`, steps `211`, mean MPPI `25.48 ms`.
+  - Balanced `0.5/3.0/0.75`: success `true`, final distance `0.3282`, steps `230`, mean MPPI `25.14 ms`.
+- Visualization note:
+  - `animation.gif` and `trajectory.png` now draw the dashed goal-tolerance circle from `simulation.minimum_distance`, so the successful stop position is visually explained.
+- Verification:
+  - GIF frame counts: nominal `225`, default `214`, efficiency `211`, balanced `230`.
+  - Zip package includes the seed123 oracle HTML, CSV/JSON summary, copied GIFs, and per-run artifacts.

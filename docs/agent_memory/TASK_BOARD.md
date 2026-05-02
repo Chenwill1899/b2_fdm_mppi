@@ -4,7 +4,7 @@ Last updated: 2026-05-02
 
 ## Current Stage
 
-Stage 5-D: 50-episode ID/OOD benchmark completed; result framing is conservative, efficiency, and balanced learned-FDM operating modes.
+Stage 6: paper-ready Stage 5 result package completed; next focus is runtime profiling/optimization and optional 100-episode confirmation.
 
 ## Stage 0 Acceptance Criteria
 
@@ -59,6 +59,8 @@ Stage 5-D: 50-episode ID/OOD benchmark completed; result framing is conservative
 | S5-009 | P0 | done | Decide Stage 5-D entry or Pareto retune | Ran ID 27-case Pareto sweep plus OOD 3-candidate validation. Balanced candidate `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75` keeps risk/smoothness/jerk closest to nominal while improving average final distance and steps. Aggressive efficiency candidate `0.6/4.0/1.0` gives strongest final/steps gains but larger risk/smoothness cost. |
 | S5-010 | P0 | done | Run Stage 5-D 50/100 episode ID/OOD benchmark | Completed the 50-episode official matrix for nominal CUDA, default learned `g=1.0`, current efficiency `0.5/3.5/1.0`, and balanced `0.5/3.0/0.75` across ID random, OOD obstacle, and OOD terrain. Output: `results/stage5_d/s5_010_parallel`; official errors `0`; all official groups success `1.0`. Aggressive efficiency was stopped and excluded from official reporting to keep runtime bounded. |
 | S5-011 | P0 | todo | Record Stage 5-D paper-result framing and runtime next step | Use S5-010 to present three learned-FDM modes: default conservative/smooth, current efficiency, and balanced operating-point candidate. Next decide whether to expand to 100 episodes or focus on runtime profiling/optimization. |
+| S6-001 | P0 | done | Build paper-ready Stage 5 result package | Added `tools/plot_stage5_results.py`, generated `docs/agent_memory/STAGE6_RESULT_PACKAGE.md`, `figures/stage5/`, `tables/stage5/`, and `results/stage6_result_package/stage5_result_package.zip`. Package includes main result table, operating modes table, paired delta boxplots, Pareto scatter, trajectory gallery, runtime table, failure/trade-off analysis, and fixed `config/b2_omni_oracle.yaml` seed123 parameter GIFs with dashed goal-tolerance circles. |
+| S6-002 | P0 | todo | Profile and optimize learned Torch/CUDA runtime | Use S5-010 runtime boundary (`~52-61 ms` learned vs `~5.8-6.4 ms` nominal CUDA) to prioritize terrain feature/risk computation, FDM inference, rollout loop, obstacle cost, and synchronization. |
 
 ## Later Stages
 
@@ -68,6 +70,6 @@ Stage 5-D: 50-episode ID/OOD benchmark completed; result framing is conservative
 | 2 | done | Oracle residual world. |
 | 3.5 | done | Parallel Oracle Dataset Generation with explicit episode seed mapping. |
 | 4 | done | Residual velocity FDM training baseline and open-loop/OOD validation. |
-| 5 | in_progress | Stage 5-D 50-episode benchmark completed; next is paper-result framing, optional 100-episode confirmation, and runtime profiling. |
-| 6 | pending | Unified evaluation system. |
+| 5 | done | Stage 5-D 50-episode benchmark completed and packaged for paper-ready Stage 6 results. |
+| 6 | in_progress | Paper-ready Stage 5 result package completed; next runtime profiling/optimization and optional 100-episode confirmation. |
 | 7 | pending | Paper-ready experiments and figures. |
