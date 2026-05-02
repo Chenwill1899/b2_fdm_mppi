@@ -1,0 +1,33 @@
+{
+  "controllers": [
+    "nominal",
+    "default g1.0",
+    "current 0.5/3.5/1.0",
+    "balanced 0.5/3.0/0.75"
+  ],
+  "doc": "docs/agent_memory/STAGE6_RESULT_PACKAGE.md",
+  "figures": {
+    "gallery": "figures/stage5/stage5_trajectory_gallery.png",
+    "main": "figures/stage5/stage5_main_result_bars.png",
+    "paired": "figures/stage5/stage5_paired_delta_boxplots.png",
+    "pareto": "figures/stage5/stage5_pareto_scatter.png",
+    "runtime": "figures/stage5/stage5_runtime_bars.png",
+    "tradeoff": "figures/stage5/stage5_failure_tradeoff_analysis.png"
+  },
+  "official_rows": 12,
+  "paired_delta_rows": 450,
+  "scenarios": [
+    "id_random",
+    "ood_obstacle",
+    "ood_terrain"
+  ],
+  "summary": "results/stage5_d/s5_010_parallel/s5_010_official_50ep_summary.json",
+  "tables": {
+    "deltas": "tables/stage5/stage5_paired_delta_summary.csv",
+    "main": "tables/stage5/stage5_main_results.csv",
+    "modes": "tables/stage5/stage5_operating_modes.csv",
+    "paired": "tables/stage5/stage5_paired_episode_deltas.csv",
+    "runtime": "tables/stage5/stage5_runtime.csv"
+  },
+  "zip": "results/stage6_result_package/stage5_result_package.zip"
+}
