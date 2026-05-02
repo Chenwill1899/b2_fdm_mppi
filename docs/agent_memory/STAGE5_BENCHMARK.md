@@ -440,6 +440,63 @@ S5-009 outcome:
 - The aggressive efficiency candidate `0.6/4.0/1.0` gives the strongest final-distance/steps gains but has the largest risk/smoothness/jerk penalty.
 - Stage 5-D should include nominal CUDA, default learned `g=1.0`, current efficiency `0.5/3.5/1.0`, balanced `0.5/3.0/0.75`, and optionally aggressive efficiency `0.6/4.0/1.0`.
 
+### S5-010 50-Episode Stage 5-D Benchmark
+
+S5-010 reran the Stage 5-D confirmation matrix with `50` episodes per official controller/scenario. The official output is:
+
+```text
+results/stage5_d/s5_010_parallel
+```
+
+Official summaries:
+
+```text
+results/stage5_d/s5_010_parallel/s5_010_official_50ep_summary.csv
+results/stage5_d/s5_010_parallel/s5_010_official_50ep_summary.json
+```
+
+The official matrix used ID random, OOD obstacle, and OOD terrain with `base_seed=123` and `episode_id=0..49`. Controllers:
+
+- nominal CUDA
+- default learned `residual_gain=1.0`
+- current efficiency `residual_gain=0.5`, `goal_xy_weight=3.5`, `smooth_weight=1.0`
+- balanced `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75`
+
+Aggressive efficiency `0.6/4.0/1.0` was started as an optional runtime-budget group but was stopped during parallelization and is excluded from the official S5-010 result.
+
+All official `12` controller/scenario groups completed with `success_rate=1.0` and no aggregate errors.
+
+| Scenario | Controller | Success | Final | Delta Final | Steps | Delta Steps | Clearance | Delta Clear | Risk | Delta Risk | Smooth | Delta Smooth | Jerk | Delta Jerk | MPPI ms |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ID random | nominal | 1.00 | 0.6808 | +0.0000 | 132.7 | +0.0 | 3.4794 | +0.0000 | 0.3404 | +0.0000 | 0.003192 | +0.000000 | 0.002735 | +0.000000 | 6.43 |
+| ID random | default `g=1.0` | 1.00 | 0.6908 | +0.0101 | 155.0 | +22.3 | 3.4873 | +0.0078 | 0.3198 | -0.0206 | 0.002795 | -0.000397 | 0.001919 | -0.000816 | 57.69 |
+| ID random | current `0.5/3.5/1.0` | 1.00 | 0.6785 | -0.0022 | 125.8 | -6.9 | 3.5157 | +0.0363 | 0.3424 | +0.0021 | 0.003405 | +0.000213 | 0.002855 | +0.000120 | 60.99 |
+| ID random | balanced `0.5/3.0/0.75` | 1.00 | 0.6799 | -0.0009 | 129.6 | -3.1 | 3.5078 | +0.0283 | 0.3403 | -0.0001 | 0.003316 | +0.000125 | 0.002838 | +0.000103 | 58.52 |
+| OOD obstacle | nominal | 1.00 | 0.6784 | +0.0000 | 134.8 | +0.0 | 2.8470 | +0.0000 | 0.3388 | +0.0000 | 0.003191 | +0.000000 | 0.002754 | +0.000000 | 6.07 |
+| OOD obstacle | default `g=1.0` | 1.00 | 0.6890 | +0.0105 | 165.6 | +30.8 | 2.8710 | +0.0240 | 0.3198 | -0.0191 | 0.002798 | -0.000393 | 0.002034 | -0.000720 | 53.89 |
+| OOD obstacle | current `0.5/3.5/1.0` | 1.00 | 0.6778 | -0.0007 | 127.1 | -7.7 | 2.9019 | +0.0549 | 0.3419 | +0.0031 | 0.003425 | +0.000234 | 0.002815 | +0.000061 | 52.86 |
+| OOD obstacle | balanced `0.5/3.0/0.75` | 1.00 | 0.6812 | +0.0027 | 130.7 | -4.0 | 2.9056 | +0.0586 | 0.3398 | +0.0009 | 0.003297 | +0.000105 | 0.002838 | +0.000083 | 52.36 |
+| OOD terrain | nominal | 1.00 | 0.6852 | +0.0000 | 134.0 | +0.0 | 3.4964 | +0.0000 | 0.3760 | +0.0000 | 0.003124 | +0.000000 | 0.002640 | +0.000000 | 5.79 |
+| OOD terrain | default `g=1.0` | 1.00 | 0.6886 | +0.0034 | 154.1 | +20.1 | 3.4684 | -0.0280 | 0.3503 | -0.0257 | 0.002688 | -0.000437 | 0.001744 | -0.000896 | 53.44 |
+| OOD terrain | current `0.5/3.5/1.0` | 1.00 | 0.6785 | -0.0067 | 127.0 | -6.9 | 3.5196 | +0.0232 | 0.3783 | +0.0023 | 0.003404 | +0.000280 | 0.002781 | +0.000141 | 53.40 |
+| OOD terrain | balanced `0.5/3.0/0.75` | 1.00 | 0.6835 | -0.0017 | 131.5 | -2.5 | 3.4890 | -0.0073 | 0.3750 | -0.0010 | 0.003213 | +0.000089 | 0.002754 | +0.000114 | 52.70 |
+
+Average learned deltas over ID/OOD obstacle/OOD terrain:
+
+| Candidate | Delta Final | Delta Steps | Delta Risk | Delta Smooth | Delta Jerk | Delta MPPI ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| default `g=1.0` | +0.00798 | +24.43 | -0.02179 | -0.000409 | -0.000811 | +48.91 |
+| current `0.5/3.5/1.0` | -0.00322 | -7.15 | +0.00247 | +0.000242 | +0.000107 | +49.65 |
+| balanced `0.5/3.0/0.75` | +0.00005 | -3.20 | -0.00002 | +0.000106 | +0.000100 | +48.43 |
+
+S5-010 outcome:
+
+- Default learned `g=1.0` should be framed as conservative/smooth: lower risk/smoothness/jerk, worse final distance and steps.
+- Current efficiency `0.5/3.5/1.0` should be framed as the efficiency mode: best official final-distance and steps gains, with small risk/smoothness/jerk penalties.
+- Balanced `0.5/3.0/0.75` should be framed as a balanced operating-point candidate: modest steps gain, cross-scenario final distance essentially tied with nominal, and terrain risk essentially tied/slightly lower than nominal.
+- No S5-010 controller dominates every metric. Do not claim that the balanced candidate is the final winner.
+- Learned runtime remains `~52-61 ms` per MPPI step versus nominal CUDA `~5.8-6.4 ms`, so runtime profiling remains a required next step before real-time claims.
+
 ## Visual Inspection Entry
 
 For single-scene human inspection of learning-before/after closed-loop behavior, use:

@@ -4,7 +4,7 @@ Last updated: 2026-05-02
 
 ## Current Stage
 
-Stage 5-D entry: larger ID/OOD benchmark with current, balanced, and efficiency learned candidates.
+Stage 5-D: 50-episode ID/OOD benchmark completed; result framing is conservative, efficiency, and balanced learned-FDM operating modes.
 
 ## Stage 0 Acceptance Criteria
 
@@ -57,7 +57,8 @@ Stage 5-D entry: larger ID/OOD benchmark with current, balanced, and efficiency 
 | S5-007 | P0 | done | Run Stage 5-C cost sanity grid | Learned-only 5-episode ID grid at `residual_gain=0.5` shows `goal_xy_weight=3.5` improves final distance/steps versus default `2.5`; `smooth_weight=0.5` has best final distance and `smooth_weight=1.0` has fewest steps. |
 | S5-008 | P0 | done | Run calibrated 20-episode ID/OOD benchmark | ID/OOD 20-episode sweeps confirm `residual_gain=0.5`, `goal_xy_weight=3.5` removes the default learned `g=1.0` final-distance/steps regression. `smooth_weight=1.0` is the current efficiency candidate; `smooth_weight=0.5` has slightly better final distance but worse smoothness/jerk. |
 | S5-009 | P0 | done | Decide Stage 5-D entry or Pareto retune | Ran ID 27-case Pareto sweep plus OOD 3-candidate validation. Balanced candidate `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75` keeps risk/smoothness/jerk closest to nominal while improving average final distance and steps. Aggressive efficiency candidate `0.6/4.0/1.0` gives strongest final/steps gains but larger risk/smoothness cost. |
-| S5-010 | P0 | todo | Run Stage 5-D 50/100 episode ID/OOD benchmark | Compare nominal CUDA, default learned `g=1.0`, current efficiency `0.5/3.5/1.0`, balanced `0.5/3.0/0.75`, and optionally aggressive efficiency `0.6/4.0/1.0` across ID random, OOD obstacle, and OOD terrain. |
+| S5-010 | P0 | done | Run Stage 5-D 50/100 episode ID/OOD benchmark | Completed the 50-episode official matrix for nominal CUDA, default learned `g=1.0`, current efficiency `0.5/3.5/1.0`, and balanced `0.5/3.0/0.75` across ID random, OOD obstacle, and OOD terrain. Output: `results/stage5_d/s5_010_parallel`; official errors `0`; all official groups success `1.0`. Aggressive efficiency was stopped and excluded from official reporting to keep runtime bounded. |
+| S5-011 | P0 | todo | Record Stage 5-D paper-result framing and runtime next step | Use S5-010 to present three learned-FDM modes: default conservative/smooth, current efficiency, and balanced operating-point candidate. Next decide whether to expand to 100 episodes or focus on runtime profiling/optimization. |
 
 ## Later Stages
 
@@ -67,6 +68,6 @@ Stage 5-D entry: larger ID/OOD benchmark with current, balanced, and efficiency 
 | 2 | done | Oracle residual world. |
 | 3.5 | done | Parallel Oracle Dataset Generation with explicit episode seed mapping. |
 | 4 | done | Residual velocity FDM training baseline and open-loop/OOD validation. |
-| 5 | in_progress | Stage 5-D larger ID/OOD benchmark with calibrated learned-FDM candidates. |
+| 5 | in_progress | Stage 5-D 50-episode benchmark completed; next is paper-result framing, optional 100-episode confirmation, and runtime profiling. |
 | 6 | pending | Unified evaluation system. |
 | 7 | pending | Paper-ready experiments and figures. |
