@@ -77,6 +77,10 @@ def test_omni_runner_saves_summary_csv_outputs(tmp_path):
     assert "max_cmd_real_error" in summary_json
     assert "mean_terrain_risk" in summary_json
     assert "max_terrain_risk" in summary_json
+    assert "cumulative_terrain_risk" in summary_json
+    assert "terrain_risk_excess" in summary_json
+    assert "terrain_risk_excess_integral" in summary_json
+    assert "terrain_risk_exposure_ratio" in summary_json
 
 
 def test_omni_runner_trajectory_includes_final_state_after_last_action(tmp_path):
@@ -549,6 +553,49 @@ def test_omni_runner_cmd_real_error_uses_executed_minus_commanded_norm(tmp_path)
     assert metrics["max_cmd_real_error"] == pytest.approx(float(np.max(cmd_real_errors)))
     assert metrics["mean_residual_norm"] == pytest.approx(float(np.mean(residual_norms)))
     assert metrics["max_residual_norm"] == pytest.approx(float(np.max(residual_norms)))
+
+
+def test_omni_runner_reports_thresholded_terrain_risk_metrics(tmp_path):
+    config = make_config(tmp_path)
+    config["mppi"]["terrain_risk_threshold"] = 0.3
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    runner.terrain_risk_history = [0.1, 0.4, 0.8]
+
+    metrics = runner._summary_metrics()
+
+    assert metrics["mean_terrain_risk"] == pytest.approx(float(np.mean([0.1, 0.4, 0.8])))
+    assert metrics["max_terrain_risk"] == pytest.approx(0.8)
+    assert metrics["cumulative_terrain_risk"] == pytest.approx(1.3)
+    assert metrics["terrain_risk_excess"] == pytest.approx(0.6)
+    assert metrics["terrain_risk_excess_integral"] == pytest.approx(0.01 + 0.25)
+    assert metrics["terrain_risk_exposure_ratio"] == pytest.approx(2.0 / 3.0)
+
+
+def test_omni_runner_terrain_csv_records_risk_exposure_columns(tmp_path):
+    config = make_config(tmp_path)
+    config["mppi"]["terrain_risk_threshold"] = 0.3
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    runner.state_history = [
+        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    ]
+    runner.terrain_history = [
+        np.array([0.0, 0.0, 0.1, 0.8], dtype=np.float32),
+        np.array([0.0, 0.0, 0.7, 0.4], dtype=np.float32),
+    ]
+    runner.terrain_risk_history = [0.2, 0.8]
+
+    runner._save_terrain()
+    terrain = pd.read_csv(runner.results_path / "terrain.csv")
+
+    assert terrain["risk_excess"].tolist() == pytest.approx([0.0, 0.5])
+    assert terrain["risk_exposed"].tolist() == [False, True]
 
 
 def test_omni_runner_uses_cuda_backend_when_configured(tmp_path, monkeypatch):

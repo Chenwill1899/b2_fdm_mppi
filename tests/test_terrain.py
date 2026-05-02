@@ -91,3 +91,82 @@ def test_terrain_goal_relief_smoothly_reduces_goal_area_risk():
     assert goal_risk < base_goal_risk
     assert goal_risk < edge_risk
     assert far_risk > goal_risk
+
+
+def test_terrain_empty_patches_preserve_legacy_features():
+    config = {
+        "enabled": True,
+        "friction_base": 0.72,
+        "slope_scale": 0.10,
+        "roughness_scale": 0.25,
+        "friction_slope_scale": 0.18,
+        "friction_roughness_scale": 0.10,
+        "patches": [],
+    }
+    terrain = TerrainField.from_config(config)
+    legacy = TerrainField.from_config({key: value for key, value in config.items() if key != "patches"})
+    point = (7.2, -1.4)
+
+    assert np.allclose(terrain.feature(*point), legacy.feature(*point))
+    assert terrain.risk_cost(*point) == legacy.risk_cost(*point)
+
+
+def test_terrain_ellipse_patch_changes_physical_features_with_smooth_edge():
+    terrain = TerrainField(
+        enabled=True,
+        slope_scale=0.0,
+        roughness_scale=0.0,
+        friction_base=0.8,
+        friction_slope_scale=0.0,
+        friction_roughness_scale=0.0,
+        patches=[
+            {
+                "name": "rough_low_friction_island",
+                "type": "ellipse",
+                "center": [10.0, 0.0],
+                "size": [4.0, 2.0],
+                "edge_width": 1.0,
+                "roughness_delta": 0.5,
+                "friction_delta": -0.3,
+            }
+        ],
+    )
+
+    center = terrain.feature(10.0, 0.0)
+    edge = terrain.feature(12.4, 0.0)
+    outside = terrain.feature(14.0, 0.0)
+
+    assert center[2] > edge[2] > outside[2]
+    assert center[3] < edge[3] < outside[3]
+    assert terrain.risk_cost(10.0, 0.0, features=center) > terrain.risk_cost(14.0, 0.0, features=outside)
+
+
+def test_terrain_finite_band_patch_does_not_extend_infinitely():
+    terrain = TerrainField(
+        enabled=True,
+        slope_scale=0.0,
+        roughness_scale=0.0,
+        friction_base=0.8,
+        friction_slope_scale=0.0,
+        friction_roughness_scale=0.0,
+        patches=[
+            {
+                "name": "finite_crossing_band",
+                "type": "band",
+                "center": [10.0, 0.0],
+                "angle": 90.0,
+                "size": [8.0, 2.0],
+                "edge_width": 0.5,
+                "roughness_delta": 0.6,
+                "friction_delta": -0.25,
+            }
+        ],
+    )
+
+    inside = terrain.feature(10.0, 0.0)
+    far_along_band = terrain.feature(10.0, 6.0)
+    far_across_band = terrain.feature(13.0, 0.0)
+
+    assert inside[2] > far_along_band[2]
+    assert inside[2] > far_across_band[2]
+    assert np.allclose(far_along_band, far_across_band)

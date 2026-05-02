@@ -146,6 +146,11 @@ def test_run_benchmark_writes_summary_and_configures_nominal_and_learned(tmp_pat
                 "path_length": 4.0,
                 "min_obstacle_clearance": 0.25,
                 "mean_terrain_risk": 0.1,
+                "max_terrain_risk": 0.3,
+                "cumulative_terrain_risk": 1.0,
+                "terrain_risk_excess": 0.2,
+                "terrain_risk_excess_integral": 0.05,
+                "terrain_risk_exposure_ratio": 0.4,
                 "mean_cmd_real_error": 0.04,
                 "mean_residual_norm": 0.05,
                 "control_smoothness": 0.2,
@@ -176,6 +181,12 @@ def test_run_benchmark_writes_summary_and_configures_nominal_and_learned(tmp_pat
         fdm_normalization="normalization.npz",
         fdm_device="cpu",
         fdm_residual_gain=0.75,
+        mppi_overrides={
+            "terrain_risk_weight": 3.0,
+            "terrain_risk_power": 2.0,
+            "terrain_risk_threshold": 0.25,
+            "terrain_risk_mode": "excess",
+        },
         learned_mppi_overrides={"goal_xy_weight": 3.5, "smooth_weight": 0.4},
         command="python3 tools/benchmark_learned_fdm_mppi.py --unit-test",
         argv=["python3", "tools/benchmark_learned_fdm_mppi.py", "--unit-test"],
@@ -195,7 +206,14 @@ def test_run_benchmark_writes_summary_and_configures_nominal_and_learned(tmp_pat
         "goal_xy_weight": 3.5,
         "smooth_weight": 0.4,
     }
+    assert summary["metadata"]["mppi_overrides"] == {
+        "terrain_risk_weight": 3.0,
+        "terrain_risk_power": 2.0,
+        "terrain_risk_threshold": 0.25,
+        "terrain_risk_mode": "excess",
+    }
     assert len(summary["runs"]) == 2
+    assert summary["runs"][0]["cumulative_terrain_risk"] == pytest.approx(1.0)
     assert summary["aggregates"]["learned"]["success_rate"] == 1.0
     assert summary["paired_deltas"]["aggregate"]["final_distance_delta_mean"] == pytest.approx(-0.2)
 
@@ -215,6 +233,11 @@ def test_run_benchmark_writes_summary_and_configures_nominal_and_learned(tmp_pat
     assert learned_config["mppi"]["smooth_weight"] == pytest.approx(0.4)
     assert nominal_config["mppi"]["weights"][0] != pytest.approx(3.5)
     assert nominal_config["mppi"]["smooth_weight"] != pytest.approx(0.4)
+    for config in (nominal_config, learned_config):
+        assert config["mppi"]["terrain_risk_weight"] == pytest.approx(3.0)
+        assert config["mppi"]["terrain_risk_power"] == pytest.approx(2.0)
+        assert config["mppi"]["terrain_risk_threshold"] == pytest.approx(0.25)
+        assert config["mppi"]["terrain_risk_mode"] == "excess"
 
 
 def test_run_benchmark_rejects_non_numpy_backend(tmp_path):
@@ -258,6 +281,11 @@ def test_run_benchmark_allows_cuda_backend_in_run_configs(tmp_path):
                 "path_length": 0.3,
                 "min_obstacle_clearance": 0.4,
                 "mean_terrain_risk": 0.1,
+                "max_terrain_risk": 0.3,
+                "cumulative_terrain_risk": 0.2,
+                "terrain_risk_excess": 0.0,
+                "terrain_risk_excess_integral": 0.0,
+                "terrain_risk_exposure_ratio": 0.0,
                 "mean_cmd_real_error": 0.0,
                 "mean_residual_norm": 0.0,
                 "control_smoothness": 0.0,
@@ -318,3 +346,30 @@ def test_parse_mppi_overrides_parses_supported_cost_keys():
         "obstacle_weight": 120.5,
         "yaw_rate_weight": 0.03,
     }
+
+
+def test_parse_shared_mppi_overrides_accepts_numeric_and_mode_values():
+    module = load_benchmark_module()
+
+    overrides = module.parse_mppi_overrides(
+        [
+            "terrain_risk_weight=5.0",
+            "terrain_risk_power=2",
+            "terrain_risk_threshold=0.3",
+            "terrain_risk_mode=excess",
+        ]
+    )
+
+    assert overrides == {
+        "terrain_risk_weight": 5.0,
+        "terrain_risk_power": 2.0,
+        "terrain_risk_threshold": 0.3,
+        "terrain_risk_mode": "excess",
+    }
+
+
+def test_parse_shared_mppi_overrides_rejects_learned_only_keys():
+    module = load_benchmark_module()
+
+    with pytest.raises(ValueError, match="Unsupported shared MPPI override"):
+        module.parse_mppi_overrides(["goal_xy_weight=4.0"])

@@ -4,6 +4,7 @@ import pytest
 from b2_fdm_mppi.config import load_config
 from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
 from b2_fdm_mppi.core.omni_b2 import OmniB2
+from b2_fdm_mppi.core.terrain import TerrainField
 
 
 def make_controller(seed=1, num_samples=64, horizon_steps=8):
@@ -222,6 +223,90 @@ def test_omni_mppi_batch_cost_matches_scalar_costs():
     )
 
     assert batch_costs == pytest.approx(scalar_costs, rel=1e-5)
+
+
+def test_omni_mppi_terrain_risk_weight_zero_preserves_cost():
+    terrain = TerrainField(
+        enabled=True,
+        slope_scale=0.0,
+        roughness_scale=0.0,
+        friction_base=0.8,
+        friction_slope_scale=0.0,
+        friction_roughness_scale=0.0,
+        patches=[
+            {
+                "name": "risk_band",
+                "type": "band",
+                "center": [0.2, 0.0],
+                "angle": 0.0,
+                "size": [1.0, 0.1],
+                "edge_width": 0.0,
+                "roughness_delta": 0.7,
+                "friction_delta": -0.4,
+            }
+        ],
+    )
+    base = make_controller(seed=14, num_samples=2, horizon_steps=3)
+    risk_aware_disabled = make_controller(seed=14, num_samples=2, horizon_steps=3)
+    risk_aware_disabled.terrain = terrain
+    risk_aware_disabled.terrain_risk_weight = 0.0
+    controls = np.zeros((base.horizon_steps, 3), dtype=np.float32)
+    controls[:, 0] = 0.5
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    assert risk_aware_disabled.trajectory_cost(state, controls, goal, obstacles) == pytest.approx(
+        base.trajectory_cost(state, controls, goal, obstacles)
+    )
+
+
+def test_omni_mppi_terrain_risk_cost_penalizes_high_risk_rollout():
+    terrain = TerrainField(
+        enabled=True,
+        slope_scale=0.0,
+        roughness_scale=0.0,
+        friction_base=0.8,
+        friction_slope_scale=0.0,
+        friction_roughness_scale=0.0,
+        patches=[
+            {
+                "name": "risk_band",
+                "type": "band",
+                "center": [0.2, 0.0],
+                "angle": 0.0,
+                "size": [1.0, 0.1],
+                "edge_width": 0.0,
+                "roughness_delta": 0.7,
+                "friction_delta": -0.4,
+            }
+        ],
+    )
+    controller = make_controller(seed=15, num_samples=2, horizon_steps=4)
+    controller.goal_xy_weight = 0.0
+    controller.yaw_weight = 0.0
+    controller.control_weight = 0.0
+    controller.smooth_weight = 0.0
+    controller.accel_weight = 0.0
+    controller.lateral_weight = 0.0
+    controller.yaw_rate_weight = 0.0
+    controller.jerk_weight = 0.0
+    controller.terrain = terrain
+    controller.terrain_risk_weight = 10.0
+    controller.terrain_risk_threshold = 0.25
+    controller.terrain_risk_power = 2.0
+    controller.terrain_risk_mode = "excess"
+    high_risk = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    high_risk[:, 0] = 0.8
+    low_risk = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    low_risk[:, 1] = 0.5
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    assert controller.trajectory_cost(state, high_risk, goal, obstacles) > controller.trajectory_cost(
+        state, low_risk, goal, obstacles
+    )
 
 
 def test_omni_mppi_can_be_created_from_config():

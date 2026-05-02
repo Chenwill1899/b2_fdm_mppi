@@ -269,8 +269,7 @@ class OmniMppiSimulationRunner:
         max_residual = float(np.max(residual_norms)) if residual_norms.size else 0.0
         mean_cmd_real_error = float(np.mean(cmd_real_errors)) if cmd_real_errors.size else 0.0
         max_cmd_real_error = float(np.max(cmd_real_errors)) if cmd_real_errors.size else 0.0
-        mean_terrain = float(np.mean(self.terrain_risk_history)) if self.terrain_risk_history else 0.0
-        max_terrain = float(np.max(self.terrain_risk_history)) if self.terrain_risk_history else 0.0
+        terrain_metrics = self._terrain_risk_metrics()
         return {
             "world_mode": self.world_mode,
             "controller_type": type(self.controller).__name__,
@@ -300,11 +299,35 @@ class OmniMppiSimulationRunner:
             "max_residual_norm": max_residual,
             "mean_cmd_real_error": mean_cmd_real_error,
             "max_cmd_real_error": max_cmd_real_error,
-            "mean_terrain_risk": mean_terrain,
-            "max_terrain_risk": max_terrain,
+            **terrain_metrics,
             **self._control_metrics(),
             **self._sample_coverage_metrics(),
         }
+
+    def _terrain_risk_metrics(self) -> dict:
+        risks = np.asarray(self.terrain_risk_history, dtype=np.float32)
+        if risks.size == 0:
+            return {
+                "mean_terrain_risk": 0.0,
+                "max_terrain_risk": 0.0,
+                "cumulative_terrain_risk": 0.0,
+                "terrain_risk_excess": 0.0,
+                "terrain_risk_excess_integral": 0.0,
+                "terrain_risk_exposure_ratio": 0.0,
+            }
+        threshold = self._terrain_risk_threshold()
+        excess = np.maximum(risks - threshold, 0.0)
+        return {
+            "mean_terrain_risk": float(np.mean(risks)),
+            "max_terrain_risk": float(np.max(risks)),
+            "cumulative_terrain_risk": float(np.sum(risks)),
+            "terrain_risk_excess": float(np.sum(excess)),
+            "terrain_risk_excess_integral": float(np.sum(excess * excess)),
+            "terrain_risk_exposure_ratio": float(np.mean(risks > threshold)),
+        }
+
+    def _terrain_risk_threshold(self) -> float:
+        return float(self.config.get("mppi", {}).get("terrain_risk_threshold", 0.0))
 
     def _fdm_metadata(self) -> dict:
         fdm_cfg = self.config.get("fdm", {})
@@ -427,9 +450,11 @@ class OmniMppiSimulationRunner:
 
     def _save_terrain(self) -> None:
         rows = []
+        threshold = self._terrain_risk_threshold()
         for idx, (state, features, risk) in enumerate(
             zip(self.state_history, self.terrain_history, self.terrain_risk_history)
         ):
+            risk_excess = max(float(risk) - threshold, 0.0)
             rows.append(
                 {
                     "step": idx,
@@ -440,6 +465,8 @@ class OmniMppiSimulationRunner:
                     "roughness": features[2],
                     "friction": features[3],
                     "risk_cost": risk,
+                    "risk_excess": risk_excess,
+                    "risk_exposed": bool(float(risk) > threshold),
                 }
             )
         pd.DataFrame(rows).to_csv(self.results_path / "terrain.csv", index=False)

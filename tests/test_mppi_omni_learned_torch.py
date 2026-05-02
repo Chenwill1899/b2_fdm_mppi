@@ -164,3 +164,111 @@ def test_learned_torch_terrain_features_match_numpy_terrain_with_noise():
     )
     assert features_t.detach().cpu().numpy() == pytest.approx(expected_features, abs=1e-6)
     assert risks_t.detach().cpu().numpy() == pytest.approx(expected_risks, abs=1e-6)
+
+
+def test_learned_torch_terrain_features_match_numpy_terrain_with_patches():
+    terrain = TerrainField(
+        enabled=True,
+        slope_scale=0.02,
+        roughness_scale=0.05,
+        friction_base=0.8,
+        friction_slope_scale=0.05,
+        friction_roughness_scale=0.05,
+        patches=[
+            {
+                "name": "risk_band",
+                "type": "band",
+                "center": [10.0, 0.0],
+                "angle": 90.0,
+                "size": [8.0, 2.0],
+                "edge_width": 0.5,
+                "slope_f_delta": 0.06,
+                "roughness_delta": 0.4,
+                "friction_delta": -0.25,
+            },
+            {
+                "name": "risk_island",
+                "type": "ellipse",
+                "center": [14.0, 1.5],
+                "angle": 25.0,
+                "size": [3.0, 1.5],
+                "edge_width": 0.5,
+                "roughness_delta": 0.3,
+                "friction_delta": -0.2,
+            },
+        ],
+    )
+    controller = make_controller()
+    controller.terrain = terrain
+    controller._setup_terrain_tensors()
+    states = torch.tensor(
+        [
+            [10.0, 0.0, 0.0, 0.1, 0.0, 0.0],
+            [14.0, 1.5, 0.2, 0.3, -0.1, 0.1],
+            [18.0, 5.5, 0.0, 0.0, 0.0, 0.0],
+        ],
+        dtype=torch.float32,
+    )
+
+    features_t, risks_t = controller._terrain_features_torch(states)
+
+    expected_features = np.asarray([terrain.feature(float(s[0]), float(s[1])) for s in states], dtype=np.float32)
+    expected_risks = np.asarray(
+        [
+            terrain.risk_cost(float(state[0]), float(state[1]), features=expected_features[idx])
+            for idx, state in enumerate(states)
+        ],
+        dtype=np.float32,
+    )
+    assert features_t.detach().cpu().numpy() == pytest.approx(expected_features, abs=1e-6)
+    assert risks_t.detach().cpu().numpy() == pytest.approx(expected_risks, abs=1e-6)
+
+
+def test_learned_torch_terrain_risk_cost_matches_numpy_on_patch_map():
+    terrain = TerrainField(
+        enabled=True,
+        slope_scale=0.0,
+        roughness_scale=0.0,
+        friction_base=0.8,
+        friction_slope_scale=0.0,
+        friction_roughness_scale=0.0,
+        patches=[
+            {
+                "name": "risk_band",
+                "type": "band",
+                "center": [0.2, 0.0],
+                "angle": 90.0,
+                "size": [1.0, 1.0],
+                "roughness_delta": 0.7,
+                "friction_delta": -0.4,
+            }
+        ],
+    )
+    controller = make_controller()
+    controller.terrain = terrain
+    controller.terrain_risk_weight = 10.0
+    controller.terrain_risk_threshold = 0.25
+    controller.terrain_risk_power = 2.0
+    controller.terrain_risk_mode = "excess"
+    controller._setup_terrain_tensors()
+    states = torch.tensor(
+        [
+            [
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.1, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.2, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ],
+            [
+                [0.0, 1.4, 0.0, 0.0, 0.0, 0.0],
+                [0.1, 1.4, 0.0, 0.0, 0.0, 0.0],
+                [0.2, 1.4, 0.0, 0.0, 0.0, 0.0],
+            ],
+        ],
+        dtype=torch.float32,
+    )
+
+    costs_t = controller._terrain_risk_cost_batch_torch(states)
+    costs_np = controller._terrain_risk_cost_batch(states.detach().cpu().numpy())
+
+    assert costs_t.detach().cpu().numpy() == pytest.approx(costs_np, abs=1e-5)
+    assert costs_t[0].item() > costs_t[1].item()

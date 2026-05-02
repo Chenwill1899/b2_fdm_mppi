@@ -1,4 +1,4 @@
-# Stage 2 oracle residual world configuration.
+# Stage 5-E0 narrow safe corridor between terrain-risk patches.
 b2_fdm_mppi:
   ros__parameters:
     config_file: ""
@@ -6,6 +6,8 @@ b2_fdm_mppi:
 simulation:
   sampling_rate: 10.0
   time_horizon: 2.5
+  map_size: [20.0, 10.0]
+  map_origin: [0.0, -5.0]
   goal: [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]
   initial_state: [0.01, 0.01, 0.0, 0.0, 0.0, 0.0]
   minimum_distance: 0.45
@@ -71,37 +73,53 @@ cbf:
   atau: 0.2
 
 obstacles:
-  num_max: 5
+  num_max: 0
   static_enabled: true
-  virtual:
-    - [6.0, -0.5, 0.4, 0.0, 0.0, 0.0, 0.0]
-    - [12.0, 1.0, 0.4, 0.0, 0.0, 0.0, 0.0]
+  virtual: []
 
 results:
   root: "./results/sim_results"
-  run_name: "b2_omni_oracle"
+  run_name: "b2_omni_oracle_safe_corridor"
   timestamp_suffix: true
   overwrite: false
-  enable_plots: true
-  enable_animation: true
+  enable_plots: false
+  enable_animation: false
 
 execution:
   filter_enabled: false
   filter_alpha: 0.0
 
+visualization:
+  terrain_grid_resolution: 120
+
 terrain:
   enabled: true
-  friction_base: 0.72
-  slope_scale: 0.10
-  roughness_scale: 0.25
-  friction_slope_scale: 0.18
-  friction_roughness_scale: 0.10
-  goal_relief:
-    enabled: true
-    center: [18.0, 0.0]
-    sigma: [2.0, 1.2]
-    strength: 0.75
-    floor: 0.25
+  friction_base: 0.76
+  slope_scale: 0.04
+  roughness_scale: 0.08
+  friction_slope_scale: 0.12
+  friction_roughness_scale: 0.08
+  patches:
+    - name: upper_risk_wall
+      type: band
+      center: [9.0, 2.2]
+      angle: 0.0
+      size: [11.0, 1.8]
+      edge_width: 0.5
+      slope_f_delta: 0.04
+      slope_l_delta: 0.08
+      roughness_delta: 0.60
+      friction_delta: -0.30
+    - name: lower_risk_wall
+      type: band
+      center: [9.0, -2.2]
+      angle: 0.0
+      size: [11.0, 1.8]
+      edge_width: 0.5
+      slope_f_delta: -0.04
+      slope_l_delta: -0.08
+      roughness_delta: 0.60
+      friction_delta: -0.30
 
 oracle_residual:
   enabled: true
