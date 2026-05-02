@@ -355,6 +355,40 @@ Runtime profile with `profile_enabled=true`, `steps=10`, `residual_gain=0.5`:
 
 Profiling uses synchronization around timing buckets, so the profiled `mean_mppi_time_ms` is higher than normal benchmark runtime. Use it for bottleneck proportions, not direct runtime claims. The first optimization target is terrain feature/risk computation inside the Torch rollout loop.
 
+### Stage 5-C Calibrated 20-Episode Results
+
+S5-008 reran the calibrated candidates on full 20-episode ID/OOD suites with:
+
+```text
+residual_gain=0.5
+goal_xy_weight=3.5
+smooth_weight=0.5 / 1.0
+```
+
+Seeds are `123..142` (`seed = base_seed + episode_id`). OOD default nominal/learned references are reused from the existing Stage 5-B 20-episode summaries under `results/stage5_benchmark/`.
+
+| Scenario | Controller | Success | Final Dist | Delta Final | Steps | Delta Steps | Clearance | Terrain Risk | Smooth | Jerk | MPPI ms |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ID random | nominal CUDA | 1.00 | 0.6795 | +0.0000 | 137.1 | +0.0 | 3.5621 | 0.3285 | 0.003186 | 0.002828 | 4.51 |
+| ID random | learned default `g=1.0` | 1.00 | 0.6930 | +0.0135 | 155.8 | +18.7 | 3.5254 | 0.3121 | 0.002782 | 0.002014 | 48.26 |
+| ID random | calibrated `smooth=0.5` | 1.00 | 0.6733 | -0.0062 | 132.0 | -5.1 | 3.5714 | 0.3295 | 0.003493 | 0.003626 | 49.41 |
+| ID random | calibrated `smooth=1.0` | 1.00 | 0.6766 | -0.0029 | 129.8 | -7.2 | 3.5750 | 0.3282 | 0.003401 | 0.002862 | 48.97 |
+| OOD obstacle | nominal CUDA | 1.00 | 0.6768 | +0.0000 | 142.3 | +0.0 | 2.7875 | 0.3269 | 0.003156 | 0.002765 | 7.19 |
+| OOD obstacle | learned default `g=1.0` | 1.00 | 0.6878 | +0.0109 | 175.1 | +32.8 | 2.8150 | 0.3133 | 0.002764 | 0.002156 | 53.85 |
+| OOD obstacle | calibrated `smooth=0.5` | 1.00 | 0.6717 | -0.0051 | 133.8 | -8.6 | 2.8106 | 0.3318 | 0.003503 | 0.003551 | 49.60 |
+| OOD obstacle | calibrated `smooth=1.0` | 1.00 | 0.6775 | +0.0006 | 130.4 | -11.9 | 2.8696 | 0.3302 | 0.003411 | 0.002790 | 49.00 |
+| OOD terrain | nominal CUDA | 1.00 | 0.6848 | +0.0000 | 141.8 | +0.0 | 3.5747 | 0.3633 | 0.003084 | 0.002728 | 6.43 |
+| OOD terrain | learned default `g=1.0` | 1.00 | 0.6900 | +0.0051 | 153.7 | +11.8 | 3.5101 | 0.3409 | 0.002704 | 0.001871 | 51.39 |
+| OOD terrain | calibrated `smooth=0.5` | 1.00 | 0.6774 | -0.0074 | 138.4 | -3.4 | 3.5778 | 0.3680 | 0.003434 | 0.003516 | 49.73 |
+| OOD terrain | calibrated `smooth=1.0` | 1.00 | 0.6785 | -0.0063 | 130.2 | -11.7 | 3.5788 | 0.3636 | 0.003330 | 0.002775 | 49.22 |
+
+S5-008 outcome:
+
+- `residual_gain=0.5` plus `goal_xy_weight=3.5` removes the default learned controller's final-distance and steps regression on the 20-episode ID/OOD suites.
+- `smooth_weight=1.0` is the best current efficiency candidate because it gives the lowest steps in all three random-task suites while keeping final distance at or slightly better than nominal.
+- `smooth_weight=0.5` is the best final-distance candidate but increases smoothness and jerk metrics.
+- Calibration trades away much of default learned `g=1.0`'s lower terrain-risk and smoother-control behavior. Treat default `g=1.0` as the conservative/smooth reference and calibrated `g=0.5`, `goal=3.5`, `smooth=1.0` as the efficiency candidate.
+
 ## Visual Inspection Entry
 
 For single-scene human inspection of learning-before/after closed-loop behavior, use:

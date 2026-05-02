@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-05-01
+Last updated: 2026-05-02
 
 ## Current Stage
 
-Stage 5-C: closed-loop residual-gain calibration, learned cost calibration, and Torch runtime profiling.
+Stage 5-C: calibrated learned-FDM closed-loop benchmark and Stage 5-D entry decision.
 
 ## Stage 0 Acceptance Criteria
 
@@ -55,7 +55,8 @@ Stage 5-C: closed-loop residual-gain calibration, learned cost calibration, and 
 | S5-005 | P0 | done | Add residual-gain calibration and runtime profiling tools | Added `fdm.residual_gain` to NumPy/Torch learned rollout, `tools/sweep_stage5_calibration.py`, learned-only MPPI cost overrides in the benchmark runner, and `tools/profile_stage5_learned_torch.py`. Verified quick sweeps and profiler on CUDA. |
 | S5-006 | P0 | done | Run Stage 5-C quick residual-gain sweep | Standard scene favors nonzero gain; 5-episode ID quick sweep shows `residual_gain=0.0/0.25/0.5` preserves final distance and improves steps while `0.75/1.0` degrades ID random-task steps/final distance. Best next candidates: `0.25` and `0.5`. |
 | S5-007 | P0 | done | Run Stage 5-C cost sanity grid | Learned-only 5-episode ID grid at `residual_gain=0.5` shows `goal_xy_weight=3.5` improves final distance/steps versus default `2.5`; `smooth_weight=0.5` has best final distance and `smooth_weight=1.0` has fewest steps. |
-| S5-008 | P0 | todo | Run calibrated 20-episode ID/OOD benchmark | Compare nominal CUDA, default learned `residual_gain=1.0`, and calibrated learned candidate `residual_gain=0.5`, `goal_xy_weight=3.5`, with `smooth_weight=0.5/1.0` candidate selection. |
+| S5-008 | P0 | done | Run calibrated 20-episode ID/OOD benchmark | ID/OOD 20-episode sweeps confirm `residual_gain=0.5`, `goal_xy_weight=3.5` removes the default learned `g=1.0` final-distance/steps regression. `smooth_weight=1.0` is the current efficiency candidate; `smooth_weight=0.5` has slightly better final distance but worse smoothness/jerk. |
+| S5-009 | P0 | todo | Decide Stage 5-D entry or Pareto retune | S5-008 fixed efficiency but traded away part of default learned terrain-risk/smoothness advantages. Next decision: run Stage 5-D 50-100 episode benchmark with nominal/default/calibrated controllers, or first do a small Pareto sweep over obstacle/terrain/smoothness-related costs. |
 
 ## Later Stages
 

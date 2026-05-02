@@ -305,6 +305,16 @@ PR #19 result boundary:
 - learned consistently reduces terrain risk, command-real error, residual norm, smoothness, and jerk.
 - Torch CUDA learned rollout makes benchmark practical, but is still slower than nominal CUDA.
 
+S5-008 calibrated result boundary:
+
+- Calibrated learned `residual_gain=0.5`, `goal_xy_weight=3.5`, `smooth_weight=1.0` reaches 100% success on ID, OOD obstacle, and OOD terrain 20-episode suites.
+- It removes the default learned `residual_gain=1.0` regression on random-task final distance and steps:
+  - ID random: final distance `0.6766` vs nominal `0.6795`, steps `129.8` vs nominal `137.1`.
+  - OOD obstacle: final distance `0.6775` vs nominal `0.6768`, steps `130.4` vs nominal `142.3`.
+  - OOD terrain: final distance `0.6785` vs nominal `0.6848`, steps `130.2` vs nominal `141.8`.
+- The calibration trades away part of default learned `residual_gain=1.0`'s terrain-risk and smoothness advantage. Treat default learned as the conservative/smooth reference and calibrated learned as the efficiency candidate.
+- Stage 5-D should include at least nominal CUDA, learned default `residual_gain=1.0`, and calibrated learned `residual_gain=0.5`, `goal_xy_weight=3.5`, `smooth_weight=1.0`. If the paper claim needs one learned controller to improve both efficiency and risk/smoothness, run a small Pareto cost sweep before expanding to 50-100 episodes.
+
 ## Failure Modes
 
 - Missing checkpoint or normalization artifact.
