@@ -618,6 +618,19 @@ def test_omni_runner_uses_cuda_backend_when_configured(tmp_path, monkeypatch):
     assert created == [(config, 123)]
 
 
+def test_omni_runner_uses_nominal_torch_backend_when_configured(tmp_path):
+    config = make_config(tmp_path)
+    config["mppi"]["backend"] = "torch"
+    config["mppi"]["device"] = "cpu"
+
+    runner = OmniMppiSimulationRunner(config)
+
+    from b2_fdm_mppi.controllers.mppi_omni_torch import MppiOmniTorch
+
+    assert isinstance(runner.controller, MppiOmniTorch)
+    assert runner.controller.torch_device.type == "cpu"
+
+
 def test_omni_runner_summary_records_fdm_metadata(tmp_path):
     config = make_config(tmp_path, max_steps=1)
     config["fdm"] = {

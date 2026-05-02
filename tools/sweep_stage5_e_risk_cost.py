@@ -271,7 +271,7 @@ def main() -> None:
     parser.add_argument("--output", default="results/stage5_e_risk_aware/s5_e1_sanity_sweep")
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--base-seed", type=int, default=123)
-    parser.add_argument("--backend", choices=["numpy", "cuda"], default="numpy")
+    parser.add_argument("--backend", choices=["numpy", "cuda", "torch"], default="numpy")
     parser.add_argument("--controllers", default="nominal")
     parser.add_argument("--risk-weights", default="0,1,3,5,10")
     parser.add_argument("--risk-power", type=float, default=2.0)
