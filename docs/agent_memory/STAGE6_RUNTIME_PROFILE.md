@@ -120,6 +120,57 @@ Key smoke profile buckets:
 | fdm_inference_ms | 41.39 | 0.33 |
 | obstacle_cost_ms | 35.35 | 7.07 |
 
+## Fixed-Seed 2x2 Runtime Matrix
+
+The original single-controller profiler was useful for hotspot direction but could not directly compare nominal Torch, learned Torch, risk off, and risk on under identical episode seeds. `tools/profile_stage6_runtime_matrix.py` now runs the official 2x2 runtime profiling matrix:
+
+- nominal Torch, risk off;
+- nominal Torch, risk on;
+- learned Torch balanced, risk off;
+- learned Torch balanced, risk on.
+
+The tool forces explicit `scenario.random_seed = base_seed + episode_id` for random-start-goal configs and enables the appropriate Torch controller profile path for both nominal (`mppi.profile_enabled`) and learned (`fdm.profile_enabled`) controllers.
+
+Test:
+
+```bash
+python3 -m pytest tests/test_stage6_runtime_matrix.py tests/test_stage5_runtime_profile.py -q
+```
+
+Result:
+
+```text
+2 passed
+```
+
+Real paired profiler smoke:
+
+```bash
+python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed --output results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps --episodes 3 --steps 5 --base-seed 123 --backend torch --device auto --risk-weight 3 --risk-power 2.0 --risk-threshold 0.3 --risk-mode excess --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-residual-gain 0.5 --learned-goal-xy-weight 3.0 --learned-smooth-weight 0.75
+```
+
+Output: `results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps/stage6_runtime_matrix_summary.json`.
+
+Aggregate profile means:
+
+| Case | mean_mppi_time_ms | profile_mean_rollout_total_ms | terrain_features_ms | fdm_inference_ms | terrain_risk_cost_ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| nominal_risk_off | 23.76 | 10.71 | n/a | n/a | 0.053 |
+| nominal_risk_on | 18.87 | 10.28 | n/a | n/a | 4.424 |
+| learned_risk_off | 44.55 | 40.35 | 0.928 | 0.232 | 0.054 |
+| learned_risk_on | 44.09 | 38.85 | 0.913 | 0.192 | 1.122 |
+
+Paired deltas from the same run:
+
+| Pair | mean_mppi_time_ms_delta | rollout_total_ms_delta | terrain_features_ms_delta | fdm_inference_ms_delta | terrain_risk_cost_ms_delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| nominal_risk_on - nominal_risk_off | -4.89 | -0.43 | n/a | n/a | +4.371 |
+| learned_risk_on - learned_risk_off | -0.46 | -1.50 | -0.015 | -0.040 | +1.068 |
+| learned_risk_off - nominal_risk_off | +20.78 | +29.64 | n/a | n/a | +0.001 |
+| learned_risk_on - nominal_risk_on | +25.22 | +28.57 | n/a | n/a | -3.302 |
+
+Interpretation boundary: this is a short profiling run, not a paper runtime benchmark. It confirms the next large bottleneck is still learned rollout work: learned risk-on adds about `+25.22 ms` mean MPPI time and `+28.57 ms` profiled rollout time over nominal risk-on under matched seeds. Terrain-risk cost itself is not the main learned overhead; FDM rollout/feature/integration work remains the target.
+
 ## Boundary
 
 This is a first S6-002 optimization, not a complete runtime closure. Learned Torch is still slower than nominal. Remaining likely hotspots:
@@ -131,7 +182,7 @@ This is a first S6-002 optimization, not a complete runtime closure. Learned Tor
 
 Next optimization candidates:
 
-- add a paired runtime profiler that fixes scenario seeds and compares nominal Torch, learned Torch, risk off, and risk on;
+- expand the paired runtime profiler to longer fixed-seed runs after the next optimization candidate;
 - investigate Torch compilation or horizon-loop fusion for learned rollout;
 - cache or reuse terrain/risk features only where timestep semantics match;
 - profile obstacle cost separately on dense random maps.

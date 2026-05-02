@@ -1420,3 +1420,32 @@ Cross-scenario learned deltas versus nominal:
   - This is first-pass runtime optimization, not full learned-runtime closure.
   - Learned Torch remains slower than nominal.
   - Next candidates: paired runtime profiler with fixed scenario seeds, Torch compile/horizon-loop fusion, safe terrain/risk caching where timestep semantics match, and dense-obstacle cost profiling.
+
+### 2026-05-03: S6-002 Fixed-Seed 2x2 Runtime Matrix
+
+- Goal: continue Stage 6 runtime work by replacing auto-seed single-controller profile evidence with a fixed-seed same-backend 2x2 runtime matrix.
+- Branch:
+  - `codex/s6-runtime-profiling`
+- Change:
+  - Added `tools/profile_stage6_runtime_matrix.py`.
+  - The tool runs `nominal_risk_off`, `nominal_risk_on`, `learned_risk_off`, and `learned_risk_on` under backend `torch`.
+  - Random-start-goal configs use explicit `scenario.random_seed = base_seed + episode_id`, so case comparisons are paired by seed.
+  - Nominal profiling uses `mppi.profile_enabled`; learned profiling uses `fdm.profile_enabled`.
+- TDD evidence:
+  - Red test first: `python3 -m pytest tests/test_stage6_runtime_matrix.py -q` failed because `tools/profile_stage6_runtime_matrix.py` did not exist.
+  - After implementation: `python3 -m pytest tests/test_stage6_runtime_matrix.py tests/test_stage5_runtime_profile.py -q` passed with `2 passed`.
+- Real paired profiler smoke:
+  - Command: `python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed --output results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps --episodes 3 --steps 5 --base-seed 123 --backend torch --device auto --risk-weight 3 --risk-power 2.0 --risk-threshold 0.3 --risk-mode excess --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-residual-gain 0.5 --learned-goal-xy-weight 3.0 --learned-smooth-weight 0.75`
+  - Output: `results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps/stage6_runtime_matrix_summary.json`.
+- Key aggregate profile means:
+  - nominal_risk_off: `mean_mppi_time_ms=23.76`, `profile_mean_rollout_total_ms=10.71`, `terrain_risk_cost_ms=0.053`.
+  - nominal_risk_on: `mean_mppi_time_ms=18.87`, `profile_mean_rollout_total_ms=10.28`, `terrain_risk_cost_ms=4.424`.
+  - learned_risk_off: `mean_mppi_time_ms=44.55`, `profile_mean_rollout_total_ms=40.35`, `terrain_features_ms=0.928`, `fdm_inference_ms=0.232`, `terrain_risk_cost_ms=0.054`.
+  - learned_risk_on: `mean_mppi_time_ms=44.09`, `profile_mean_rollout_total_ms=38.85`, `terrain_features_ms=0.913`, `fdm_inference_ms=0.192`, `terrain_risk_cost_ms=1.122`.
+- Key paired deltas:
+  - learned_risk_on vs nominal_risk_on: `mean_mppi_time_ms_delta=+25.22`, `profile_mean_rollout_total_ms_delta=+28.57`, `terrain_risk_cost_ms_delta=-3.302`.
+  - learned_risk_off vs nominal_risk_off: `mean_mppi_time_ms_delta=+20.78`, `profile_mean_rollout_total_ms_delta=+29.64`.
+  - learned_risk_on vs learned_risk_off: `mean_mppi_time_ms_delta=-0.46`, `profile_mean_rollout_total_ms_delta=-1.50`, `terrain_risk_cost_ms_delta=+1.068`.
+- Boundary:
+  - This is a short profiling smoke, not a paper runtime benchmark.
+  - It confirms terrain-risk cost is not the dominant learned-vs-nominal runtime gap; learned rollout/feature/integration work remains the next optimization target.
