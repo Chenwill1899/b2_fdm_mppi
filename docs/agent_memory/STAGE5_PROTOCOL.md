@@ -315,6 +315,15 @@ S5-008 calibrated result boundary:
 - The calibration trades away part of default learned `residual_gain=1.0`'s terrain-risk and smoothness advantage. Treat default learned as the conservative/smooth reference and calibrated learned as the efficiency candidate.
 - Stage 5-D should include at least nominal CUDA, learned default `residual_gain=1.0`, and calibrated learned `residual_gain=0.5`, `goal_xy_weight=3.5`, `smooth_weight=1.0`. If the paper claim needs one learned controller to improve both efficiency and risk/smoothness, run a small Pareto cost sweep before expanding to 50-100 episodes.
 
+S5-009 Pareto result boundary:
+
+- The full ID grid used `residual_gain=0.4/0.5/0.6`, `goal_xy_weight=3.0/3.5/4.0`, and `smooth_weight=0.75/1.0/1.25` for `10` episodes per case.
+- OOD validation then used three selected candidates for `10` episodes each on OOD obstacle and OOD terrain.
+- `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75` is the current balanced candidate. Across ID/OOD obstacle/OOD terrain, mean deltas versus nominal are final distance `-0.0025`, steps `-5.57`, terrain risk `+0.0023`, smoothness `+0.000081`, and jerk `+0.000046`.
+- `residual_gain=0.6`, `goal_xy_weight=4.0`, `smooth_weight=1.0` is the aggressive efficiency candidate. It improves mean final distance by `-0.0066` and steps by `-13.20`, but has larger risk/smoothness/jerk penalties.
+- Stage 5-D should compare nominal CUDA, default learned `residual_gain=1.0`, current efficiency `0.5/3.5/1.0`, balanced `0.5/3.0/0.75`, and optionally aggressive efficiency `0.6/4.0/1.0`.
+- History-conditioned FDM is still deferred. The current MLP-FDM has not yet failed calibrated closed-loop evaluation strongly enough to justify changing model structure.
+
 ## Failure Modes
 
 - Missing checkpoint or normalization artifact.

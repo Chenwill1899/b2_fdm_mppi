@@ -1143,3 +1143,60 @@ results/sim_results/b2_omni_nominal_2026-04-30_14-14-06/
   - `smooth_weight=1.0` is the better current calibrated candidate for larger benchmarking because it has the best steps across ID/OOD while keeping final distance at or slightly better than nominal. `smooth_weight=0.5` gives the best final distance in most scenarios but increases smoothness/jerk cost metrics.
   - The calibration trades away part of the default learned controller's lower terrain-risk and smoother-control behavior. Default `g=1.0` remains the conservative/smooth reference, while calibrated `g=0.5`, `goal=3.5`, `smooth=1.0` is the efficiency candidate.
   - Stage 5-D should compare at least nominal CUDA, learned default `g=1.0`, and calibrated learned `g=0.5/goal=3.5/smooth=1.0` on 50-100 episodes. If terrain-risk/smoothness advantages are required in the same controller, run a small Pareto sweep over obstacle/terrain/smoothness-related weights before the larger benchmark.
+
+### 2026-05-02: S5-009 Pareto Sweep Around Calibrated Learned Controller
+
+- Goal: decide whether to enter Stage 5-D directly or first look for a more balanced learned controller near the S5-008 efficiency candidate.
+- Scope:
+  - Full ID random grid: `27` cases x `10` episodes.
+  - OOD validation: `3` selected candidates x `10` episodes on OOD obstacle and OOD terrain.
+  - References: nominal CUDA and default learned `residual_gain=1.0` on ID/OOD `10` episodes.
+- Seed mapping: `seed = base_seed + episode_id`, `base_seed=123`, `episode_id=0..9`.
+- Backend/model:
+  - backend: `cuda`
+  - learned device: `cuda`
+  - model dir: `results/fdm_baselines/stage4_mlp_seed123_hardened`
+  - checkpoint: `best_model.pt`
+  - normalization: `normalization.npz`
+- Full ID grid:
+  - Command: `python3 tools/sweep_stage5_calibration.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name s5_009_id_pareto_10ep --output results/stage5_calibration/s5_009/id_random_pareto10_seed123_cuda --episodes 10 --base-seed 123 --backend cuda --controllers learned --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --residual-gains 0.4,0.5,0.6 --cost-grid goal_xy_weight=3.0,3.5,4.0 --cost-grid smooth_weight=0.75,1.0,1.25`
+  - Output: `results/stage5_calibration/s5_009/id_random_pareto10_seed123_cuda/stage5_calibration_sweep_summary.json`
+- Reference outputs:
+  - `results/stage5_calibration/s5_009/id_random_reference10_seed123_cuda/stage5_benchmark_summary.json`
+  - `results/stage5_calibration/s5_009/ood_obstacle_reference10_seed123_cuda/stage5_benchmark_summary.json`
+  - `results/stage5_calibration/s5_009/ood_terrain_reference10_seed123_cuda/stage5_benchmark_summary.json`
+- Selected OOD validation candidates:
+  - balanced: `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75`
+  - S5-008 current: `residual_gain=0.5`, `goal_xy_weight=3.5`, `smooth_weight=1.0`
+  - aggressive efficiency: `residual_gain=0.6`, `goal_xy_weight=4.0`, `smooth_weight=1.0`
+- Failure check:
+  - S5-009 episode summaries checked: `390`
+  - failed or unsuccessful: `0`
+
+| Scenario | Controller | Success | Final | Delta Final | Steps | Delta Steps | Clearance | Delta Clear | Risk | Delta Risk | Smooth | Delta Smooth | Jerk | Delta Jerk | MPPI ms |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ID random | nominal | 1.00 | 0.6774 | +0.0000 | 136.0 | +0.0 | 3.4335 | +0.0000 | 0.3163 | +0.0000 | 0.003232 | +0.000000 | 0.002868 | +0.000000 | 5.64 |
+| ID random | default `g=1.0` | 1.00 | 0.6928 | +0.0154 | 168.4 | +32.4 | 3.3571 | -0.0763 | 0.2978 | -0.0185 | 0.002786 | -0.000446 | 0.002120 | -0.000748 | 51.64 |
+| ID random | balanced `0.5/3.0/0.75` | 1.00 | 0.6740 | -0.0034 | 132.6 | -3.4 | 3.3765 | -0.0570 | 0.3162 | -0.0001 | 0.003307 | +0.000075 | 0.002875 | +0.000007 | 50.74 |
+| ID random | current `0.5/3.5/1.0` | 1.00 | 0.6789 | +0.0015 | 129.1 | -6.9 | 3.4371 | +0.0036 | 0.3180 | +0.0017 | 0.003459 | +0.000227 | 0.002816 | -0.000052 | 49.64 |
+| ID random | efficiency `0.6/4.0/1.0` | 1.00 | 0.6761 | -0.0013 | 123.9 | -12.1 | 3.4352 | +0.0017 | 0.3216 | +0.0053 | 0.003540 | +0.000309 | 0.003201 | +0.000332 | 50.12 |
+| OOD obstacle | nominal | 1.00 | 0.6777 | +0.0000 | 140.5 | +0.0 | 2.9387 | +0.0000 | 0.3164 | +0.0000 | 0.003202 | +0.000000 | 0.002771 | +0.000000 | 5.17 |
+| OOD obstacle | default `g=1.0` | 1.00 | 0.6862 | +0.0086 | 167.5 | +27.0 | 2.9933 | +0.0546 | 0.3078 | -0.0087 | 0.002727 | -0.000475 | 0.002062 | -0.000709 | 50.99 |
+| OOD obstacle | balanced `0.5/3.0/0.75` | 1.00 | 0.6792 | +0.0015 | 133.3 | -7.2 | 3.0016 | +0.0629 | 0.3240 | +0.0076 | 0.003351 | +0.000150 | 0.002871 | +0.000100 | 52.77 |
+| OOD obstacle | current `0.5/3.5/1.0` | 1.00 | 0.6765 | -0.0012 | 129.9 | -10.6 | 3.0021 | +0.0634 | 0.3200 | +0.0035 | 0.003482 | +0.000280 | 0.002775 | +0.000004 | 50.54 |
+| OOD obstacle | efficiency `0.6/4.0/1.0` | 1.00 | 0.6738 | -0.0038 | 125.6 | -14.9 | 3.0298 | +0.0912 | 0.3228 | +0.0064 | 0.003560 | +0.000358 | 0.003107 | +0.000335 | 49.95 |
+| OOD terrain | nominal | 1.00 | 0.6872 | +0.0000 | 141.1 | +0.0 | 3.4548 | +0.0000 | 0.3512 | +0.0000 | 0.003183 | +0.000000 | 0.002735 | +0.000000 | 5.51 |
+| OOD terrain | default `g=1.0` | 1.00 | 0.6892 | +0.0020 | 167.3 | +26.2 | 3.3280 | -0.1269 | 0.3174 | -0.0338 | 0.002722 | -0.000461 | 0.001868 | -0.000867 | 52.43 |
+| OOD terrain | balanced `0.5/3.0/0.75` | 1.00 | 0.6817 | -0.0056 | 135.0 | -6.1 | 3.3819 | -0.0730 | 0.3508 | -0.0004 | 0.003200 | +0.000017 | 0.002765 | +0.000030 | 49.86 |
+| OOD terrain | current `0.5/3.5/1.0` | 1.00 | 0.6824 | -0.0048 | 127.4 | -13.7 | 3.4533 | -0.0016 | 0.3504 | -0.0008 | 0.003398 | +0.000215 | 0.002756 | +0.000021 | 51.00 |
+| OOD terrain | efficiency `0.6/4.0/1.0` | 1.00 | 0.6726 | -0.0146 | 128.5 | -12.6 | 3.4046 | -0.0502 | 0.3546 | +0.0033 | 0.003528 | +0.000345 | 0.002981 | +0.000246 | 51.28 |
+
+- Cross-scenario average deltas versus nominal:
+  - balanced `0.5/3.0/0.75`: final `-0.0025`, steps `-5.57`, risk `+0.0023`, smooth `+0.000081`, jerk `+0.000046`
+  - current `0.5/3.5/1.0`: final `-0.0015`, steps `-10.4`, risk `+0.0015`, smooth `+0.000241`, jerk `-0.000009`
+  - efficiency `0.6/4.0/1.0`: final `-0.0066`, steps `-13.2`, risk `+0.0050`, smooth `+0.000337`, jerk `+0.000304`
+- Conclusion:
+  - The Pareto sweep found a real balanced candidate: `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75`. It preserves 100% success, improves average final distance and steps, and keeps terrain risk/smoothness/jerk close to nominal.
+  - It does not dominate every metric: OOD obstacle final distance is slightly worse than nominal by `+0.0015`, and clearance can be slightly lower in ID/OOD terrain. Treat it as a balanced candidate, not a final winner.
+  - `residual_gain=0.6`, `goal_xy_weight=4.0`, `smooth_weight=1.0` is the aggressive efficiency candidate. It has the strongest final-distance/steps gains but the largest risk/smoothness/jerk penalty.
+  - Stage 5-D should include nominal CUDA, default learned `g=1.0`, S5-008 current efficiency `0.5/3.5/1.0`, S5-009 balanced `0.5/3.0/0.75`, and optionally aggressive efficiency `0.6/4.0/1.0` if runtime budget allows.

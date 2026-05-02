@@ -4,7 +4,7 @@ Last updated: 2026-05-02
 
 ## Current Stage
 
-Stage 5-C: calibrated learned-FDM closed-loop benchmark and Stage 5-D entry decision.
+Stage 5-D entry: larger ID/OOD benchmark with current, balanced, and efficiency learned candidates.
 
 ## Stage 0 Acceptance Criteria
 
@@ -56,7 +56,8 @@ Stage 5-C: calibrated learned-FDM closed-loop benchmark and Stage 5-D entry deci
 | S5-006 | P0 | done | Run Stage 5-C quick residual-gain sweep | Standard scene favors nonzero gain; 5-episode ID quick sweep shows `residual_gain=0.0/0.25/0.5` preserves final distance and improves steps while `0.75/1.0` degrades ID random-task steps/final distance. Best next candidates: `0.25` and `0.5`. |
 | S5-007 | P0 | done | Run Stage 5-C cost sanity grid | Learned-only 5-episode ID grid at `residual_gain=0.5` shows `goal_xy_weight=3.5` improves final distance/steps versus default `2.5`; `smooth_weight=0.5` has best final distance and `smooth_weight=1.0` has fewest steps. |
 | S5-008 | P0 | done | Run calibrated 20-episode ID/OOD benchmark | ID/OOD 20-episode sweeps confirm `residual_gain=0.5`, `goal_xy_weight=3.5` removes the default learned `g=1.0` final-distance/steps regression. `smooth_weight=1.0` is the current efficiency candidate; `smooth_weight=0.5` has slightly better final distance but worse smoothness/jerk. |
-| S5-009 | P0 | todo | Decide Stage 5-D entry or Pareto retune | S5-008 fixed efficiency but traded away part of default learned terrain-risk/smoothness advantages. Next decision: run Stage 5-D 50-100 episode benchmark with nominal/default/calibrated controllers, or first do a small Pareto sweep over obstacle/terrain/smoothness-related costs. |
+| S5-009 | P0 | done | Decide Stage 5-D entry or Pareto retune | Ran ID 27-case Pareto sweep plus OOD 3-candidate validation. Balanced candidate `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75` keeps risk/smoothness/jerk closest to nominal while improving average final distance and steps. Aggressive efficiency candidate `0.6/4.0/1.0` gives strongest final/steps gains but larger risk/smoothness cost. |
+| S5-010 | P0 | todo | Run Stage 5-D 50/100 episode ID/OOD benchmark | Compare nominal CUDA, default learned `g=1.0`, current efficiency `0.5/3.5/1.0`, balanced `0.5/3.0/0.75`, and optionally aggressive efficiency `0.6/4.0/1.0` across ID random, OOD obstacle, and OOD terrain. |
 
 ## Later Stages
 
@@ -66,6 +67,6 @@ Stage 5-C: calibrated learned-FDM closed-loop benchmark and Stage 5-D entry deci
 | 2 | done | Oracle residual world. |
 | 3.5 | done | Parallel Oracle Dataset Generation with explicit episode seed mapping. |
 | 4 | done | Residual velocity FDM training baseline and open-loop/OOD validation. |
-| 5 | in_progress | Learned FDM-MPPI closed-loop calibration, profiling, and larger calibrated ID/OOD benchmark. |
+| 5 | in_progress | Stage 5-D larger ID/OOD benchmark with calibrated learned-FDM candidates. |
 | 6 | pending | Unified evaluation system. |
 | 7 | pending | Paper-ready experiments and figures. |
