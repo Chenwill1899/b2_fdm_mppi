@@ -1280,6 +1280,8 @@ Cross-scenario learned deltas versus nominal:
   - `tables/stage5/stage5_paired_episode_deltas.csv`
   - `tables/stage5/stage5_runtime.csv/md`
   - `tables/stage5/stage5_result_package_manifest.json`
+- Visualization note:
+  - trajectory gallery plots the goal marker and a dashed goal-tolerance circle from `simulation.minimum_distance`, so successful trajectories do not need to terminate exactly on the star marker.
 - Generated local package:
   - `results/stage6_result_package/stage5_result_package.zip`
 - Style:

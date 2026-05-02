@@ -55,7 +55,7 @@ S5-010 supports multiple calibrated learned-FDM-MPPI operating modes, not a sing
 - `stage5_main_result_bars.png`: mean metric comparison across scenarios and controllers.
 - `stage5_paired_delta_boxplots.png`: per-episode learned-minus-nominal deltas for final distance, steps, clearance, terrain risk, smoothness, jerk, and runtime.
 - `stage5_pareto_scatter.png`: steps-vs-terrain-risk Pareto view.
-- `stage5_trajectory_gallery.png`: representative paired trajectories for the three scenarios.
+- `stage5_trajectory_gallery.png`: representative paired trajectories for the three scenarios. The dashed circle around each goal is `simulation.minimum_distance`, i.e. the arrival tolerance.
 - `stage5_runtime_bars.png`: runtime comparison.
 - `stage5_failure_tradeoff_analysis.png`: compact trade-off summary.
 

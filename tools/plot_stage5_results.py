@@ -390,6 +390,11 @@ def load_obstacles(config_path: Path) -> list[tuple[float, float, float]]:
     return obstacles
 
 
+def load_goal_tolerance(config_path: Path) -> float:
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    return float(config.get("simulation", {}).get("minimum_distance", 0.0))
+
+
 def save_trajectory_gallery(run_df: pd.DataFrame, paired_df: pd.DataFrame, figure_dir: Path) -> Path:
     choices = choose_typical_episodes(paired_df)
     fig, axes = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
@@ -406,12 +411,13 @@ def save_trajectory_gallery(run_df: pd.DataFrame, paired_df: pd.DataFrame, figur
         goal_y = float(next(iter(trajectories.values()))["y_des"].iloc[0])
         start_x = float(next(iter(trajectories.values()))["x"].iloc[0])
         start_y = float(next(iter(trajectories.values()))["y"].iloc[0])
-        xmin = min(float(all_x.min()), goal_x, start_x) - 3.0
-        xmax = max(float(all_x.max()), goal_x, start_x) + 3.0
-        ymin = min(float(all_y.min()), goal_y, start_y) - 3.0
-        ymax = max(float(all_y.max()), goal_y, start_y) + 3.0
-
         config_path = run_path(run_df, scenario, "nominal", episode) / "config.yaml"
+        goal_tolerance = load_goal_tolerance(config_path)
+        xmin = min(float(all_x.min()), goal_x - goal_tolerance, start_x) - 3.0
+        xmax = max(float(all_x.max()), goal_x + goal_tolerance, start_x) + 3.0
+        ymin = min(float(all_y.min()), goal_y - goal_tolerance, start_y) - 3.0
+        ymax = max(float(all_y.max()), goal_y + goal_tolerance, start_y) + 3.0
+
         for ox, oy, radius in load_obstacles(config_path):
             if xmin - radius <= ox <= xmax + radius and ymin - radius <= oy <= ymax + radius:
                 circle = plt.Circle((ox, oy), radius, color="#9ca3af", alpha=0.28, linewidth=0)
@@ -421,6 +427,18 @@ def save_trajectory_gallery(run_df: pd.DataFrame, paired_df: pd.DataFrame, figur
             ax.plot(df["x"], df["y"], color=COLORS[controller], linewidth=2.0, label=CONTROLLER_LABELS[controller])
         ax.scatter([start_x], [start_y], marker="o", s=70, color="#111111", label="Start")
         ax.scatter([goal_x], [goal_y], marker="*", s=130, color="#f59e0b", edgecolor="#111111", linewidth=0.5, label="Goal")
+        if goal_tolerance > 0.0:
+            goal_circle = plt.Circle(
+                (goal_x, goal_y),
+                goal_tolerance,
+                fill=False,
+                linestyle="--",
+                linewidth=1.4,
+                edgecolor="#f59e0b",
+                alpha=0.95,
+                label="Goal tolerance",
+            )
+            ax.add_patch(goal_circle)
         ax.set_title(f"{SCENARIO_LABELS[scenario]} episode {episode:04d}")
         ax.set_aspect("equal", adjustable="box")
         ax.set_xlim(xmin, xmax)
@@ -549,7 +567,7 @@ S5-010 supports multiple calibrated learned-FDM-MPPI operating modes, not a sing
 - `stage5_main_result_bars.png`: mean metric comparison across scenarios and controllers.
 - `stage5_paired_delta_boxplots.png`: per-episode learned-minus-nominal deltas for final distance, steps, clearance, terrain risk, smoothness, jerk, and runtime.
 - `stage5_pareto_scatter.png`: steps-vs-terrain-risk Pareto view.
-- `stage5_trajectory_gallery.png`: representative paired trajectories for the three scenarios.
+- `stage5_trajectory_gallery.png`: representative paired trajectories for the three scenarios. The dashed circle around each goal is `simulation.minimum_distance`, i.e. the arrival tolerance.
 - `stage5_runtime_bars.png`: runtime comparison.
 - `stage5_failure_tradeoff_analysis.png`: compact trade-off summary.
 
