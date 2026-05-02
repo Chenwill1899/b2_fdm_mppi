@@ -35,6 +35,7 @@ DEFAULT_METRICS = (
     "cumulative_terrain_risk",
     "max_terrain_risk",
     "terrain_risk_excess",
+    "terrain_risk_exposure_ratio",
     "control_smoothness",
     "control_jerk",
     "mean_mppi_time_ms",
@@ -230,7 +231,7 @@ def _save_paired_delta_boxplots(cases: list[dict], path: Path) -> None:
             ax.axhline(0.0, color="#333333", linestyle="--", linewidth=1)
         ax.set_title(f"Delta {metric}")
         ax.tick_params(axis="x", rotation=45)
-    fig.savefig(path, dpi=180)
+    _save_figure(fig, path)
     plt.close(fig)
 
 
@@ -251,7 +252,7 @@ def _save_risk_pareto(sweep: dict, path: Path) -> None:
     handles, labels = ax.get_legend_handles_labels()
     if handles:
         ax.legend(handles, labels)
-    fig.savefig(path, dpi=180)
+    _save_figure(fig, path)
     plt.close(fig)
 
 
@@ -288,8 +289,14 @@ def _plot_mean_series(records: list[tuple[dict, dict]], path: Path, *, cumulativ
     ax.set_title("Mean cumulative terrain risk" if cumulative else "Mean terrain risk")
     if ax.lines:
         ax.legend(fontsize=7, ncol=2)
-    fig.savefig(path, dpi=180)
+    _save_figure(fig, path)
     plt.close(fig)
+
+
+def _save_figure(fig, path: Path) -> None:
+    fig.savefig(path, dpi=300)
+    if path.suffix.lower() == ".png":
+        fig.savefig(path.with_suffix(".pdf"))
 
 
 def _read_risk_series(path: Path) -> np.ndarray:
