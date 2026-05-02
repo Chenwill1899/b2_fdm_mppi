@@ -31,6 +31,11 @@ RUN_METRICS = (
     "path_length",
     "min_obstacle_clearance",
     "mean_terrain_risk",
+    "max_terrain_risk",
+    "cumulative_terrain_risk",
+    "terrain_risk_excess",
+    "terrain_risk_excess_integral",
+    "terrain_risk_exposure_ratio",
     "mean_cmd_real_error",
     "mean_residual_norm",
     "control_smoothness",
@@ -46,6 +51,11 @@ NUMERIC_METRICS = (
     "path_length",
     "min_obstacle_clearance",
     "mean_terrain_risk",
+    "max_terrain_risk",
+    "cumulative_terrain_risk",
+    "terrain_risk_excess",
+    "terrain_risk_excess_integral",
+    "terrain_risk_exposure_ratio",
     "mean_cmd_real_error",
     "mean_residual_norm",
     "control_smoothness",
@@ -64,6 +74,13 @@ LEARNED_MPPI_OVERRIDE_KEYS = (
     "lateral_weight",
     "yaw_rate_weight",
 )
+MPPI_OVERRIDE_KEYS = (
+    "terrain_risk_weight",
+    "terrain_risk_power",
+    "terrain_risk_threshold",
+    "terrain_risk_mode",
+)
+MPPI_STRING_OVERRIDE_KEYS = {"terrain_risk_mode"}
 
 
 def run_benchmark(
@@ -80,6 +97,7 @@ def run_benchmark(
     fdm_normalization: str | Path = "normalization.npz",
     fdm_device: str | None = None,
     fdm_residual_gain: float = 1.0,
+    mppi_overrides: dict[str, float | str] | None = None,
     learned_mppi_overrides: dict[str, float] | None = None,
     command: str | None = None,
     argv: Sequence[str] | None = None,
@@ -90,6 +108,7 @@ def run_benchmark(
         raise ValueError("Stage 5 benchmark supports only numpy or cuda backends")
     fdm_device = fdm_device or ("cuda" if backend == "cuda" else "cpu")
     controllers = tuple(_validate_controllers(controllers))
+    mppi_overrides = _validate_mppi_overrides(mppi_overrides or {})
     learned_mppi_overrides = _validate_learned_mppi_overrides(learned_mppi_overrides or {})
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -113,6 +132,7 @@ def run_benchmark(
                 fdm_normalization=fdm_normalization,
                 fdm_device=fdm_device,
                 fdm_residual_gain=fdm_residual_gain,
+                mppi_overrides=mppi_overrides,
                 learned_mppi_overrides=learned_mppi_overrides,
             )
             runner = runner_cls(
@@ -151,6 +171,7 @@ def run_benchmark(
             "fdm_normalization": str(fdm_normalization),
             "fdm_device": str(fdm_device),
             "fdm_residual_gain": float(fdm_residual_gain),
+            "mppi_overrides": dict(mppi_overrides),
             "learned_mppi_overrides": dict(learned_mppi_overrides),
             "timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
             **current_git_metadata(),
@@ -180,6 +201,7 @@ def prepare_run_config(
     fdm_normalization: str | Path,
     fdm_device: str,
     fdm_residual_gain: float = 1.0,
+    mppi_overrides: dict[str, float | str] | None = None,
     learned_mppi_overrides: dict[str, float] | None = None,
 ) -> dict:
     if controller not in VALID_CONTROLLERS:
@@ -187,6 +209,7 @@ def prepare_run_config(
     config = copy.deepcopy(base_config)
     config.setdefault("simulation", {})["world_mode"] = "oracle"
     config.setdefault("mppi", {})["backend"] = str(backend).lower()
+    _apply_mppi_overrides(config, mppi_overrides or {})
     _apply_episode_seed(config, seed)
     safe_scenario = _safe_name(scenario_name)
     config["results"] = {
@@ -412,6 +435,25 @@ def parse_learned_mppi_overrides(entries: Sequence[str] | None) -> dict[str, flo
     return overrides
 
 
+def parse_mppi_overrides(entries: Sequence[str] | None) -> dict[str, float | str]:
+    overrides: dict[str, float | str] = {}
+    for entry in entries or []:
+        if "=" not in str(entry):
+            raise ValueError(f"Expected shared MPPI override in KEY=VALUE form, got: {entry}")
+        key, value = str(entry).split("=", 1)
+        key = key.strip()
+        if key not in MPPI_OVERRIDE_KEYS:
+            raise ValueError(f"Unsupported shared MPPI override '{key}'. Expected one of {MPPI_OVERRIDE_KEYS}")
+        if key in MPPI_STRING_OVERRIDE_KEYS:
+            overrides[key] = value.strip()
+        else:
+            try:
+                overrides[key] = float(value)
+            except ValueError as exc:
+                raise ValueError(f"Override '{entry}' must use a numeric value") from exc
+    return overrides
+
+
 def _validate_learned_mppi_overrides(overrides: dict[str, float]) -> dict[str, float]:
     parsed = {}
     for key, value in overrides.items():
@@ -421,6 +463,27 @@ def _validate_learned_mppi_overrides(overrides: dict[str, float]) -> dict[str, f
             )
         parsed[key] = float(value)
     return parsed
+
+
+def _validate_mppi_overrides(overrides: dict[str, float | str]) -> dict[str, float | str]:
+    parsed: dict[str, float | str] = {}
+    for key, value in overrides.items():
+        if key not in MPPI_OVERRIDE_KEYS:
+            raise ValueError(f"Unsupported shared MPPI override '{key}'. Expected one of {MPPI_OVERRIDE_KEYS}")
+        if key in MPPI_STRING_OVERRIDE_KEYS:
+            parsed[key] = str(value).strip().lower()
+        else:
+            parsed[key] = float(value)
+    return parsed
+
+
+def _apply_mppi_overrides(config: dict, overrides: dict[str, float | str]) -> None:
+    validated = _validate_mppi_overrides(overrides)
+    if not validated:
+        return
+    mppi = config.setdefault("mppi", {})
+    for key, value in validated.items():
+        mppi[key] = value
 
 
 def _apply_learned_mppi_overrides(config: dict, overrides: dict[str, float]) -> None:
@@ -454,6 +517,13 @@ def main() -> None:
     parser.add_argument("--fdm-device", default=None)
     parser.add_argument("--fdm-residual-gain", type=float, default=1.0)
     parser.add_argument(
+        "--mppi-override",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Apply a shared MPPI override to nominal and learned controllers; repeat for multiple keys.",
+    )
+    parser.add_argument(
         "--learned-mppi-override",
         action="append",
         default=[],
@@ -475,6 +545,7 @@ def main() -> None:
         fdm_normalization=args.fdm_normalization,
         fdm_device=args.fdm_device or ("cuda" if args.backend == "cuda" else "cpu"),
         fdm_residual_gain=args.fdm_residual_gain,
+        mppi_overrides=parse_mppi_overrides(args.mppi_override),
         learned_mppi_overrides=parse_learned_mppi_overrides(args.learned_mppi_override),
         command=shell_join([sys.executable, *sys.argv]),
         argv=[sys.executable, *sys.argv],

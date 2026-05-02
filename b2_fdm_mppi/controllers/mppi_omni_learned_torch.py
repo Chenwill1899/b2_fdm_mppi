@@ -112,6 +112,12 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
             yaw_rate_weight=float(overrides.get("yaw_rate_weight", mppi.get("yaw_rate_weight", 0.0))),
             accel_weight=float(overrides.get("accel_weight", mppi.get("accel_weight", 0.0))),
             jerk_weight=float(overrides.get("jerk_weight", mppi.get("jerk_weight", 0.0))),
+            terrain_risk_weight=float(overrides.get("terrain_risk_weight", mppi.get("terrain_risk_weight", 0.0))),
+            terrain_risk_power=float(overrides.get("terrain_risk_power", mppi.get("terrain_risk_power", 2.0))),
+            terrain_risk_threshold=float(
+                overrides.get("terrain_risk_threshold", mppi.get("terrain_risk_threshold", 0.0))
+            ),
+            terrain_risk_mode=str(overrides.get("terrain_risk_mode", mppi.get("terrain_risk_mode", "excess"))),
             robot_radius=float(robot["radius"]),
             safety_dist=float(robot["safety_dist"]),
             draw_num_traj=int(mppi["draw_num_traj"]),
@@ -240,6 +246,9 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
         profile_start = self._profile_start()
         obstacle_cost = self._obstacle_cost_batch_torch(states[:, 1:, :], obstacles)
         self._profile_stop("obstacle_cost_ms", profile_start)
+        profile_start = self._profile_start()
+        terrain_risk_cost = self._terrain_risk_cost_batch_torch(states[:, 1:, :])
+        self._profile_stop("terrain_risk_cost_ms", profile_start)
         return (
             goal_cost
             + yaw_cost
@@ -250,6 +259,7 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
             + lateral_cost
             + yaw_rate_cost
             + obstacle_cost
+            + terrain_risk_cost
         ).to(torch.float32)
 
     def _rollout_batch_torch(
@@ -331,6 +341,29 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
             costs += self.obstacle_soft_weight * torch.sum(soft_margin * soft_margin, dim=(1, 2))
         return costs
 
+    def _terrain_risk_cost_batch_torch(self, states: torch.Tensor) -> torch.Tensor:
+        costs = torch.zeros(states.shape[0], dtype=torch.float32, device=self.torch_device)
+        if self.terrain_risk_weight <= 0.0 or self.terrain_risk_mode == "none" or not self.terrain.enabled:
+            return costs
+        num_samples, horizon_steps, state_dim = states.shape
+        flat_states = states.reshape(num_samples * horizon_steps, state_dim)
+        _features, risks = self._terrain_features_torch(flat_states)
+        risks = risks.reshape(num_samples, horizon_steps)
+        terms = self._terrain_risk_terms_torch(risks)
+        return self.terrain_risk_weight * torch.sum(terms, dim=1)
+
+    def _terrain_risk_terms_torch(self, risks: torch.Tensor) -> torch.Tensor:
+        mode = str(self.terrain_risk_mode).lower()
+        if mode == "cumulative":
+            values = torch.clamp(risks, min=0.0)
+        elif mode == "excess":
+            values = torch.clamp(risks - self.terrain_risk_threshold, min=0.0)
+        elif mode == "none":
+            return torch.zeros_like(risks, dtype=torch.float32, device=self.torch_device)
+        else:
+            raise ValueError(f"Unsupported terrain_risk_mode: {self.terrain_risk_mode}")
+        return torch.pow(values, self.terrain_risk_power).to(torch.float32)
+
     def _terrain_features_torch(self, states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         x = states[:, 0]
         y = states[:, 1]
@@ -360,10 +393,82 @@ class LearnedFdmMppiOmniTorch(MppiOmniNumpy):
         slope_l = slope_l * attenuation
         roughness = roughness * attenuation
         friction = 1.0 - attenuation * (1.0 - friction)
+        slope_f, slope_l, roughness, friction = self._apply_terrain_patches_torch(
+            x,
+            y,
+            slope_f,
+            slope_l,
+            roughness,
+            friction,
+        )
         features = torch.stack([slope_f, slope_l, roughness, friction], dim=1).to(torch.float32)
         w0, w1, w2, w3 = self.terrain.risk_weights
         risks = w0 * torch.abs(slope_f) + w1 * torch.abs(slope_l) + w2 * roughness + w3 * (1.0 - friction)
         return features, risks.to(torch.float32)
+
+    def _apply_terrain_patches_torch(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        slope_f: torch.Tensor,
+        slope_l: torch.Tensor,
+        roughness: torch.Tensor,
+        friction: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        for patch in getattr(self.terrain, "patches", []):
+            influence = self._terrain_patch_influence_torch(patch, x, y)
+            slope_f = slope_f + influence * float(patch.get("slope_f_delta", 0.0))
+            slope_l = slope_l + influence * float(patch.get("slope_l_delta", 0.0))
+            roughness = roughness + influence * float(patch.get("roughness_delta", 0.0))
+            friction = friction + influence * float(patch.get("friction_delta", 0.0))
+        roughness = torch.clamp(roughness, 0.0, 1.0)
+        friction = torch.clamp(friction, 0.2, 1.0)
+        return slope_f, slope_l, roughness, friction
+
+    def _terrain_patch_influence_torch(self, patch: dict, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        local_x, local_y = self._terrain_patch_local_xy_torch(patch, x, y)
+        size = patch["size"]
+        patch_type = str(patch.get("type", "ellipse")).lower()
+        if patch_type == "ellipse":
+            half_x = max(1e-6, 0.5 * float(size[0]))
+            half_y = max(1e-6, 0.5 * float(size[1]))
+            normalized_distance = torch.sqrt((local_x / half_x) ** 2 + (local_y / half_y) ** 2)
+            outside_distance = (normalized_distance - 1.0) * min(half_x, half_y)
+            return self._smooth_patch_influence_torch(outside_distance, float(patch["edge_width"]))
+        if patch_type == "band":
+            half_length = max(1e-6, 0.5 * float(size[0]))
+            half_width = max(1e-6, 0.5 * float(size[1]))
+            outside_distance = torch.maximum(torch.abs(local_x) - half_length, torch.abs(local_y) - half_width)
+            return self._smooth_patch_influence_torch(outside_distance, float(patch["edge_width"]))
+        raise ValueError(f"Unsupported terrain patch type: {patch_type}")
+
+    def _terrain_patch_local_xy_torch(
+        self,
+        patch: dict,
+        x: torch.Tensor,
+        y: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        dx = x - float(patch["center"][0])
+        dy = y - float(patch["center"][1])
+        angle = float(np.deg2rad(float(patch.get("angle", 0.0))))
+        cos_a = float(np.cos(angle))
+        sin_a = float(np.sin(angle))
+        return (
+            cos_a * dx + sin_a * dy,
+            -sin_a * dx + cos_a * dy,
+        )
+
+    def _smooth_patch_influence_torch(self, outside_distance: torch.Tensor, edge_width: float) -> torch.Tensor:
+        if edge_width <= 1e-6:
+            return torch.where(
+                outside_distance <= 0.0,
+                torch.ones_like(outside_distance, dtype=torch.float32, device=self.torch_device),
+                torch.zeros_like(outside_distance, dtype=torch.float32, device=self.torch_device),
+            )
+        t = torch.clamp(outside_distance / edge_width, 0.0, 1.0)
+        smooth = t * t * (3.0 - 2.0 * t)
+        influence = 1.0 - smooth
+        return torch.where(outside_distance <= 0.0, torch.ones_like(influence), influence).to(torch.float32)
 
     def _bilinear_sample_torch(self, grid: torch.Tensor, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         x_min, x_max = self.terrain.noise_x_range

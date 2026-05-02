@@ -31,6 +31,7 @@ class TerrainField:
         noise_slope_weight: float = 0.08,
         noise_x_range: tuple[float, float] = (0.0, 100.0),
         noise_y_range: tuple[float, float] = (0.0, 100.0),
+        patches: list[dict] | None = None,
     ) -> None:
         self.enabled = bool(enabled)
         self.slope_scale = float(slope_scale)
@@ -52,6 +53,7 @@ class TerrainField:
         self.noise_slope_weight = float(noise_slope_weight)
         self.noise_x_range = tuple(float(v) for v in noise_x_range)
         self.noise_y_range = tuple(float(v) for v in noise_y_range)
+        self.patches = [self._normalize_patch(patch) for patch in (patches or [])]
         self._noise_grid = self._build_noise_grid() if self.noise_enabled else None
         if self._noise_grid is not None:
             grad_y, grad_x = np.gradient(self._noise_grid)
@@ -85,6 +87,7 @@ class TerrainField:
             noise_slope_weight=float(config.get("noise_slope_weight", 0.08)),
             noise_x_range=tuple(config.get("noise_x_range", (0.0, 100.0))),
             noise_y_range=tuple(config.get("noise_y_range", (0.0, 100.0))),
+            patches=list(config.get("patches", [])),
         )
 
     def feature(self, x: float, y: float) -> np.ndarray:
@@ -114,6 +117,14 @@ class TerrainField:
         slope_l *= attenuation
         roughness *= attenuation
         friction = 1.0 - attenuation * (1.0 - friction)
+        slope_f, slope_l, roughness, friction = self._apply_patches(
+            float(x),
+            float(y),
+            slope_f,
+            slope_l,
+            roughness,
+            friction,
+        )
         return np.array([slope_f, slope_l, roughness, friction], dtype=np.float32)
 
     def risk_cost(self, x: float, y: float, *, features: np.ndarray | None = None) -> float:
@@ -124,6 +135,98 @@ class TerrainField:
         slope_f, slope_l, roughness, friction = (float(val) for val in features)
         w0, w1, w2, w3 = self.risk_weights
         return float(w0 * abs(slope_f) + w1 * abs(slope_l) + w2 * roughness + w3 * (1.0 - friction))
+
+    def patch_influence(self, patch: dict, x: float, y: float) -> float:
+        patch_type = str(patch.get("type", "ellipse")).lower()
+        local_x, local_y = self._patch_local_xy(patch, x, y)
+        size = patch["size"]
+        if patch_type == "ellipse":
+            half_x = max(1e-6, 0.5 * float(size[0]))
+            half_y = max(1e-6, 0.5 * float(size[1]))
+            normalized_distance = float(np.sqrt((local_x / half_x) ** 2 + (local_y / half_y) ** 2))
+            outside_distance = (normalized_distance - 1.0) * min(half_x, half_y)
+            return self._smooth_patch_influence(outside_distance, patch["edge_width"])
+        if patch_type == "band":
+            half_length = max(1e-6, 0.5 * float(size[0]))
+            half_width = max(1e-6, 0.5 * float(size[1]))
+            outside_distance = max(abs(local_x) - half_length, abs(local_y) - half_width)
+            return self._smooth_patch_influence(outside_distance, patch["edge_width"])
+        raise ValueError(f"Unsupported terrain patch type: {patch_type}")
+
+    def patch_influences(self, x: float, y: float) -> dict[str, float]:
+        return {
+            str(patch["name"]): self.patch_influence(patch, x, y)
+            for patch in self.patches
+        }
+
+    @staticmethod
+    def _normalize_patch(patch: dict) -> dict:
+        patch_type = str(patch.get("type", "ellipse")).lower()
+        if patch_type not in {"ellipse", "band"}:
+            raise ValueError(f"Unsupported terrain patch type: {patch_type}")
+        center = patch.get("center", [0.0, 0.0])
+        size = patch.get("size", [1.0, 1.0])
+        if len(center) != 2:
+            raise ValueError("terrain patch center must have two values")
+        if len(size) != 2:
+            raise ValueError("terrain patch size must have two values")
+        return {
+            "name": str(patch.get("name", patch_type)),
+            "type": patch_type,
+            "center": [float(center[0]), float(center[1])],
+            "angle": float(patch.get("angle", 0.0)),
+            "size": [float(size[0]), float(size[1])],
+            "edge_width": max(0.0, float(patch.get("edge_width", 0.0))),
+            "slope_f_delta": float(patch.get("slope_f_delta", 0.0)),
+            "slope_l_delta": float(patch.get("slope_l_delta", 0.0)),
+            "roughness_delta": float(patch.get("roughness_delta", 0.0)),
+            "friction_delta": float(patch.get("friction_delta", 0.0)),
+        }
+
+    def _apply_patches(
+        self,
+        x: float,
+        y: float,
+        slope_f: float,
+        slope_l: float,
+        roughness: float,
+        friction: float,
+    ) -> tuple[float, float, float, float]:
+        if not self.patches:
+            return slope_f, slope_l, roughness, friction
+        for patch in self.patches:
+            influence = self.patch_influence(patch, x, y)
+            if influence <= 0.0:
+                continue
+            slope_f += influence * patch["slope_f_delta"]
+            slope_l += influence * patch["slope_l_delta"]
+            roughness += influence * patch["roughness_delta"]
+            friction += influence * patch["friction_delta"]
+        roughness = float(np.clip(roughness, 0.0, 1.0))
+        friction = float(np.clip(friction, 0.2, 1.0))
+        return slope_f, slope_l, roughness, friction
+
+    @staticmethod
+    def _patch_local_xy(patch: dict, x: float, y: float) -> tuple[float, float]:
+        dx = float(x) - float(patch["center"][0])
+        dy = float(y) - float(patch["center"][1])
+        angle = np.deg2rad(float(patch.get("angle", 0.0)))
+        cos_a = float(np.cos(angle))
+        sin_a = float(np.sin(angle))
+        return (
+            cos_a * dx + sin_a * dy,
+            -sin_a * dx + cos_a * dy,
+        )
+
+    @staticmethod
+    def _smooth_patch_influence(outside_distance: float, edge_width: float) -> float:
+        if outside_distance <= 0.0:
+            return 1.0
+        if edge_width <= 1e-6 or outside_distance >= edge_width:
+            return 0.0
+        t = float(np.clip(outside_distance / edge_width, 0.0, 1.0))
+        smooth = t * t * (3.0 - 2.0 * t)
+        return float(1.0 - smooth)
 
     def _build_noise_grid(self) -> np.ndarray:
         rows = max(2, int(self.noise_grid_size[0]))

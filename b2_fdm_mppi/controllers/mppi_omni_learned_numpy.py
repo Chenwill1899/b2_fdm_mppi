@@ -37,6 +37,7 @@ class LearnedFdmMppiOmniNumpy(MppiOmniNumpy):
         sampling_rate = float(sim["sampling_rate"])
         dt = 1.0 / sampling_rate
         horizon_steps = int(float(sim["time_horizon"]) * sampling_rate)
+        terrain = TerrainField.from_config(config.get("terrain"))
         if learned_dynamics is None:
             dynamics_robot = OmniB2(
                 dt,
@@ -44,7 +45,6 @@ class LearnedFdmMppiOmniNumpy(MppiOmniNumpy):
                 float(robot["max_vy"]),
                 float(robot["max_wz"]),
             )
-            terrain = TerrainField.from_config(config.get("terrain"))
             fdm = config.get("fdm", {})
             learned_dynamics = LearnedResidualDynamics.from_artifacts(
                 fdm["model_dir"],
@@ -82,6 +82,13 @@ class LearnedFdmMppiOmniNumpy(MppiOmniNumpy):
             yaw_rate_weight=float(overrides.get("yaw_rate_weight", mppi.get("yaw_rate_weight", 0.0))),
             accel_weight=float(overrides.get("accel_weight", mppi.get("accel_weight", 0.0))),
             jerk_weight=float(overrides.get("jerk_weight", mppi.get("jerk_weight", 0.0))),
+            terrain=terrain,
+            terrain_risk_weight=float(overrides.get("terrain_risk_weight", mppi.get("terrain_risk_weight", 0.0))),
+            terrain_risk_power=float(overrides.get("terrain_risk_power", mppi.get("terrain_risk_power", 2.0))),
+            terrain_risk_threshold=float(
+                overrides.get("terrain_risk_threshold", mppi.get("terrain_risk_threshold", 0.0))
+            ),
+            terrain_risk_mode=str(overrides.get("terrain_risk_mode", mppi.get("terrain_risk_mode", "excess"))),
             robot_radius=float(robot["radius"]),
             safety_dist=float(robot["safety_dist"]),
             draw_num_traj=int(mppi["draw_num_traj"]),
