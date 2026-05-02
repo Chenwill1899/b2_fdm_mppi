@@ -324,6 +324,19 @@ S5-009 Pareto result boundary:
 - Stage 5-D should compare nominal CUDA, default learned `residual_gain=1.0`, current efficiency `0.5/3.5/1.0`, balanced `0.5/3.0/0.75`, and optionally aggressive efficiency `0.6/4.0/1.0`.
 - History-conditioned FDM is still deferred. The current MLP-FDM has not yet failed calibrated closed-loop evaluation strongly enough to justify changing model structure.
 
+S5-010 50-episode result boundary:
+
+- Official S5-010 results use ID random, OOD obstacle, and OOD terrain with `50` episodes per official controller/scenario and `base_seed=123`.
+- Official controllers are nominal CUDA, default learned `residual_gain=1.0`, current efficiency `0.5/3.5/1.0`, and balanced `0.5/3.0/0.75`.
+- Aggressive efficiency `0.6/4.0/1.0` was stopped during the parallel run and is excluded from official S5-010 conclusions.
+- All official groups reached `100%` success with no aggregate errors.
+- Default learned `residual_gain=1.0` is the conservative/smooth mode: it reduces terrain risk, smoothness, and jerk, but regresses final distance and steps.
+- Current efficiency `0.5/3.5/1.0` is the efficiency mode: it gives the best official average final-distance and steps gains, but slightly increases risk/smoothness/jerk.
+- Balanced `0.5/3.0/0.75` is a balanced operating-point candidate: it improves steps, keeps average final distance essentially tied with nominal, and keeps terrain risk essentially tied/slightly lower than nominal, with small smoothness/jerk penalties.
+- No controller dominates all metrics. Do not claim that the balanced candidate is the final winner.
+- Learned runtime is still much slower than nominal CUDA (`~52-61 ms` versus `~5.8-6.4 ms` per MPPI step). Stage 5 can use it for offline benchmark claims, but runtime profiling is required before real-time claims.
+- History-conditioned FDM remains deferred unless larger benchmarks or failure analysis reveal model-structure-specific failures.
+
 ## Failure Modes
 
 - Missing checkpoint or normalization artifact.
