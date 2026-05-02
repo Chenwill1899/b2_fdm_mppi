@@ -33,6 +33,12 @@ Tables:
 tables/stage5
 ```
 
+Seed123 parameter GIFs:
+
+```text
+results/stage6_result_package/seed123_oracle_param_gifs
+```
+
 Zip package:
 
 ```text
@@ -58,6 +64,7 @@ S5-010 supports multiple calibrated learned-FDM-MPPI operating modes, not a sing
 - `stage5_trajectory_gallery.png`: representative paired trajectories for the three scenarios. The dashed circle around each goal is `simulation.minimum_distance`, i.e. the arrival tolerance.
 - `stage5_runtime_bars.png`: runtime comparison.
 - `stage5_failure_tradeoff_analysis.png`: compact trade-off summary.
+- `results/stage6_result_package/seed123_oracle_param_gifs/`: fixed-seed oracle visual comparison with per-controller `animation.gif` copies and an HTML index.
 
 ## Table Inventory
 
@@ -77,5 +84,6 @@ S5-010 supports multiple calibrated learned-FDM-MPPI operating modes, not a sing
 ## Reproduction
 
 ```bash
+python3 tools/run_stage5_seed123_param_gifs.py
 python3 tools/plot_stage5_results.py
 ```

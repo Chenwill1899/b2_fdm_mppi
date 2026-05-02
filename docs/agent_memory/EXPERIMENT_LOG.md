@@ -1296,3 +1296,27 @@ Cross-scenario learned deltas versus nominal:
   - S6-001 packages Stage 5-D around the claim that learned-FDM-MPPI supports multiple calibrated operating modes. It preserves the boundary that no controller is an all-metric winner.
   - The most important new figure is `stage5_paired_delta_boxplots.png`, which shows per-episode learned-minus-nominal deltas for final distance, steps, clearance, terrain risk, smoothness, jerk, and runtime.
   - Next step is S6-002 runtime profiling/optimization, unless a 100-episode confirmation is needed for tighter confidence intervals.
+
+### 2026-05-02: S6-001 Addendum - Seed123 Oracle Parameter GIFs
+
+- Goal: run the fixed `seed=123` scene from `config/b2_omni_oracle.yaml` for the Stage 5 operating modes and save inspectable GIFs.
+- Command:
+  - `python3 tools/run_stage5_seed123_param_gifs.py`
+  - `python3 tools/plot_stage5_results.py`
+- Output:
+  - `results/stage6_result_package/seed123_oracle_param_gifs/index.html`
+  - `results/stage6_result_package/seed123_oracle_param_gifs/gifs/nominal_seed123_animation.gif`
+  - `results/stage6_result_package/seed123_oracle_param_gifs/gifs/default_g10_seed123_animation.gif`
+  - `results/stage6_result_package/seed123_oracle_param_gifs/gifs/efficiency_g05_goal35_smooth10_seed123_animation.gif`
+  - `results/stage6_result_package/seed123_oracle_param_gifs/gifs/balanced_g05_goal30_smooth075_seed123_animation.gif`
+  - Repacked zip: `results/stage6_result_package/stage5_result_package.zip`
+- Metrics:
+  - Nominal CUDA: success `true`, final distance `0.3461`, steps `225`, mean MPPI `5.26 ms`.
+  - Default learned `g=1.0`: success `true`, final distance `0.3371`, steps `214`, mean MPPI `25.63 ms`.
+  - Efficiency `0.5/3.5/1.0`: success `true`, final distance `0.3484`, steps `211`, mean MPPI `25.48 ms`.
+  - Balanced `0.5/3.0/0.75`: success `true`, final distance `0.3282`, steps `230`, mean MPPI `25.14 ms`.
+- Visualization note:
+  - `animation.gif` and `trajectory.png` now draw the dashed goal-tolerance circle from `simulation.minimum_distance`, so the successful stop position is visually explained.
+- Verification:
+  - GIF frame counts: nominal `225`, default `214`, efficiency `211`, balanced `230`.
+  - Zip package includes the seed123 oracle HTML, CSV/JSON summary, copied GIFs, and per-run artifacts.

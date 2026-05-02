@@ -496,7 +496,15 @@ def build_figures(summary_df: pd.DataFrame, run_df: pd.DataFrame, paired_df: pd.
     }
 
 
-def write_stage6_doc(summary_df: pd.DataFrame, paired_df: pd.DataFrame, doc_path: Path, figure_dir: Path, table_dir: Path, zip_path: Path) -> None:
+def write_stage6_doc(
+    summary_df: pd.DataFrame,
+    paired_df: pd.DataFrame,
+    doc_path: Path,
+    figure_dir: Path,
+    table_dir: Path,
+    zip_path: Path,
+    seed_gif_dir: Path,
+) -> None:
     mode_stats = []
     for controller in CONTROLLER_ORDER[1:]:
         sub = paired_df[paired_df["controller_key"] == controller]
@@ -550,6 +558,12 @@ Tables:
 {table_dir}
 ```
 
+Seed123 parameter GIFs:
+
+```text
+{seed_gif_dir}
+```
+
 Zip package:
 
 ```text
@@ -570,6 +584,7 @@ S5-010 supports multiple calibrated learned-FDM-MPPI operating modes, not a sing
 - `stage5_trajectory_gallery.png`: representative paired trajectories for the three scenarios. The dashed circle around each goal is `simulation.minimum_distance`, i.e. the arrival tolerance.
 - `stage5_runtime_bars.png`: runtime comparison.
 - `stage5_failure_tradeoff_analysis.png`: compact trade-off summary.
+- `results/stage6_result_package/seed123_oracle_param_gifs/`: fixed-seed oracle visual comparison with per-controller `animation.gif` copies and an HTML index.
 
 ## Table Inventory
 
@@ -589,10 +604,17 @@ S5-010 supports multiple calibrated learned-FDM-MPPI operating modes, not a sing
 ## Reproduction
 
 ```bash
+python3 tools/run_stage5_seed123_param_gifs.py
 python3 tools/plot_stage5_results.py
 ```
 """
     doc_path.write_text(content, encoding="utf-8")
+
+
+def collect_seed_gif_files(seed_gif_dir: Path) -> list[Path]:
+    if not seed_gif_dir.exists():
+        return []
+    return sorted(path for path in seed_gif_dir.rglob("*") if path.is_file())
 
 
 def build_zip(zip_path: Path, files: list[Path], summary_path: Path) -> None:
@@ -617,6 +639,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--table-dir", type=Path, default=Path("tables/stage5"))
     parser.add_argument("--doc", type=Path, default=Path("docs/agent_memory/STAGE6_RESULT_PACKAGE.md"))
     parser.add_argument("--zip", type=Path, default=Path("results/stage6_result_package/stage5_result_package.zip"))
+    parser.add_argument("--seed-gif-dir", type=Path, default=Path("results/stage6_result_package/seed123_oracle_param_gifs"))
     return parser.parse_args()
 
 
@@ -628,7 +651,8 @@ def main() -> None:
     paired_df = compute_paired_deltas(run_df)
     table_paths = build_tables(summary_df, paired_df, args.table_dir)
     figure_paths = build_figures(summary_df, run_df, paired_df, args.figure_dir)
-    write_stage6_doc(summary_df, paired_df, args.doc, args.figure_dir, args.table_dir, args.zip)
+    seed_gif_files = collect_seed_gif_files(args.seed_gif_dir)
+    write_stage6_doc(summary_df, paired_df, args.doc, args.figure_dir, args.table_dir, args.zip, args.seed_gif_dir)
 
     manifest_path = args.table_dir / "stage5_result_package_manifest.json"
     manifest = {
@@ -637,6 +661,8 @@ def main() -> None:
         "tables": {key: str(path) for key, path in table_paths.items()},
         "doc": str(args.doc),
         "zip": str(args.zip),
+        "seed_gif_dir": str(args.seed_gif_dir),
+        "seed_gif_files": [str(path) for path in seed_gif_files],
         "official_rows": int(len(summary_df)),
         "paired_delta_rows": int(len(paired_df)),
         "controllers": CONTROLLER_ORDER,
@@ -646,6 +672,7 @@ def main() -> None:
     package_files = list(dict.fromkeys([
         *sorted(args.figure_dir.glob("*")),
         *sorted(args.table_dir.glob("*")),
+        *seed_gif_files,
         args.doc,
         manifest_path,
     ]))
