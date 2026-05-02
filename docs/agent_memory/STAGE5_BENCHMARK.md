@@ -389,6 +389,57 @@ S5-008 outcome:
 - `smooth_weight=0.5` is the best final-distance candidate but increases smoothness and jerk metrics.
 - Calibration trades away much of default learned `g=1.0`'s lower terrain-risk and smoother-control behavior. Treat default `g=1.0` as the conservative/smooth reference and calibrated `g=0.5`, `goal=3.5`, `smooth=1.0` as the efficiency candidate.
 
+### S5-009 Pareto Sweep Results
+
+S5-009 ran a local Pareto sweep before Stage 5-D:
+
+```text
+residual_gain = 0.4 / 0.5 / 0.6
+goal_xy_weight = 3.0 / 3.5 / 4.0
+smooth_weight = 0.75 / 1.0 / 1.25
+```
+
+The full `27`-case grid was run on ID random with `10` episodes. OOD obstacle and OOD terrain then validated three selected candidates with `10` episodes each:
+
+- balanced: `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75`
+- S5-008 current: `residual_gain=0.5`, `goal_xy_weight=3.5`, `smooth_weight=1.0`
+- aggressive efficiency: `residual_gain=0.6`, `goal_xy_weight=4.0`, `smooth_weight=1.0`
+
+All `390` S5-009 episode summaries succeeded.
+
+| Scenario | Controller | Success | Final | Delta Final | Steps | Delta Steps | Clearance | Delta Clear | Risk | Delta Risk | Smooth | Delta Smooth | Jerk | Delta Jerk | MPPI ms |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ID random | nominal | 1.00 | 0.6774 | +0.0000 | 136.0 | +0.0 | 3.4335 | +0.0000 | 0.3163 | +0.0000 | 0.003232 | +0.000000 | 0.002868 | +0.000000 | 5.64 |
+| ID random | default `g=1.0` | 1.00 | 0.6928 | +0.0154 | 168.4 | +32.4 | 3.3571 | -0.0763 | 0.2978 | -0.0185 | 0.002786 | -0.000446 | 0.002120 | -0.000748 | 51.64 |
+| ID random | balanced `0.5/3.0/0.75` | 1.00 | 0.6740 | -0.0034 | 132.6 | -3.4 | 3.3765 | -0.0570 | 0.3162 | -0.0001 | 0.003307 | +0.000075 | 0.002875 | +0.000007 | 50.74 |
+| ID random | current `0.5/3.5/1.0` | 1.00 | 0.6789 | +0.0015 | 129.1 | -6.9 | 3.4371 | +0.0036 | 0.3180 | +0.0017 | 0.003459 | +0.000227 | 0.002816 | -0.000052 | 49.64 |
+| ID random | efficiency `0.6/4.0/1.0` | 1.00 | 0.6761 | -0.0013 | 123.9 | -12.1 | 3.4352 | +0.0017 | 0.3216 | +0.0053 | 0.003540 | +0.000309 | 0.003201 | +0.000332 | 50.12 |
+| OOD obstacle | nominal | 1.00 | 0.6777 | +0.0000 | 140.5 | +0.0 | 2.9387 | +0.0000 | 0.3164 | +0.0000 | 0.003202 | +0.000000 | 0.002771 | +0.000000 | 5.17 |
+| OOD obstacle | default `g=1.0` | 1.00 | 0.6862 | +0.0086 | 167.5 | +27.0 | 2.9933 | +0.0546 | 0.3078 | -0.0087 | 0.002727 | -0.000475 | 0.002062 | -0.000709 | 50.99 |
+| OOD obstacle | balanced `0.5/3.0/0.75` | 1.00 | 0.6792 | +0.0015 | 133.3 | -7.2 | 3.0016 | +0.0629 | 0.3240 | +0.0076 | 0.003351 | +0.000150 | 0.002871 | +0.000100 | 52.77 |
+| OOD obstacle | current `0.5/3.5/1.0` | 1.00 | 0.6765 | -0.0012 | 129.9 | -10.6 | 3.0021 | +0.0634 | 0.3200 | +0.0035 | 0.003482 | +0.000280 | 0.002775 | +0.000004 | 50.54 |
+| OOD obstacle | efficiency `0.6/4.0/1.0` | 1.00 | 0.6738 | -0.0038 | 125.6 | -14.9 | 3.0298 | +0.0912 | 0.3228 | +0.0064 | 0.003560 | +0.000358 | 0.003107 | +0.000335 | 49.95 |
+| OOD terrain | nominal | 1.00 | 0.6872 | +0.0000 | 141.1 | +0.0 | 3.4548 | +0.0000 | 0.3512 | +0.0000 | 0.003183 | +0.000000 | 0.002735 | +0.000000 | 5.51 |
+| OOD terrain | default `g=1.0` | 1.00 | 0.6892 | +0.0020 | 167.3 | +26.2 | 3.3280 | -0.1269 | 0.3174 | -0.0338 | 0.002722 | -0.000461 | 0.001868 | -0.000867 | 52.43 |
+| OOD terrain | balanced `0.5/3.0/0.75` | 1.00 | 0.6817 | -0.0056 | 135.0 | -6.1 | 3.3819 | -0.0730 | 0.3508 | -0.0004 | 0.003200 | +0.000017 | 0.002765 | +0.000030 | 49.86 |
+| OOD terrain | current `0.5/3.5/1.0` | 1.00 | 0.6824 | -0.0048 | 127.4 | -13.7 | 3.4533 | -0.0016 | 0.3504 | -0.0008 | 0.003398 | +0.000215 | 0.002756 | +0.000021 | 51.00 |
+| OOD terrain | efficiency `0.6/4.0/1.0` | 1.00 | 0.6726 | -0.0146 | 128.5 | -12.6 | 3.4046 | -0.0502 | 0.3546 | +0.0033 | 0.003528 | +0.000345 | 0.002981 | +0.000246 | 51.28 |
+
+Average deltas over ID/OOD obstacle/OOD terrain:
+
+| Candidate | Delta Final | Delta Steps | Delta Risk | Delta Smooth | Delta Jerk |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| balanced `0.5/3.0/0.75` | -0.0025 | -5.57 | +0.0023 | +0.000081 | +0.000046 |
+| current `0.5/3.5/1.0` | -0.0015 | -10.40 | +0.0015 | +0.000241 | -0.000009 |
+| efficiency `0.6/4.0/1.0` | -0.0066 | -13.20 | +0.0050 | +0.000337 | +0.000304 |
+
+S5-009 outcome:
+
+- A more balanced candidate exists: `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75`.
+- The balanced candidate keeps 100% success and improves mean final distance/steps while keeping risk, smoothness, and jerk close to nominal. It does not strictly dominate nominal in every scenario.
+- The aggressive efficiency candidate `0.6/4.0/1.0` gives the strongest final-distance/steps gains but has the largest risk/smoothness/jerk penalty.
+- Stage 5-D should include nominal CUDA, default learned `g=1.0`, current efficiency `0.5/3.5/1.0`, balanced `0.5/3.0/0.75`, and optionally aggressive efficiency `0.6/4.0/1.0`.
+
 ## Visual Inspection Entry
 
 For single-scene human inspection of learning-before/after closed-loop behavior, use:
