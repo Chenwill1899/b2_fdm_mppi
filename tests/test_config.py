@@ -159,19 +159,19 @@ def test_slim_pipeline_configs_load_and_use_recommended_defaults():
     dataset = load_config(Path("configs/dataset.yaml"))
     benchmark = load_config(Path("configs/benchmark.yaml"))
 
-    assert smoke["mppi"]["backend"] == "numpy"
+    assert smoke["mppi"]["backend"] == "cuda"
     assert smoke["results"]["run_name"] == "fdm_mppi_smoke_latest"
     assert smoke["results"]["overwrite"] is True
     assert smoke["results"]["enable_animation"] is True
 
-    assert dataset["mppi"]["backend"] == "numpy"
+    assert dataset["mppi"]["backend"] == "cuda"
     assert dataset["scenario"]["random_start_goal_enabled"] is False
     assert dataset["simulation"]["goal"][:2] == [1.2, 0.0]
     assert dataset["results"]["enable_plots"] is False
     assert dataset["results"]["enable_animation"] is False
 
     assert benchmark["simulation"]["world_mode"] == "oracle"
-    assert benchmark["mppi"]["backend"] == "numpy"
+    assert benchmark["mppi"]["backend"] == "cuda"
     assert benchmark["results"]["run_name"] == "fdm_mppi_benchmark"
 
 

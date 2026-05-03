@@ -17,6 +17,10 @@ class Recorder:
         self.calls.append(("dataset_collect", args))
         return 0
 
+    def benchmark(self, args: Namespace) -> int:
+        self.calls.append(("benchmark", args))
+        return 0
+
 
 def test_main_dispatches_run_subcommand_to_pipeline_command():
     recorder = Recorder()
@@ -68,3 +72,15 @@ def test_main_dispatches_dataset_collect_subcommand():
     assert args.episodes == 2
     assert args.base_seed == 123
     assert args.output == "datasets/refactor_smoke"
+
+
+def test_benchmark_subcommand_preserves_config_backend_by_default():
+    recorder = Recorder()
+
+    status = cli.main(["benchmark", "--config", "configs/benchmark.yaml"], commands=recorder)
+
+    assert status == 0
+    name, args = recorder.calls[0]
+    assert name == "benchmark"
+    assert args.config == "configs/benchmark.yaml"
+    assert args.backend is None

@@ -27,7 +27,7 @@ python3 tools/fdm_mppi.py --help
 
 ## 推荐配置
 
-- `configs/smoke.yaml`: 固定小场景回归，默认 `numpy` backend，会生成 `animation.gif`。
+- `configs/smoke.yaml`: 固定小场景回归，默认 `cuda` backend，会生成 `animation.gif`。
 - `configs/dataset.yaml`: 小规模 oracle dataset 采集，默认关闭 plot/GIF 副产物。
 - `configs/benchmark.yaml`: learned-FDM closed-loop benchmark 基础配置。
 
@@ -40,6 +40,8 @@ python3 tools/fdm_mppi.py --help
 ```bash
 python3 tools/fdm_mppi.py run --config configs/smoke.yaml --seed 123
 ```
+
+如果当前 Python 环境没有 PyCUDA 或可用 CUDA，可以临时加 `--backend numpy` 走 CPU fallback；主配置本身保持 CUDA 默认。
 
 采集 oracle episodes：
 
@@ -102,8 +104,7 @@ python3 tools/fdm_mppi.py benchmark \
   --config configs/benchmark.yaml \
   --output results/benchmark/debug \
   --episodes 1 \
-  --base-seed 123 \
-  --backend numpy
+  --base-seed 123
 ```
 
 生成最小报告：

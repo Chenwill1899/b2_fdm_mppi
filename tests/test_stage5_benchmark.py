@@ -240,6 +240,59 @@ def test_run_benchmark_writes_summary_and_configures_nominal_and_learned(tmp_pat
         assert config["mppi"]["terrain_risk_mode"] == "excess"
 
 
+def test_run_benchmark_can_use_config_backend_when_backend_is_none(tmp_path):
+    module = load_benchmark_module()
+    created_configs = []
+
+    class FakeRunner:
+        def __init__(self, config, controller_factory=None):
+            created_configs.append(config)
+            results = Path(config["results"]["root"]) / config["results"]["run_name"]
+            results.mkdir(parents=True, exist_ok=True)
+            self.results_path = results
+
+        def run(self):
+            summary = {
+                "success": True,
+                "reached_goal": True,
+                "failed": False,
+                "final_distance": 0.3,
+                "steps": 10,
+                "arrival_time": 1.0,
+                "path_length": 2.0,
+                "min_obstacle_clearance": 0.5,
+                "mean_cmd_real_error": 0.0,
+                "mean_residual_norm": 0.0,
+                "control_smoothness": 0.0,
+                "control_jerk": 0.0,
+                "mean_mppi_time_ms": 10.0,
+                "max_mppi_time_ms": 12.0,
+            }
+            (self.results_path / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+            return SimpleNamespace(
+                steps=summary["steps"],
+                reached_goal=summary["reached_goal"],
+                failed=summary["failed"],
+                results_path=self.results_path,
+                run_time=summary["arrival_time"],
+            )
+
+    summary = module.run_benchmark(
+        config_path="configs/benchmark.yaml",
+        scenario_name="unit",
+        output_dir=tmp_path / "benchmark",
+        episodes=1,
+        base_seed=123,
+        backend=None,
+        controllers=("nominal",),
+        fdm_device=None,
+        runner_cls=FakeRunner,
+    )
+
+    assert summary["metadata"]["backend"] == "cuda"
+    assert created_configs[0]["mppi"]["backend"] == "cuda"
+
+
 def test_run_benchmark_rejects_unsupported_backend(tmp_path):
     module = load_benchmark_module()
 

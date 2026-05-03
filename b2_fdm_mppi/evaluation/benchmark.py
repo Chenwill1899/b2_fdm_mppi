@@ -88,7 +88,7 @@ def run_benchmark(
     output_dir: str | Path,
     episodes: int,
     base_seed: int,
-    backend: str = "numpy",
+    backend: str | None = "numpy",
     controllers: Sequence[str] = VALID_CONTROLLERS,
     fdm_model_dir: str | Path = "results/fdm_baselines/stage4_mlp_seed123_hardened",
     fdm_checkpoint: str | Path = "best_model.pt",
@@ -101,6 +101,10 @@ def run_benchmark(
     argv: Sequence[str] | None = None,
     runner_cls=OmniMppiSimulationRunner,
 ) -> dict:
+    config_path = Path(config_path)
+    base_config = load_config(config_path)
+    if backend is None:
+        backend = str(base_config.get("mppi", {}).get("backend", "numpy"))
     backend = str(backend).lower()
     if backend not in {"numpy", "cuda", "torch"}:
         raise ValueError("Stage 5 benchmark supports only numpy, cuda, or torch backends")
@@ -110,8 +114,6 @@ def run_benchmark(
     learned_mppi_overrides = _validate_learned_mppi_overrides(learned_mppi_overrides or {})
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    config_path = Path(config_path)
-    base_config = load_config(config_path)
     seeds = [int(base_seed) + episode_id for episode_id in range(int(episodes))]
 
     runs = []

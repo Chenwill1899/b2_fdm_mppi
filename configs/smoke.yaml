@@ -15,7 +15,7 @@ simulation:
   world_mode: oracle
 
 mppi:
-  backend: numpy
+  backend: cuda
   state_dim: 6
   control_dim: 3
   num_trajectories: 256

@@ -142,7 +142,7 @@ class PipelineCommands:
             fdm_model_dir=args.fdm_model_dir,
             fdm_checkpoint=args.fdm_checkpoint,
             fdm_normalization=args.fdm_normalization,
-            fdm_device=args.fdm_device or ("cuda" if args.backend == "cuda" else "cpu"),
+            fdm_device=args.fdm_device,
             fdm_residual_gain=args.fdm_residual_gain,
             mppi_overrides=parse_mppi_overrides(args.mppi_override),
             learned_mppi_overrides=parse_learned_mppi_overrides(args.learned_mppi_override),
@@ -253,7 +253,7 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--output", default="results/benchmark/standard_seed123")
     benchmark.add_argument("--episodes", type=int, default=1)
     benchmark.add_argument("--base-seed", type=int, default=123)
-    benchmark.add_argument("--backend", choices=["numpy", "cuda", "torch"], default="numpy")
+    benchmark.add_argument("--backend", choices=["numpy", "cuda", "torch"], default=None)
     benchmark.add_argument("--controllers", default="nominal,learned")
     benchmark.add_argument("--fdm-model-dir", default="results/fdm_baselines/stage4_mlp_seed123_hardened")
     benchmark.add_argument("--fdm-checkpoint", default="best_model.pt")
