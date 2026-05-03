@@ -108,6 +108,8 @@ def test_experiment_subcommand_dispatches_profile_runner():
             "results/fdm_baselines/demo",
             "--output",
             "results/experiments/demo",
+            "--results-dir",
+            "results/experiments/demo/direct",
         ],
         commands=recorder,
     )
@@ -121,3 +123,4 @@ def test_experiment_subcommand_dispatches_profile_runner():
     assert args.backend == "torch"
     assert args.model_dir == "results/fdm_baselines/demo"
     assert args.output == "results/experiments/demo"
+    assert args.results_dir == "results/experiments/demo/direct"

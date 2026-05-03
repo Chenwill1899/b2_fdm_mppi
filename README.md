@@ -82,6 +82,17 @@
   --no-animation
 ```
 
+`--output` 是输出根目录，最终目录仍会追加 profile 里的 `run_name`。
+如果要指定本次实验的最终结果目录，使用 `--results-dir`：
+
+```bash
+/usr/bin/python3 tools/fdm_mppi.py experiment \
+  --profile configs/experiment.yaml \
+  --controller nominal_cuda \
+  --results-dir results/experiments/manual_nominal_cuda \
+  --no-animation
+```
+
 每次 experiment 会写出 `experiment_summary.json`，里面列出 `summary.json`、`trajectory.csv`、`trajectory.png`、`oracle_diagnostics.png`、`animation.gif` 等可检查产物路径。
 
 ## Experiment Profile 配置
@@ -94,7 +105,7 @@
 
 常用改动位置：
 
-- `experiment`: 设置实验名、默认 seed、输出根目录和 run name 模板。
+- `experiment`: 设置实验名、默认 seed、输出根目录、run name 模板，或用 `results_dir` 直接指定最终结果目录。
 - `scenario`: 设置环境，包括 `initial_state`、`goal`、`world_mode`、`max_steps`、障碍物和地形。
 - `controllers`: 定义可选 MPPI 方法，例如 `nominal_cuda`、`nominal_numpy`、`learned_torch`。
 - `learned_fdm`: 给 learned controller 指定 `model_dir`、`checkpoint`、`normalization`、`device` 和 `residual_gain`。

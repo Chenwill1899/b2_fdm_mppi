@@ -84,6 +84,7 @@ def build_experiment_config(
     seed: int | None = None,
     backend: str | None = None,
     output_root: str | Path | None = None,
+    results_dir: str | Path | None = None,
     model_dir: str | Path | None = None,
     checkpoint: str | Path | None = None,
     normalization: str | Path | None = None,
@@ -123,6 +124,7 @@ def build_experiment_config(
         controller_name=resolved_controller_name,
         seed=resolved_seed,
         output_root=output_root,
+        results_dir=results_dir,
         enable_plots=enable_plots,
         enable_animation=enable_animation,
     )
@@ -145,6 +147,7 @@ def run_experiment_profile(
     seed: int | None = None,
     backend: str | None = None,
     output_root: str | Path | None = None,
+    results_dir: str | Path | None = None,
     model_dir: str | Path | None = None,
     checkpoint: str | Path | None = None,
     normalization: str | Path | None = None,
@@ -160,6 +163,7 @@ def run_experiment_profile(
         seed=seed,
         backend=backend,
         output_root=output_root,
+        results_dir=results_dir,
         model_dir=model_dir,
         checkpoint=checkpoint,
         normalization=normalization,
@@ -302,21 +306,26 @@ def _apply_output_and_visualization(
     controller_name: str,
     seed: int,
     output_root: str | Path | None,
+    results_dir: str | Path | None,
     enable_plots: bool | None,
     enable_animation: bool | None,
 ) -> None:
     results = config.setdefault("results", {})
-    resolved_output_root = output_root if output_root is not None else experiment.get("output_root", results.get("root"))
-    if resolved_output_root is not None:
-        results["root"] = str(resolved_output_root)
-    run_name_template = str(experiment.get("run_name", "{experiment}_{controller}_seed{seed}"))
-    results["run_name"] = run_name_template.format(
-        experiment=experiment_name,
-        controller=controller_name,
-        seed=seed,
-    )
-    results["timestamp_suffix"] = bool(experiment.get("timestamp_suffix", False))
     results["overwrite"] = bool(experiment.get("overwrite", True))
+    resolved_results_dir = results_dir if results_dir is not None else experiment.get("results_dir")
+    if resolved_results_dir is not None:
+        _apply_explicit_results_dir(results, resolved_results_dir)
+    else:
+        resolved_output_root = output_root if output_root is not None else experiment.get("output_root", results.get("root"))
+        if resolved_output_root is not None:
+            results["root"] = str(resolved_output_root)
+        run_name_template = str(experiment.get("run_name", "{experiment}_{controller}_seed{seed}"))
+        results["run_name"] = run_name_template.format(
+            experiment=experiment_name,
+            controller=controller_name,
+            seed=seed,
+        )
+        results["timestamp_suffix"] = bool(experiment.get("timestamp_suffix", False))
 
     visualization = _mapping(profile.get("visualization", {}), "visualization")
     if "plots" in visualization:
@@ -331,6 +340,15 @@ def _apply_output_and_visualization(
     for key, value in visualization.items():
         if key not in {"plots", "animation"}:
             visualization_config[key] = deepcopy(value)
+
+
+def _apply_explicit_results_dir(results: dict[str, Any], results_dir: str | Path) -> None:
+    path = Path(str(results_dir))
+    if not path.name or path.name in {".", ".."}:
+        raise ValueError(f"results_dir must point to a named run directory: {results_dir}")
+    results["root"] = str(path.parent)
+    results["run_name"] = path.name
+    results["timestamp_suffix"] = False
 
 
 def _resolve_path(profile_path: Path, raw_path: str | Path) -> Path:

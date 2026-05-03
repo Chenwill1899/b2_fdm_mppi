@@ -23,6 +23,7 @@ class PipelineCommands:
                 seed=args.seed,
                 backend=args.backend,
                 output_root=args.output,
+                results_dir=args.results_dir,
                 model_dir=args.model_dir,
                 checkpoint=args.checkpoint,
                 normalization=args.normalization,
@@ -200,6 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     experiment.add_argument("--seed", type=int, default=None)
     experiment.add_argument("--backend", choices=["cuda", "numpy", "torch"], default=None)
     experiment.add_argument("--output", default=None)
+    experiment.add_argument("--results-dir", default=None)
     experiment.add_argument("--model-dir", default=None)
     experiment.add_argument("--checkpoint", default=None)
     experiment.add_argument("--normalization", default=None)

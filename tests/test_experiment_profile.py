@@ -93,6 +93,21 @@ def test_build_experiment_config_maps_scene_controller_model_and_visuals(tmp_pat
     assert config["results"]["enable_animation"] is False
 
 
+def test_build_experiment_config_accepts_explicit_results_dir(tmp_path):
+    profile_path = write_profile(tmp_path / "profile.yaml")
+    results_dir = tmp_path / "custom_results" / "direct_run"
+
+    config, _metadata = build_experiment_config(
+        profile_path,
+        controller_name="nominal_cuda",
+        results_dir=results_dir,
+    )
+
+    assert config["results"]["root"] == str(results_dir.parent)
+    assert config["results"]["run_name"] == "direct_run"
+    assert config["results"]["timestamp_suffix"] is False
+
+
 def test_run_experiment_profile_writes_artifact_manifest(tmp_path):
     profile_path = write_profile(tmp_path / "profile.yaml")
 

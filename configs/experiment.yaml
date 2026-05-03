@@ -23,6 +23,11 @@ experiment:
   #   {output_root}/{run_name}
   output_root: results/experiments
   run_name: "{experiment}_{controller}_seed{seed}"
+
+  # Optional exact output directory for one run. When set, the runner writes
+  # directly to this directory and ignores output_root/run_name.
+  # CLI --results-dir has the same meaning and takes precedence.
+  # results_dir: results/experiments/manual_quick_start
   timestamp_suffix: false
   overwrite: true
 
