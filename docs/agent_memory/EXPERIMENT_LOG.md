@@ -1493,3 +1493,43 @@ Cross-scenario learned deltas versus nominal:
 - Boundary:
   - This is profiler instrumentation only; it does not change controller behavior or runtime.
   - The 1ep x 2step output is a schema smoke, not a performance conclusion.
+
+### 2026-05-03: S6-002 Runtime Closeout Figures And 10ep Confirmation
+
+- Goal: quickly close Stage 6 runtime profiling into a reviewable package with figures, tables, and a slightly longer fixed-seed runtime confirmation.
+- New tool:
+  - `tools/plot_stage6_runtime_results.py`
+  - Test: `tests/test_stage6_runtime_plot.py`
+- TDD evidence:
+  - Red test first: `python3 -m pytest tests/test_stage6_runtime_plot.py -q` failed because `tools/plot_stage6_runtime_results.py` did not exist.
+  - After implementation: same test passed.
+- Closeout profiler command:
+  - `python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed_closeout --output results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout --episodes 10 --steps 10 --base-seed 123 --backend torch --device cuda --risk-weight 3.0`
+- Closeout profiler output:
+  - `results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout/stage6_runtime_matrix_summary.json`
+- Plot command:
+  - `python3 tools/plot_stage6_runtime_results.py --summary results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps_inference_mode/stage6_runtime_matrix_summary.json results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout/stage6_runtime_matrix_summary.json --output figures/stage6 --tables-output tables/stage6`
+- Generated figures:
+  - `figures/stage6/fig_stage6_runtime_summary.png`
+  - `figures/stage6/fig_stage6_runtime_summary.pdf`
+  - `figures/stage6/fig_stage6_runtime_breakdown.png`
+  - `figures/stage6/fig_stage6_runtime_breakdown.pdf`
+  - `figures/stage6/fig_stage6_runtime_delta_buckets.png`
+  - `figures/stage6/fig_stage6_runtime_delta_buckets.pdf`
+- Generated tables:
+  - `tables/stage6/table_stage6_runtime_summary.csv`
+  - `tables/stage6/table_stage6_runtime_paired_deltas.csv`
+- Closeout aggregate means:
+  - nominal_risk_off: mean MPPI `14.27 ms`, rollout `8.74 ms`.
+  - nominal_risk_on: mean MPPI `14.31 ms`, rollout `8.58 ms`.
+  - learned_risk_off: mean MPPI `40.57 ms`, rollout `36.39 ms`, terrain features `0.867 ms`, FDM inference `0.195 ms`.
+  - learned_risk_on: mean MPPI `41.38 ms`, rollout `36.17 ms`, terrain features `0.865 ms`, FDM inference `0.187 ms`.
+- Closeout paired delta:
+  - learned_risk_on vs nominal_risk_on: mean MPPI `+27.08 ms`, rollout `+27.58 ms`, sample `+0.001 ms`, update `-0.006 ms`, terrain-risk cost `-0.555 ms`.
+- Validation:
+  - `python3 -m pytest tests/test_stage6_runtime_plot.py tests/test_stage6_runtime_matrix.py tests/test_mppi_omni_torch.py tests/test_mppi_omni_learned_torch.py -q` -> `18 passed`.
+  - `git diff --check` -> pass.
+- Boundary:
+  - Stage 6 now has a reviewable runtime profiling and plotting package.
+  - It does not claim learned Torch is real-time equivalent to nominal Torch.
+  - The remaining runtime limitation is explicit: learned-vs-nominal overhead is still dominated by learned rollout.

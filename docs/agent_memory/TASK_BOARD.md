@@ -4,7 +4,7 @@ Last updated: 2026-05-03
 
 ## Current Stage
 
-Stage 6: PR #27 merged the paper-ready Stage 5-E risk-aware result package into `fdm`; runtime profiling/optimization is now in progress. S6-002 has completed the first terrain-noise sampling optimization, added fixed-seed 2x2 paired runtime profiling, and disabled autograd for Torch MPPI control updates; next focus is learned rollout/FDM inference optimization.
+Stage 6: PR #27 merged the paper-ready Stage 5-E risk-aware result package into `fdm`; runtime profiling/optimization is now packaged for review. S6-002 completed terrain-noise sampling optimization, fixed-seed 2x2 paired runtime profiling, Torch inference-mode cleanup, sample/update delta buckets, and Stage 6 runtime figures/tables. Remaining learned rollout/FDM inference optimization is a later deep-runtime follow-up, not a blocker for PR #28 review.
 
 ## Stage 0 Acceptance Criteria
 
@@ -64,7 +64,7 @@ Stage 6: PR #27 merged the paper-ready Stage 5-E risk-aware result package into 
 | S5-E2 | P0 | done | Add same-backend Torch nominal baseline and analysis | PR #26 added `MppiOmniTorch`, Torch same-backend benchmark support, learned Torch reuse of nominal rollout/cost/risk logic, and risk-aware paired analysis with bootstrap CI, Wilcoxon, Pareto, deltas, and curves. |
 | S5-E3/E4 | P0 | done | Run risk-weight selection and official 50-episode Torch ablation | Ran 10-episode risk-weight sweeps and 50-episode official same-backend Torch ablations for low_friction_patch, safe_corridor, risk_band, and fixed two-obstacle standard scene. Selected weights: `10`, `0.5`, `5`, and `3`. |
 | S5-E5 | P0 | done | Package paper-ready risk-aware results and figures | Added protocol/results docs, Nature-style figure rules, `tools/plot_stage5_e_risk_aware_results.py`, fixed two-obstacle risk-aware visual mode, tracked `figures/stage5_e/` and `tables/stage5_e/`. low_friction_patch is the strong claim; safe_corridor supporting; risk_band limitation; fixed two-obstacle visual continuity. |
-| S6-002 | P0 | in_progress | Profile and optimize learned Torch/CUDA runtime | First pass completed on `codex/s6-runtime-profiling`: added batched Torch bilinear sampling for noise/grad terrain fields, `tools/profile_stage6_runtime_matrix.py` for fixed-seed 2x2 nominal/learned risk-off/risk-on profiling, and `torch.inference_mode()` around Torch MPPI `compute_control()`. Short 3ep x 5step inference-mode matrix moved learned risk-on mean MPPI from `44.09` to `40.86 ms`; learned risk-on remains `+23.69 ms` over nominal risk-on, so next target is learned rollout/FDM inference rather than terrain-risk cost. Details: `docs/agent_memory/STAGE6_RUNTIME_PROFILE.md`. |
+| S6-002 | P0 | done | Profile and optimize learned Torch/CUDA runtime | Review package completed on `codex/s6-runtime-profiling`: batched Torch bilinear sampling, fixed-seed 2x2 runtime profiler, Torch `inference_mode()`, sample/update paired delta buckets, 10ep x 10step closeout profiler, and Stage 6 runtime figures/tables. Closeout learned risk-on remains `+27.08 ms` mean MPPI over nominal risk-on, dominated by rollout (`+27.58 ms`), so no real-time equivalence claim is made. Details: `docs/agent_memory/STAGE6_RUNTIME_PROFILE.md`. |
 | S6-003 | P0 | done | Frame risk-aware result package for paper/Draft PR | Prepared Stage 5-E / S6 interpretation boundaries: explicit terrain-risk cost enables planner-risk claims, learned-vs-nominal benefits are map-level, and learned runtime remains an offline benchmark limitation. |
 
 ## Later Stages
@@ -77,5 +77,5 @@ Stage 6: PR #27 merged the paper-ready Stage 5-E risk-aware result package into 
 | 4 | done | Residual velocity FDM training baseline and open-loop/OOD validation. |
 | 5 | done | Stage 5-D 50-episode benchmark completed and packaged with calibrated operating-mode framing. |
 | 5-E | done | Explicit terrain-risk MPPI cost, same-backend Torch risk-aware ablation, fixed two-obstacle visual evidence, and Nature-style paper figures completed. |
-| 6 | in_progress | Paper-ready risk-aware Stage 5-E package merged via PR #27; runtime profiling/optimization started, first terrain-noise sampling optimization completed, fixed-seed 2x2 runtime profiler added, and Torch MPPI inference-mode cleanup completed. |
+| 6 | done | Paper-ready risk-aware Stage 5-E package merged via PR #27; runtime profiling package completed in PR #28 with Stage 6 figures/tables and explicit learned-runtime limitation. |
 | 7 | pending | Paper-ready experiments and figures. |

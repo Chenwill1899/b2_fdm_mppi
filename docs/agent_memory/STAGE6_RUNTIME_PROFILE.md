@@ -256,3 +256,52 @@ Next optimization candidates:
 - investigate Torch compilation or horizon-loop fusion for learned rollout;
 - cache or reuse terrain/risk features only where timestep semantics match;
 - profile obstacle cost separately on dense random maps.
+
+## Stage 6 Closeout Figures
+
+Stage 6 runtime closeout adds a dedicated plotting script:
+
+```bash
+python3 tools/plot_stage6_runtime_results.py --summary results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps_inference_mode/stage6_runtime_matrix_summary.json results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout/stage6_runtime_matrix_summary.json --output figures/stage6 --tables-output tables/stage6
+```
+
+Generated tracked figures:
+
+- `figures/stage6/fig_stage6_runtime_summary.png`
+- `figures/stage6/fig_stage6_runtime_summary.pdf`
+- `figures/stage6/fig_stage6_runtime_breakdown.png`
+- `figures/stage6/fig_stage6_runtime_breakdown.pdf`
+- `figures/stage6/fig_stage6_runtime_delta_buckets.png`
+- `figures/stage6/fig_stage6_runtime_delta_buckets.pdf`
+
+Generated tracked tables:
+
+- `tables/stage6/table_stage6_runtime_summary.csv`
+- `tables/stage6/table_stage6_runtime_paired_deltas.csv`
+
+Closeout profiler command:
+
+```bash
+python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed_closeout --output results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout --episodes 10 --steps 10 --base-seed 123 --backend torch --device cuda --risk-weight 3.0
+```
+
+Output: `results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout/stage6_runtime_matrix_summary.json`.
+
+Closeout aggregate means:
+
+| Case | mean_mppi_time_ms | rollout_total_ms | terrain_features_ms | fdm_inference_ms | terrain_risk_cost_ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| nominal_risk_off | 14.27 | 8.74 | n/a | n/a | 0.052 |
+| nominal_risk_on | 14.31 | 8.58 | n/a | n/a | 1.640 |
+| learned_risk_off | 40.57 | 36.39 | 0.867 | 0.195 | 0.050 |
+| learned_risk_on | 41.38 | 36.17 | 0.865 | 0.187 | 1.085 |
+
+Closeout paired deltas:
+
+| Pair | mean_mppi_time_ms_delta | rollout_total_ms_delta | sample_candidates_delta | update_distribution_delta | terrain_risk_cost_delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| learned_risk_on - nominal_risk_on | +27.08 | +27.58 | +0.001 | -0.006 | -0.555 |
+| learned_risk_off - nominal_risk_off | +26.30 | +27.65 | -0.388 | -0.422 | -0.002 |
+| learned_risk_on - learned_risk_off | +0.81 | -0.22 | +0.005 | +0.013 | +1.035 |
+
+Interpretation: Stage 6 now has a reproducible runtime profiling package and paper-style runtime figures. It does not make a real-time learned-FDM-MPPI claim. The result is a bounded limitation: same-backend learned Torch remains about `+27 ms` slower than nominal Torch on the closeout profile, and the dominant gap is learned rollout rather than terrain-risk cost, sample generation, or distribution update.
