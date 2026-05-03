@@ -65,7 +65,7 @@
 /usr/bin/python3 tools/fdm_mppi.py experiment \
   --profile configs/experiment.yaml \
   --controller learned_torch \
-  --model-dir results/fdm_baselines/debug \
+  --model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
   --checkpoint best_model.pt \
   --normalization normalization.npz \
   --device cuda
@@ -142,7 +142,7 @@ scenario:
 /usr/bin/python3 tools/fdm_mppi.py experiment \
   --profile configs/experiment.yaml \
   --controller learned_torch \
-  --model-dir results/fdm_baselines/my_model \
+  --model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
   --checkpoint best_model.pt \
   --normalization normalization.npz \
   --device cuda

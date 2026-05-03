@@ -33,7 +33,7 @@ scenario:
 
   # B2 omni state format: [x, y, yaw, vx, vy, wz].
   initial_state: [0.01, 0.01, 0.0, 0.0, 0.0, 0.0]
-  goal: [1.2, 0.0, 0.0, 0.0, 0.0, 0.0]
+  goal: [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
   # Goal is accepted when xy distance is below this threshold.
   minimum_distance: 0.45
@@ -47,12 +47,12 @@ scenario:
     #
     # Static scenes normally use only x/y/radius. The remaining fields keep the
     # legacy obstacle schema compatible with dynamic-obstacle experiments.
-    virtual: []
+    # virtual: []
 
     # Example static obstacles:
-    # virtual:
-    #   - [0.55, 0.18, 0.14, 0.0, 0.0, 0.0, 0.0]
-    #   - [0.85, -0.22, 0.16, 0.0, 0.0, 0.0, 0.0]
+    virtual:
+      - [6.0, -0.5, 0.4, 0.0, 0.0, 0.0, 0.0]
+      - [12.0, 1.0, 0.4, 0.0, 0.0, 0.0, 0.0]
     #
     # Example random obstacles:
     # random_enabled: true
@@ -98,7 +98,7 @@ controllers:
     learned_fdm:
       # Override these with CLI flags when testing a newly trained model:
       #   --model-dir ... --checkpoint ... --normalization ... --device cuda
-      model_dir: results/fdm_baselines/debug
+      model_dir: results/fdm_baselines/stage4_mlp_seed123_hardened
       checkpoint: best_model.pt
       normalization: normalization.npz
       device: cuda

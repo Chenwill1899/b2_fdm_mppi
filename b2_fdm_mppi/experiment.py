@@ -48,6 +48,7 @@ TOP_LEVEL_CONFIG_GROUPS = {
     "scenario",
 }
 LEARNED_METHODS = {"learned", "learned_fdm", "fdm", "residual_fdm"}
+DEFAULT_MODEL_SEARCH_ROOT = Path("results/fdm_baselines")
 ARTIFACT_FILES = {
     "summary_json": "summary.json",
     "config_yaml": "config.yaml",
@@ -61,6 +62,10 @@ ARTIFACT_FILES = {
     "oracle_diagnostics_png": "oracle_diagnostics.png",
     "animation_gif": "animation.gif",
 }
+
+
+class ExperimentConfigError(RuntimeError):
+    """Raised when an experiment profile is valid YAML but cannot run."""
 
 
 def load_experiment_profile(profile_path: str | Path) -> dict[str, Any]:
@@ -163,6 +168,7 @@ def run_experiment_profile(
         enable_plots=enable_plots,
         enable_animation=enable_animation,
     )
+    validate_learned_fdm_artifacts(config, metadata)
     runner = runner_cls(
         config,
         controller_factory=lambda *, config, runner: create_omni_controller(config, seed=metadata["seed"]),
@@ -195,6 +201,19 @@ def collect_run_artifacts(results_path: str | Path) -> dict[str, str | None]:
         path = results_path / filename
         artifacts[key] = str(path) if path.exists() else None
     return artifacts
+
+
+def validate_learned_fdm_artifacts(config: Mapping[str, Any], metadata: Mapping[str, Any]) -> None:
+    fdm = _mapping(config.get("fdm", {}), "fdm")
+    if not bool(fdm.get("enabled", False)):
+        return
+    model_dir = Path(str(fdm.get("model_dir", "")))
+    checkpoint = _resolve_artifact(model_dir, fdm.get("checkpoint", "best_model.pt"))
+    normalization = _resolve_artifact(model_dir, fdm.get("normalization", "normalization.npz"))
+    missing = [path for path in (checkpoint, normalization) if not path.exists()]
+    if not missing:
+        return
+    raise ExperimentConfigError(_missing_fdm_artifact_message(missing, model_dir, checkpoint, normalization, metadata))
 
 
 def _apply_profile_config_groups(config: dict[str, Any], profile: Mapping[str, Any]) -> None:
@@ -319,6 +338,58 @@ def _resolve_path(profile_path: Path, raw_path: str | Path) -> Path:
     if path.is_absolute() or path.exists():
         return path
     return profile_path.parent / path
+
+
+def _resolve_artifact(model_dir: Path, artifact_path: Any) -> Path:
+    path = Path(str(artifact_path))
+    if path.is_absolute():
+        return path
+    return model_dir / path
+
+
+def _missing_fdm_artifact_message(
+    missing: list[Path],
+    model_dir: Path,
+    checkpoint: Path,
+    normalization: Path,
+    metadata: Mapping[str, Any],
+) -> str:
+    lines = [
+        "Missing learned FDM artifact(s) for experiment controller "
+        f"'{metadata.get('controller_name', 'unknown')}'.",
+        "Requested files:",
+        f"  checkpoint: {checkpoint}",
+        f"  normalization: {normalization}",
+        "Missing:",
+        *[f"  - {path}" for path in missing],
+        "Fix:",
+        "  - pass an existing model directory with --model-dir, or",
+        "  - choose the matching checkpoint/normalization names, or",
+        "  - train a residual FDM first:",
+        "    /usr/bin/python3 tools/fdm_mppi.py train --dataset <dataset_splits> --output results/fdm_baselines/<name>",
+    ]
+    candidates = _discover_model_candidates(model_dir.parent if model_dir.parent != Path("") else DEFAULT_MODEL_SEARCH_ROOT)
+    if candidates:
+        lines.extend(["Available local model directories:", *[f"  - {candidate}" for candidate in candidates]])
+    return "\n".join(lines)
+
+
+def _discover_model_candidates(search_root: Path) -> list[Path]:
+    roots = []
+    if search_root.exists():
+        roots.append(search_root)
+    if DEFAULT_MODEL_SEARCH_ROOT.exists() and DEFAULT_MODEL_SEARCH_ROOT not in roots:
+        roots.append(DEFAULT_MODEL_SEARCH_ROOT)
+    candidates: list[Path] = []
+    for root in roots:
+        for directory in sorted(root.iterdir()):
+            if not directory.is_dir():
+                continue
+            has_normalization = (directory / "normalization.npz").exists()
+            has_checkpoint = (directory / "best_model.pt").exists() or (directory / "model.pt").exists()
+            if has_normalization and has_checkpoint and directory not in candidates:
+                candidates.append(directory)
+    return candidates[:8]
 
 
 def _mapping(value: Any, name: str) -> dict[str, Any]:

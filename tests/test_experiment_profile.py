@@ -4,9 +4,10 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import yaml
 
-from b2_fdm_mppi.experiment import build_experiment_config, run_experiment_profile
+from b2_fdm_mppi.experiment import ExperimentConfigError, build_experiment_config, run_experiment_profile
 
 
 def write_profile(path: Path) -> Path:
@@ -136,3 +137,22 @@ def test_run_experiment_profile_writes_artifact_manifest(tmp_path):
     assert result["artifacts"]["animation_gif"].endswith("animation.gif")
     assert saved["seed"] == 321
     assert saved["artifacts"]["experiment_summary"] == str(manifest_path)
+
+
+def test_run_experiment_profile_reports_missing_learned_fdm_artifacts(tmp_path):
+    profile_path = write_profile(tmp_path / "profile.yaml")
+
+    with pytest.raises(ExperimentConfigError) as excinfo:
+        run_experiment_profile(
+            profile_path,
+            controller_name="learned_torch",
+            model_dir=tmp_path / "missing_model",
+            checkpoint="best_model.pt",
+            normalization="normalization.npz",
+        )
+
+    message = str(excinfo.value)
+    assert "Missing learned FDM artifact(s)" in message
+    assert str(tmp_path / "missing_model" / "best_model.pt") in message
+    assert "--model-dir" in message
+    assert "/usr/bin/python3 tools/fdm_mppi.py train" in message

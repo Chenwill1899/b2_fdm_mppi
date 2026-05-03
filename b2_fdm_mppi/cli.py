@@ -14,22 +14,26 @@ class PipelineCommands:
     """Command handlers kept thin so tests can inject a recorder."""
 
     def experiment(self, args: argparse.Namespace) -> int:
-        from b2_fdm_mppi.experiment import run_experiment_profile
+        from b2_fdm_mppi.experiment import ExperimentConfigError, run_experiment_profile
 
-        summary = run_experiment_profile(
-            args.profile,
-            controller_name=args.controller,
-            seed=args.seed,
-            backend=args.backend,
-            output_root=args.output,
-            model_dir=args.model_dir,
-            checkpoint=args.checkpoint,
-            normalization=args.normalization,
-            device=args.device,
-            residual_gain=args.residual_gain,
-            enable_plots=args.plots,
-            enable_animation=args.animation,
-        )
+        try:
+            summary = run_experiment_profile(
+                args.profile,
+                controller_name=args.controller,
+                seed=args.seed,
+                backend=args.backend,
+                output_root=args.output,
+                model_dir=args.model_dir,
+                checkpoint=args.checkpoint,
+                normalization=args.normalization,
+                device=args.device,
+                residual_gain=args.residual_gain,
+                enable_plots=args.plots,
+                enable_animation=args.animation,
+            )
+        except ExperimentConfigError as exc:
+            print(f"experiment error: {exc}", file=sys.stderr)
+            return 2
         _print_json(summary)
         return 0
 
