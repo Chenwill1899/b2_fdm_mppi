@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-05-02
+Last updated: 2026-05-03
 
 ## Current Stage
 
-Stage 6: paper-ready Stage 5 result package completed; next focus is runtime profiling/optimization and optional 100-episode confirmation.
+S6-003 Final Convergence and Deployment Readiness: PR #28 is merged into `fdm`; the numerical risk-aware learned-FDM-MPPI package is closed as a reproducible reporting package with explicit runtime and deployment boundaries. Final entry points are `PROJECT_FINAL_STATUS.md`, `STAGE6_RUNTIME_CLOSURE.md`, `REAL_ROBOT_READINESS.md`, and `REPRODUCIBILITY_COMMANDS.md`.
 
 ## Stage 0 Acceptance Criteria
 
@@ -58,9 +58,14 @@ Stage 6: paper-ready Stage 5 result package completed; next focus is runtime pro
 | S5-008 | P0 | done | Run calibrated 20-episode ID/OOD benchmark | ID/OOD 20-episode sweeps confirm `residual_gain=0.5`, `goal_xy_weight=3.5` removes the default learned `g=1.0` final-distance/steps regression. `smooth_weight=1.0` is the current efficiency candidate; `smooth_weight=0.5` has slightly better final distance but worse smoothness/jerk. |
 | S5-009 | P0 | done | Decide Stage 5-D entry or Pareto retune | Ran ID 27-case Pareto sweep plus OOD 3-candidate validation. Balanced candidate `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75` keeps risk/smoothness/jerk closest to nominal while improving average final distance and steps. Aggressive efficiency candidate `0.6/4.0/1.0` gives strongest final/steps gains but larger risk/smoothness cost. |
 | S5-010 | P0 | done | Run Stage 5-D 50/100 episode ID/OOD benchmark | Completed the 50-episode official matrix for nominal CUDA, default learned `g=1.0`, current efficiency `0.5/3.5/1.0`, and balanced `0.5/3.0/0.75` across ID random, OOD obstacle, and OOD terrain. Output: `results/stage5_d/s5_010_parallel`; official errors `0`; all official groups success `1.0`. Aggressive efficiency was stopped and excluded from official reporting to keep runtime bounded. |
-| S5-011 | P0 | todo | Record Stage 5-D paper-result framing and runtime next step | Use S5-010 to present three learned-FDM modes: default conservative/smooth, current efficiency, and balanced operating-point candidate. Next decide whether to expand to 100 episodes or focus on runtime profiling/optimization. |
+| S5-011 | P0 | done | Record Stage 5-D paper-result framing and runtime next step | Stage 5-D is framed as three learned-FDM operating modes: default conservative/smooth, current efficiency, and balanced operating-point candidate. Stage 5-E replaces post-hoc risk interpretation with explicit terrain-risk MPPI cost before risk-aware claims. |
 | S6-001 | P0 | done | Build paper-ready Stage 5 result package | Added `tools/plot_stage5_results.py`, generated `docs/agent_memory/STAGE6_RESULT_PACKAGE.md`, `figures/stage5/`, `tables/stage5/`, and `results/stage6_result_package/stage5_result_package.zip`. Package includes main result table, operating modes table, paired delta boxplots, Pareto scatter, trajectory gallery, runtime table, failure/trade-off analysis, and fixed `config/b2_omni_oracle.yaml` seed123 parameter GIFs with dashed goal-tolerance circles. |
-| S6-002 | P0 | todo | Profile and optimize learned Torch/CUDA runtime | Use S5-010 runtime boundary (`~52-61 ms` learned vs `~5.8-6.4 ms` nominal CUDA) to prioritize terrain feature/risk computation, FDM inference, rollout loop, obstacle cost, and synchronization. |
+| S5-E1 | P0 | done | Add risk-aware terrain MPPI groundwork | PR #25 added finite-band/ellipse terrain risk fields, risk-aware MPPI cost controls, risk metrics, shared override support, and risk-cost sweep tooling. |
+| S5-E2 | P0 | done | Add same-backend Torch nominal baseline and analysis | PR #26 added `MppiOmniTorch`, Torch same-backend benchmark support, learned Torch reuse of nominal rollout/cost/risk logic, and risk-aware paired analysis with bootstrap CI, Wilcoxon, Pareto, deltas, and curves. |
+| S5-E3/E4 | P0 | done | Run risk-weight selection and official 50-episode Torch ablation | Ran 10-episode risk-weight sweeps and 50-episode official same-backend Torch ablations for low_friction_patch, safe_corridor, risk_band, and fixed two-obstacle standard scene. Selected weights: `10`, `0.5`, `5`, and `3`. |
+| S5-E5 | P0 | done | Package paper-ready risk-aware results and figures | Added protocol/results docs, Nature-style figure rules, `tools/plot_stage5_e_risk_aware_results.py`, fixed two-obstacle risk-aware visual mode, tracked `figures/stage5_e/` and `tables/stage5_e/`. low_friction_patch is the strong claim; safe_corridor supporting; risk_band limitation; fixed two-obstacle visual continuity. |
+| S6-002 | P0 | done | Profile and optimize learned Torch/CUDA runtime | Review package completed on `codex/s6-runtime-profiling`: batched Torch bilinear sampling, fixed-seed 2x2 runtime profiler, forced-step runtime semantics (`simulation.disable_goal_termination=true`), Torch `inference_mode()`, sample/update paired delta buckets, 10ep x 10step closeout profiler, and Stage 6 runtime figures/tables. Closeout learned risk-on remains `+26.02 ms` mean MPPI over nominal risk-on, dominated by rollout (`+26.44 ms`), with all closeout runs reporting `profile_total_calls=10`; no real-time equivalence claim is made. Details: `docs/agent_memory/STAGE6_RUNTIME_PROFILE.md`. |
+| S6-003 | P0 | done | Final convergence and deployment readiness | Closed the current numerical package without new model structure, new maps, MuJoCo, or real-robot closed loop. Added final status, runtime closure, reproducibility commands, and real-robot readiness docs. Boundary: no learned-vs-nominal global win claim, no real-time equivalence claim, and no direct hardware deployment claim. Next stage may only start as read-only shadow mode. |
 
 ## Later Stages
 
@@ -70,6 +75,7 @@ Stage 6: paper-ready Stage 5 result package completed; next focus is runtime pro
 | 2 | done | Oracle residual world. |
 | 3.5 | done | Parallel Oracle Dataset Generation with explicit episode seed mapping. |
 | 4 | done | Residual velocity FDM training baseline and open-loop/OOD validation. |
-| 5 | done | Stage 5-D 50-episode benchmark completed and packaged for paper-ready Stage 6 results. |
-| 6 | in_progress | Paper-ready Stage 5 result package completed; next runtime profiling/optimization and optional 100-episode confirmation. |
-| 7 | pending | Paper-ready experiments and figures. |
+| 5 | done | Stage 5-D 50-episode benchmark completed and packaged with calibrated operating-mode framing. |
+| 5-E | done | Explicit terrain-risk MPPI cost, same-backend Torch risk-aware ablation, fixed two-obstacle visual evidence, and Nature-style paper figures completed. |
+| 6 | done | Paper-ready risk-aware Stage 5-E package merged via PR #27; runtime profiling package merged via PR #28; S6-003 final convergence docs define reproducibility, runtime closure, and real-robot readiness boundaries. |
+| 7 | pending | Shadow-mode adapter design only after minimum readiness gates are met. |

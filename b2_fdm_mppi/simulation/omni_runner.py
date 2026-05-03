@@ -83,6 +83,7 @@ class OmniMppiSimulationRunner:
         self.dt = 1.0 / self.hz
         self.max_steps = int(sim["max_steps"])
         self.minimum_distance = float(sim["minimum_distance"])
+        self.disable_goal_termination = bool(sim.get("disable_goal_termination", False))
         self.scenario_mode = "fixed"
         self.scenario_random_seed = None
         self._apply_random_start_goal()
@@ -170,7 +171,9 @@ class OmniMppiSimulationRunner:
         if self.world_mode == "oracle":
             self.oracle_world.reset()
         steps = 0
-        while steps < self.max_steps and not goal_reached_xy(self.state, self.goal, self.minimum_distance):
+        while steps < self.max_steps and (
+            self.disable_goal_termination or not goal_reached_xy(self.state, self.goal, self.minimum_distance)
+        ):
             self.step()
             steps += 1
             if self.failed:
@@ -280,6 +283,7 @@ class OmniMppiSimulationRunner:
             "success": success,
             "reached_goal": success,
             "failed": self.failed,
+            "goal_termination_disabled": self.disable_goal_termination,
             "init_pose": self.init_pose.tolist(),
             "goal": self.goal.tolist(),
             "steps": len(self.state_history),

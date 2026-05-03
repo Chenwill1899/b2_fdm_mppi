@@ -1,47 +1,36 @@
 # Stage 5-E / S6 Risk-Aware Learned-FDM-MPPI Protocol
 
-## Why Stage 5-D Is Not Enough
+## Motivation
 
-Stage 5-D showed that learned-FDM-MPPI can form calibrated operating modes:
+Stage 5-D showed learned-FDM-MPPI operating modes, but terrain risk was only an FDM input and evaluation metric. Stage 5-E makes terrain risk an explicit MPPI objective, so risk-aware claims are tied to planner cost, not only post-hoc metrics.
 
-- default `residual_gain=1.0`: conservative and smoother, but slower to the goal;
-- efficiency `0.5/3.5/1.0`: better final distance and steps, with small risk and smoothness costs;
-- balanced `0.5/3.0/0.75`: small step improvement with final distance and terrain risk close to nominal.
+## Cost
 
-The limitation is methodological: terrain risk was an FDM input feature and an evaluation metric, but it was not an explicit MPPI planning objective. Therefore Stage 5-D cannot claim that learned-FDM-MPPI actively avoids high-risk terrain.
-
-## Risk-Aware MPPI Cost
-
-Stage 5-E promotes terrain risk into the planner objective. The MPPI cost can include:
+Official runs use:
 
 ```text
-terrain_risk_weight * sum(phi(risk(x_t)))
+terrain_risk_mode=excess
+terrain_risk_threshold=0.3
+terrain_risk_power=2.0
+terrain_risk_weight in {0, selected_weight}
 ```
-
-with:
-
-- `terrain_risk_mode=excess`
-- `terrain_risk_threshold=0.3`
-- `terrain_risk_power=2.0`
 
 For excess mode:
 
 ```text
-phi(risk) = max(risk - terrain_risk_threshold, 0) ** terrain_risk_power
+cost += terrain_risk_weight * sum(max(risk(x_t) - threshold, 0) ** power)
 ```
 
-The official analysis compares risk-off (`terrain_risk_weight=0`) and risk-on (`terrain_risk_weight>0`) under the same Torch rollout/cost backend.
+## Same-Backend 2x2
 
-## Same-Backend 2x2 Ablation
+Official evidence uses `backend=torch` for all four cells:
 
-Official Stage 5-E conclusions must use `backend=torch` for both nominal and learned controllers:
+- nominal Torch, risk off
+- nominal Torch, risk on
+- learned Torch, risk off
+- learned Torch, risk on
 
-1. nominal Torch, risk off
-2. nominal Torch, risk on
-3. learned Torch, risk off
-4. learned Torch, risk on
-
-The learned controller uses the balanced Stage 5-D candidate:
+Learned balanced setting:
 
 ```text
 residual_gain=0.5
@@ -49,37 +38,23 @@ goal_xy_weight=3.0
 smooth_weight=0.75
 ```
 
-This avoids a mixed PyCUDA nominal versus Torch learned comparison.
+This avoids PyCUDA-vs-Torch backend mixing in the official risk-aware ablation.
 
-## Risk Maps
+## Maps
 
-Official maps:
+- `config/b2_omni_oracle_low_friction_patch.yaml`: strong-claim candidate.
+- `config/b2_omni_oracle_safe_corridor.yaml`: supporting evidence.
+- `config/b2_omni_oracle_risk_band.yaml`: stress test / limitation.
+- `config/b2_omni_oracle.yaml`: fixed two-obstacle standard visual benchmark and summary.
 
-- `config/b2_omni_oracle_low_friction_patch.yaml`
-- `config/b2_omni_oracle_safe_corridor.yaml`
-- `config/b2_omni_oracle_risk_band.yaml`
-- `config/b2_omni_oracle.yaml`
+## Risk Weight Sweep
 
-Optional:
-
-- `config/b2_omni_oracle_risk_island.yaml`
-
-Map-level interpretation:
-
-- `low_friction_patch`: candidate strong risk-aware claim.
-- `safe_corridor`: supporting claim.
-- `risk_band`: stress test and possible limitation.
-- `config/b2_omni_oracle.yaml`: fixed two-obstacle continuity and visual benchmark.
-- `risk_island`: optional supporting/stress map if runtime permits.
-
-## Risk Weight Selection
-
-Run a 10-episode sweep before official 50-episode reporting:
+Official selection is based on a 10-episode full-config Torch sweep:
 
 ```bash
 python3 tools/sweep_stage5_e_risk_cost.py \
-  --configs config/b2_omni_oracle_low_friction_patch.yaml,config/b2_omni_oracle_safe_corridor.yaml,config/b2_omni_oracle_risk_band.yaml,config/b2_omni_oracle.yaml \
-  --output results/stage5_e_risk_aware/s5_e5_weight_sweep_10ep_full_torch \
+  --configs <map.yaml> \
+  --output results/stage5_e_risk_aware/s5_e5_weight_sweep_10ep_full_torch_<map> \
   --episodes 10 \
   --base-seed 123 \
   --backend torch \
@@ -94,69 +69,33 @@ python3 tools/sweep_stage5_e_risk_cost.py \
   --learned-smooth-weight 0.75
 ```
 
-Selection criteria:
+Selected official weights:
 
-- success rate does not fall below the risk-off baseline;
-- cumulative risk, terrain-risk excess, or exposure ratio decreases;
-- final distance and steps do not degrade unacceptably;
-- obstacle clearance does not collapse;
-- runtime is reported as an offline benchmark cost if high.
-
-If a risk map only trades risk for much worse progress, report it as stress-test evidence.
+- low_friction_patch: `10`
+- safe_corridor: `0.5`
+- risk_band: `5` as stress-test setting
+- two_obstacle_standard: `3`
 
 ## Official 50-Episode Benchmark
 
-For each selected map/weight, run the same 2x2 structure with `50` episodes and `seed = 123 + episode_id`.
-
-Required outputs per official case:
-
-- `stage5_benchmark_summary.json`
-- paired deltas in the benchmark summary;
-- analysis JSON and CSV from `tools/analyze_stage5_e_risk_aware.py`;
-- paper tables from `tools/plot_stage5_e_risk_aware_results.py`.
-
-The fixed two-obstacle map must be included in the official summary, even if it is mainly used for visual continuity.
-
-## Fixed Two-Obstacle Visual Benchmark
-
-Use:
+Run one sweep per map with risk weights `0,<selected>` and `50` episodes. Seed mapping is:
 
 ```text
-config/b2_omni_oracle.yaml
+seed = 123 + episode_id
+episode_id = 0..49
 ```
 
-Run the four visual cases:
+Primary outputs:
 
-- nominal Torch + risk off
-- nominal Torch + risk on
-- learned Torch balanced + risk off
-- learned Torch balanced + risk on
-
-Recommended command:
-
-```bash
-python3 tools/visualize_stage5_closed_loop.py \
-  --config config/b2_omni_oracle.yaml \
-  --scenario-name two_obstacle_standard \
-  --output results/stage5_e_risk_aware/s5_e5_two_obstacle_visual_seed123 \
-  --seed 123 \
-  --backend torch \
-  --fdm-device cuda \
-  --fdm-residual-gain 0.5 \
-  --risk-aware-2x2 \
-  --risk-weight <selected_weight> \
-  --risk-power 2.0 \
-  --risk-threshold 0.3 \
-  --risk-mode excess \
-  --learned-goal-xy-weight 3.0 \
-  --learned-smooth-weight 0.75
-```
-
-The plot tool then creates trajectory-over-risk maps, risk curves, cumulative-risk curves, and a copied learned-risk animation GIF.
+- `stage5_benchmark_summary.json`
+- `analysis/stage5_e_paired_stats.json`
+- `analysis/stage5_e_paired_stats.csv`
+- `figures/stage5_e/`
+- `tables/stage5_e/`
 
 ## Statistics
 
-Core paired metrics:
+Core metrics:
 
 - `final_distance`
 - `steps`
@@ -168,19 +107,21 @@ Core paired metrics:
 - `control_jerk`
 - `mean_mppi_time_ms`
 
-For lower-is-better metrics, `learned - nominal < 0` means learned is better. If a confidence interval crosses zero, describe the result as non-significant or mixed, not as a clear improvement.
+For lower-is-better metrics, `learned - nominal < 0` means learned is better. If a bootstrap CI crosses zero, do not call it a significant improvement.
 
 ## Result Boundary
 
-Stage 5-E can support:
+Allowed claims:
 
-- explicit terrain-risk cost changes planner behavior;
-- same-backend Torch learned-vs-nominal comparisons are fairer than PyCUDA-vs-Torch comparisons;
-- map-wise claims for low-friction, safe-corridor, risk-band, and fixed two-obstacle scenes.
+- explicit risk cost changes planner behavior on selected maps;
+- low_friction_patch is the strongest risk-aware evidence;
+- safe_corridor supports the trend with weaker excess-risk effect;
+- risk_band remains a stress test and limitation;
+- fixed two-obstacle scene provides continuity and visual evidence.
 
-Stage 5-E must not claim:
+Disallowed claims:
 
-- learned-FDM-MPPI dominates nominal on every map and metric;
-- risk-band failure is a success;
-- closed-loop oracle trajectories are ground truth;
-- real-time parity with nominal Torch or nominal CUDA unless runtime evidence supports it.
+- learned-FDM-MPPI dominates nominal on all maps and metrics;
+- risk_band is a clean success;
+- closed-loop trajectories are GT;
+- learned runtime is real-time equivalent to nominal.

@@ -1320,3 +1320,252 @@ Cross-scenario learned deltas versus nominal:
 - Verification:
   - GIF frame counts: nominal `225`, default `214`, efficiency `211`, balanced `230`.
   - Zip package includes the seed123 oracle HTML, CSV/JSON summary, copied GIFs, and per-run artifacts.
+
+### 2026-05-02: S5-E5 / S6 Risk-Aware Learned-FDM-MPPI Result Package
+
+- Goal: complete a paper-ready risk-aware learned-FDM-MPPI result package using same-backend Torch comparisons, explicit terrain-risk MPPI cost, paired statistics, Nature-style figures, and a fixed two-obstacle visual benchmark.
+- Baseline check:
+  - Branch created from latest `origin/fdm`: `codex/s5-e5-risk-aware-result-package`.
+  - PR #26 baseline was present on `fdm`: `MppiOmniTorch`, Torch learned controller reuse, `create_omni_controller(... backend=torch)`, Torch benchmark path, risk-aware analyzer, and Torch MPPI tests.
+  - Initial validation: `python3 -m pytest -q` passed with `173 passed`.
+- Official method:
+  - Backend: `torch`.
+  - Device: `cuda`.
+  - Seed mapping: `seed = 123 + episode_id`.
+  - Learned setting: `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75`.
+  - Risk cost: `terrain_risk_mode=excess`, `terrain_risk_power=2.0`, `terrain_risk_threshold=0.3`.
+- Risk-weight selection:
+  - Command template: `python3 tools/sweep_stage5_e_risk_cost.py --configs <map.yaml> --episodes 10 --base-seed 123 --backend torch --controllers nominal,learned --risk-weights 0,0.5,1,3,5,10 --risk-power 2.0 --risk-threshold 0.3 --risk-mode excess --fdm-device cuda --fdm-residual-gain 0.5 --learned-goal-xy-weight 3.0 --learned-smooth-weight 0.75`.
+  - Selected official weights: low_friction_patch `10`, safe_corridor `0.5`, risk_band `5`, two_obstacle_standard `3`.
+- Official 50-episode outputs:
+  - `results/stage5_e_risk_aware/s5_e5_official_50ep_low_friction_w10`
+  - `results/stage5_e_risk_aware/s5_e5_official_50ep_safe_corridor_w0_5`
+  - `results/stage5_e_risk_aware/s5_e5_official_50ep_risk_band_w5`
+  - `results/stage5_e_risk_aware/s5_e5_official_50ep_two_obstacle_w3`
+  - Each output contains `stage5_e_risk_sweep_summary.json`, per-case `stage5_benchmark_summary.json`, and `analysis/` paired statistics.
+- Fixed two-obstacle visual command:
+  - `python3 tools/visualize_stage5_closed_loop.py --config config/b2_omni_oracle.yaml --scenario-name two_obstacle_standard --output results/stage5_e_risk_aware/s5_e5_two_obstacle_visual_seed123 --seed 123 --backend torch --fdm-device cuda --fdm-residual-gain 0.5 --risk-aware-2x2 --risk-weight 3 --risk-power 2.0 --risk-threshold 0.3 --risk-mode excess --learned-goal-xy-weight 3.0 --learned-smooth-weight 0.75`
+  - Output: `results/stage5_e_risk_aware/s5_e5_two_obstacle_visual_seed123/stage5_e_visual_eval_summary.json`.
+  - Seed123 metrics: risk-aware learned final `0.3394`, steps `220`, cumulative risk `94.31`, excess `31.74`, exposure `0.7909`, mean MPPI `26.53 ms`; it has the lowest risk metrics among the four visual cases.
+- Paper figure command:
+  - `python3 tools/plot_stage5_e_risk_aware_results.py --sweep-summary results/stage5_e_risk_aware/s5_e5_official_50ep_low_friction_w10/stage5_e_risk_sweep_summary.json,results/stage5_e_risk_aware/s5_e5_official_50ep_safe_corridor_w0_5/stage5_e_risk_sweep_summary.json,results/stage5_e_risk_aware/s5_e5_official_50ep_risk_band_w5/stage5_e_risk_sweep_summary.json,results/stage5_e_risk_aware/s5_e5_official_50ep_two_obstacle_w3/stage5_e_risk_sweep_summary.json --visual-summary results/stage5_e_risk_aware/s5_e5_two_obstacle_visual_seed123/stage5_e_visual_eval_summary.json --output figures/stage5_e --tables-output tables/stage5_e`
+  - Generated `8` case figures, `table_s5e_main_results.csv`, `table_s5e_paired_stats.csv`, and copied `fig_s5e_two_obstacle_animation.gif`.
+- Key risk-on learned-minus-nominal deltas:
+  - low_friction_patch, weight `10`: final `-0.0127`, cumulative risk `-9.1263`, excess risk `-3.7318`, exposure `-0.0204`, runtime `+21.57 ms`.
+  - safe_corridor, weight `0.5`: final `-0.0019`, cumulative risk `-2.2375`, excess risk `+0.0040`, exposure `+0.0033`, runtime `+27.94 ms`.
+  - risk_band, weight `5`: final `-0.0002`, cumulative risk `-3.3511`, excess risk `-0.3686`, exposure `+0.0005`, runtime `+21.08 ms`.
+  - two_obstacle_standard, weight `3`: final `-0.0071`, cumulative risk `-7.6334`, excess risk `-2.7628`, exposure `+0.0139`, runtime `+17.65 ms`.
+- Statistical boundary:
+  - low_friction_patch supports the strongest risk-aware claim: cumulative risk, excess risk, and exposure have bootstrap CIs below zero and Wilcoxon p-values below `0.001`.
+  - safe_corridor supports cumulative-risk reduction but not excess/exposure improvement.
+  - risk_band remains a stress-test limitation: cumulative risk improves, while excess/exposure are not clean wins.
+  - two_obstacle_standard is strong visual continuity evidence; final/cumulative/excess improve significantly, but exposure does not.
+- Tracked package:
+  - `tools/plot_stage5_e_risk_aware_results.py`
+  - `tools/analyze_stage5_e_risk_aware.py`
+  - `tools/visualize_stage5_closed_loop.py`
+  - `docs/agent_memory/NATURE_FIGURE_STYLE.md`
+  - `docs/agent_memory/STAGE5_E_RISK_AWARE_PROTOCOL.md`
+  - `docs/agent_memory/STAGE5_E_RISK_AWARE_RESULTS.md`
+  - `figures/stage5_e/`
+  - `tables/stage5_e/`
+- Boundary:
+  - Do not claim learned-FDM-MPPI dominates all maps or metrics.
+  - Do not label closed-loop trajectories as GT.
+  - Do not use backend `cuda` PyCUDA-vs-Torch mixed runs as official risk-aware evidence.
+  - Do not claim learned Torch runtime is equivalent to nominal Torch.
+
+### 2026-05-03: S6-002 Runtime Profiling And First Terrain Sampling Optimization
+
+- Goal: execute the next Stage 6 step after the paper-ready Stage 5 package by profiling learned Torch/CUDA runtime and applying a low-risk optimization.
+- Branch:
+  - `codex/s6-runtime-profiling`
+  - Base: `origin/fdm @ 16b043b` after PR #27 was merged into `fdm`.
+- Root-cause method:
+  - Used existing `tools/profile_stage5_learned_torch.py` runtime buckets.
+  - Re-ran 20-step profile on standard, ID random, and low_friction_patch configs.
+  - Confirmed rollout-side terrain feature computation remains the largest learned runtime bucket, especially on noise-enabled random terrain.
+- Pre-optimization commands:
+  - `python3 tools/profile_stage5_learned_torch.py --config config/b2_omni_oracle.yaml --output results/stage6_runtime_profile/standard_seed123_g05_20steps --steps 20 --seed 123 --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --fdm-residual-gain 0.5`
+  - `python3 tools/profile_stage5_learned_torch.py --config config/b2_omni_oracle_random100_dataset.yaml --output results/stage6_runtime_profile/id_random_seed123_g05_20steps --steps 20 --seed 123 --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --fdm-residual-gain 0.5`
+  - `python3 tools/profile_stage5_learned_torch.py --config config/b2_omni_oracle_low_friction_patch.yaml --output results/stage6_runtime_profile/low_friction_seed123_g05_20steps --steps 20 --seed 123 --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --fdm-residual-gain 0.5`
+- Key pre-optimization buckets:
+  - Standard: `rollout_total_ms=992.23`, `terrain_features_ms=357.61`, `fdm_inference_ms=177.20`, `state_integrate_ms=163.97`, `obstacle_cost_ms=32.47`.
+  - ID random auto-seed: `rollout_total_ms=1315.42`, `terrain_features_ms=784.27`, `fdm_inference_ms=142.68`, `state_integrate_ms=155.78`, `obstacle_cost_ms=68.05`.
+  - low_friction_patch: `rollout_total_ms=1072.69`, `terrain_features_ms=445.62`, `fdm_inference_ms=162.27`, `state_integrate_ms=166.90`, `obstacle_cost_ms=6.80`.
+- Change:
+  - Added `MppiOmniTorch._bilinear_sample_many_torch()` and `noise_fields_t`.
+  - `MppiOmniTorch._terrain_features_torch()` now samples noise, x-gradient, and y-gradient terrain fields in one pass instead of recomputing bilinear indices/weights three times.
+- TDD evidence:
+  - Red test first: `python3 -m pytest tests/test_mppi_omni_torch.py::test_nominal_torch_bilinear_sample_many_matches_individual_samples -q` failed with missing `_bilinear_sample_many_torch`.
+  - After implementation: same test passed.
+  - Targeted regression passed: `python3 -m pytest tests/test_mppi_omni_torch.py::test_nominal_torch_batch_cost_matches_numpy_with_terrain_risk tests/test_mppi_omni_learned_torch.py::test_learned_torch_rollout_scales_residual_with_gain -q`.
+- Microbenchmark:
+  - 1024 CPU query points, 32x32 noise grids.
+  - Three individual samplers: `0.369392 ms/call`.
+  - Batched sampler: `0.187556 ms/call`.
+  - Sampling subroutine speedup: `1.970x`.
+- Post-optimization profile:
+  - ID random auto-seed `terrain_features_ms` went from `784.27` to `525.28` (`-33.02%`).
+  - Standard and low_friction are within profiling variance because they do not stress the repeated noise-grid path as strongly.
+  - Caveat: `config/b2_omni_oracle_random100_dataset.yaml` uses `scenario.random_seed: auto`, so this is hotspot evidence, not a paired trajectory benchmark.
+- Post-merge smoke:
+  - Command: `python3 tools/profile_stage5_learned_torch.py --config config/b2_omni_oracle_random100_dataset.yaml --output results/stage6_runtime_profile/post_merge_id_random_batched_noise_5steps --steps 5 --seed 123 --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-device cuda --fdm-residual-gain 0.5`
+  - Output: `results/stage6_runtime_profile/post_merge_id_random_batched_noise_5steps/`.
+  - Key buckets: `rollout_total_ms=273.69`, `terrain_features_ms=166.17`, `fdm_inference_ms=41.39`, `obstacle_cost_ms=35.35`.
+- Output:
+  - Raw profile outputs: `results/stage6_runtime_profile/` (not tracked).
+  - Tracked protocol: `docs/agent_memory/STAGE6_RUNTIME_PROFILE.md`.
+- Boundary:
+  - This is first-pass runtime optimization, not full learned-runtime closure.
+  - Learned Torch remains slower than nominal.
+  - Next candidates: paired runtime profiler with fixed scenario seeds, Torch compile/horizon-loop fusion, safe terrain/risk caching where timestep semantics match, and dense-obstacle cost profiling.
+
+### 2026-05-03: S6-002 Fixed-Seed 2x2 Runtime Matrix
+
+- Goal: continue Stage 6 runtime work by replacing auto-seed single-controller profile evidence with a fixed-seed same-backend 2x2 runtime matrix.
+- Branch:
+  - `codex/s6-runtime-profiling`
+- Change:
+  - Added `tools/profile_stage6_runtime_matrix.py`.
+  - The tool runs `nominal_risk_off`, `nominal_risk_on`, `learned_risk_off`, and `learned_risk_on` under backend `torch`.
+  - Random-start-goal configs use explicit `scenario.random_seed = base_seed + episode_id`, so case comparisons are paired by seed.
+  - Nominal profiling uses `mppi.profile_enabled`; learned profiling uses `fdm.profile_enabled`.
+- TDD evidence:
+  - Red test first: `python3 -m pytest tests/test_stage6_runtime_matrix.py -q` failed because `tools/profile_stage6_runtime_matrix.py` did not exist.
+  - After implementation: `python3 -m pytest tests/test_stage6_runtime_matrix.py tests/test_stage5_runtime_profile.py -q` passed with `2 passed`.
+- Real paired profiler smoke:
+  - Command: `python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed --output results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps --episodes 3 --steps 5 --base-seed 123 --backend torch --device auto --risk-weight 3 --risk-power 2.0 --risk-threshold 0.3 --risk-mode excess --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened --fdm-checkpoint best_model.pt --fdm-normalization normalization.npz --fdm-residual-gain 0.5 --learned-goal-xy-weight 3.0 --learned-smooth-weight 0.75`
+  - Output: `results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps/stage6_runtime_matrix_summary.json`.
+- Key aggregate profile means:
+  - nominal_risk_off: `mean_mppi_time_ms=23.76`, `profile_mean_rollout_total_ms=10.71`, `terrain_risk_cost_ms=0.053`.
+  - nominal_risk_on: `mean_mppi_time_ms=18.87`, `profile_mean_rollout_total_ms=10.28`, `terrain_risk_cost_ms=4.424`.
+  - learned_risk_off: `mean_mppi_time_ms=44.55`, `profile_mean_rollout_total_ms=40.35`, `terrain_features_ms=0.928`, `fdm_inference_ms=0.232`, `terrain_risk_cost_ms=0.054`.
+  - learned_risk_on: `mean_mppi_time_ms=44.09`, `profile_mean_rollout_total_ms=38.85`, `terrain_features_ms=0.913`, `fdm_inference_ms=0.192`, `terrain_risk_cost_ms=1.122`.
+- Key paired deltas:
+  - learned_risk_on vs nominal_risk_on: `mean_mppi_time_ms_delta=+25.22`, `profile_mean_rollout_total_ms_delta=+28.57`, `terrain_risk_cost_ms_delta=-3.302`.
+  - learned_risk_off vs nominal_risk_off: `mean_mppi_time_ms_delta=+20.78`, `profile_mean_rollout_total_ms_delta=+29.64`.
+  - learned_risk_on vs learned_risk_off: `mean_mppi_time_ms_delta=-0.46`, `profile_mean_rollout_total_ms_delta=-1.50`, `terrain_risk_cost_ms_delta=+1.068`.
+- Boundary:
+  - This is a short profiling smoke, not a paper runtime benchmark.
+  - It confirms terrain-risk cost is not the dominant learned-vs-nominal runtime gap; learned rollout/feature/integration work remains the next optimization target.
+
+### 2026-05-03: S6-002 Torch Inference Mode Runtime Cleanup
+
+- Goal: continue Stage 6 runtime optimization with a behavior-preserving Torch hygiene change: disable autograd for the full MPPI `compute_control()` path.
+- Branch:
+  - `codex/s6-runtime-profiling`
+- Change:
+  - Wrapped `MppiOmniTorch.compute_control()` in `torch.inference_mode()`.
+  - Because `LearnedFdmMppiOmniTorch` inherits the same entry point, nominal Torch and learned Torch both run candidate sampling, rollout/cost, distribution update, and CPU transfer without autograd bookkeeping.
+- TDD evidence:
+  - Red test first: `python3 -m pytest tests/test_mppi_omni_torch.py::test_nominal_torch_compute_control_disables_grad_tracking -q` failed with `assert [True] == [False]`.
+  - After implementation: same test passed.
+  - Targeted regression passed: `python3 -m pytest tests/test_mppi_omni_torch.py tests/test_mppi_omni_learned_torch.py tests/test_stage6_runtime_matrix.py -q` with `17 passed`.
+- Real paired profiler smoke:
+  - Command: `python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed --output results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps_inference_mode --episodes 3 --steps 5 --base-seed 123 --backend torch --device cuda --risk-weight 3.0`
+  - Output: `results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps_inference_mode/stage6_runtime_matrix_summary.json`.
+- Key aggregate before -> after:
+  - nominal_risk_off mean MPPI: `23.76 -> 22.75 ms`; rollout: `10.71 -> 9.43 ms`.
+  - nominal_risk_on mean MPPI: `18.87 -> 17.17 ms`; rollout: `10.28 -> 8.73 ms`.
+  - learned_risk_off mean MPPI: `44.55 -> 40.80 ms`; rollout: `40.35 -> 36.66 ms`; terrain features: `0.928 -> 0.850 ms`; FDM inference: `0.232 -> 0.223 ms`.
+  - learned_risk_on mean MPPI: `44.09 -> 40.86 ms`; rollout: `38.85 -> 35.74 ms`; terrain features: `0.913 -> 0.852 ms`; FDM inference: `0.192 -> 0.183 ms`.
+- Key paired delta:
+  - learned_risk_on vs nominal_risk_on mean MPPI gap: `+25.22 -> +23.69 ms`.
+  - learned_risk_on vs nominal_risk_on rollout gap: `+28.57 -> +27.01 ms`.
+- Boundary:
+  - This is a small runtime cleanup, not a full runtime closure.
+  - Learned Torch remains materially slower than nominal Torch; next target remains per-horizon learned rollout work.
+
+### 2026-05-03: S6-002 Runtime Matrix Delta Bucket Enhancement
+
+- Goal: improve the fixed-seed Stage 6 runtime matrix so paired deltas expose candidate sampling and distribution update overhead, not only rollout/risk/FDM buckets.
+- Change:
+  - Added `profile_mean_sample_candidates_ms` and `profile_mean_update_distribution_ms` to `DELTA_METRICS` in `tools/profile_stage6_runtime_matrix.py`.
+  - Extended `tests/test_stage6_runtime_matrix.py` to assert the paired delta aggregate includes both fields.
+- TDD evidence:
+  - Red test first: `python3 -m pytest tests/test_stage6_runtime_matrix.py -q` failed with `KeyError: 'profile_mean_sample_candidates_ms_delta_mean'`.
+  - After implementation: same test passed with `1 passed`.
+- Real profiler smoke:
+  - Command: `python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed_delta_buckets --output results/stage6_runtime_profile/paired_id_random_fixed_seed_1ep_2steps_delta_buckets --episodes 1 --steps 2 --base-seed 123 --backend torch --device cuda --risk-weight 3.0`
+  - Output: `results/stage6_runtime_profile/paired_id_random_fixed_seed_1ep_2steps_delta_buckets/stage6_runtime_matrix_summary.json`.
+  - Confirmed JSON fields: `profile_mean_sample_candidates_ms_delta_mean` and `profile_mean_update_distribution_ms_delta_mean`.
+- Boundary:
+  - This is profiler instrumentation only; it does not change controller behavior or runtime.
+  - The 1ep x 2step output is a schema smoke, not a performance conclusion.
+
+### 2026-05-03: S6-002 Runtime Closeout Figures And 10ep Confirmation
+
+- Goal: quickly close Stage 6 runtime profiling into a reviewable package with figures, tables, and a slightly longer fixed-seed runtime confirmation.
+- New tool:
+  - `tools/plot_stage6_runtime_results.py`
+  - Test: `tests/test_stage6_runtime_plot.py`
+- TDD evidence:
+  - Red test first: `python3 -m pytest tests/test_stage6_runtime_plot.py -q` failed because `tools/plot_stage6_runtime_results.py` did not exist.
+  - After implementation: same test passed.
+- Closeout profiler command:
+  - `python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed_closeout --output results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout --episodes 10 --steps 10 --base-seed 123 --backend torch --device cuda --risk-weight 3.0`
+- Closeout profiler output:
+  - `results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout/stage6_runtime_matrix_summary.json`
+- Runtime semantics:
+  - Stage 6 profiler now sets `simulation.disable_goal_termination=true` by default.
+  - `--steps 10` means forced 10 `compute_control()` calls per run, not ordinary benchmark max steps.
+  - `profile_call_consistency.consistent=true`; `unique_total_calls=[10]`.
+- Plot command:
+  - `python3 tools/plot_stage6_runtime_results.py --summary results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps_inference_mode/stage6_runtime_matrix_summary.json results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout/stage6_runtime_matrix_summary.json --output figures/stage6 --tables-output tables/stage6`
+- Generated figures:
+  - `figures/stage6/fig_stage6_runtime_summary.png`
+  - `figures/stage6/fig_stage6_runtime_summary.pdf`
+  - `figures/stage6/fig_stage6_runtime_breakdown.png`
+  - `figures/stage6/fig_stage6_runtime_breakdown.pdf`
+  - `figures/stage6/fig_stage6_runtime_delta_buckets.png`
+  - `figures/stage6/fig_stage6_runtime_delta_buckets.pdf`
+- Generated tables:
+  - `tables/stage6/table_stage6_runtime_summary.csv`
+  - `tables/stage6/table_stage6_runtime_paired_deltas.csv`
+- Closeout aggregate means:
+  - nominal_risk_off: mean MPPI `13.90 ms`, rollout `8.67 ms`, profile calls/run `10`.
+  - nominal_risk_on: mean MPPI `13.91 ms`, rollout `8.54 ms`, profile calls/run `10`.
+  - learned_risk_off: mean MPPI `38.97 ms`, rollout `34.94 ms`, terrain features `0.834 ms`, FDM inference `0.178 ms`, profile calls/run `10`.
+  - learned_risk_on: mean MPPI `39.93 ms`, rollout `34.98 ms`, terrain features `0.839 ms`, FDM inference `0.172 ms`, profile calls/run `10`.
+- Closeout paired delta:
+  - learned_risk_on vs nominal_risk_on: mean MPPI `+26.02 ms`, rollout `+26.44 ms`, sample `+0.003 ms`, update `+0.001 ms`, terrain-risk cost `-0.501 ms`.
+- Validation:
+  - `python3 -m pytest tests/test_stage6_runtime_plot.py tests/test_stage6_runtime_matrix.py tests/test_mppi_omni_torch.py tests/test_mppi_omni_learned_torch.py -q` -> `18 passed`.
+  - `git diff --check` -> pass.
+- Boundary:
+  - Stage 6 now has a reviewable runtime profiling and plotting package.
+  - It does not claim learned Torch is real-time equivalent to nominal Torch.
+  - The remaining runtime limitation is explicit: learned-vs-nominal overhead is still dominated by learned rollout.
+
+### 2026-05-03: S6-003 Final Convergence And Deployment Readiness
+
+- Goal: close the current risk-aware learned-FDM-MPPI numerical simulation package as a reportable, reproducible, boundary-clear final package.
+- Branch:
+  - `codex/s6-003-final-readiness`
+  - base: `origin/fdm` after PR #28 merge (`67f3371`)
+- Scope boundaries:
+  - No new model structure.
+  - No new maps.
+  - No MuJoCo or real-robot closed loop.
+  - No claim that learned runtime equals nominal runtime.
+  - No claim that the current stack is directly deployable on hardware.
+- Added docs:
+  - `docs/agent_memory/PROJECT_FINAL_STATUS.md`
+  - `docs/agent_memory/STAGE6_RUNTIME_CLOSURE.md`
+  - `docs/agent_memory/REAL_ROBOT_READINESS.md`
+  - `docs/agent_memory/REPRODUCIBILITY_COMMANDS.md`
+- Updated docs:
+  - `README.md`
+  - `docs/agent_memory/TASK_BOARD.md`
+  - `docs/agent_memory/EXPERIMENT_LOG.md`
+- Final numerical framing:
+  - Strong risk-aware claim remains `low_friction_patch`.
+  - `safe_corridor` is supporting evidence.
+  - `risk_band` is a stress-test limitation.
+  - `two_obstacle_standard` is visual continuity plus fixed-scene evidence.
+  - Stage 6 runtime closure remains a limitation: forced-step closeout learned risk-on is about `+26.02 ms` mean MPPI over nominal risk-on, dominated by rollout.
+- Real-robot readiness:
+  - Current package is numerical simulation only.
+  - Next stage may start only as read-only shadow mode.
+  - Shadow-mode minimum entry conditions are listed in `REAL_ROBOT_READINESS.md`.
