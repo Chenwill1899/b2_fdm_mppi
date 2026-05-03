@@ -171,6 +171,61 @@ Paired deltas from the same run:
 
 Interpretation boundary: this is a short profiling run, not a paper runtime benchmark. It confirms the next large bottleneck is still learned rollout work: learned risk-on adds about `+25.22 ms` mean MPPI time and `+28.57 ms` profiled rollout time over nominal risk-on under matched seeds. Terrain-risk cost itself is not the main learned overhead; FDM rollout/feature/integration work remains the target.
 
+## Torch Inference Mode Guard
+
+The next low-risk runtime cleanup disables autograd for the entire Torch MPPI `compute_control()` path. Rollout already used a local `torch.no_grad()` block, but candidate sampling, cost aggregation, distribution update, and the learned controller entry path still ran under the caller's default grad-enabled context.
+
+TDD guard:
+
+```bash
+python3 -m pytest tests/test_mppi_omni_torch.py::test_nominal_torch_compute_control_disables_grad_tracking -q
+```
+
+Red result before implementation:
+
+```text
+assert [True] == [False]
+```
+
+Green result after wrapping `MppiOmniTorch.compute_control()` in `torch.inference_mode()`:
+
+```text
+1 passed
+```
+
+Targeted regression:
+
+```bash
+python3 -m pytest tests/test_mppi_omni_torch.py tests/test_mppi_omni_learned_torch.py tests/test_stage6_runtime_matrix.py -q
+```
+
+Result:
+
+```text
+17 passed
+```
+
+Fixed-seed profiler command:
+
+```bash
+python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed --output results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps_inference_mode --episodes 3 --steps 5 --base-seed 123 --backend torch --device cuda --risk-weight 3.0
+```
+
+Output: `results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps_inference_mode/stage6_runtime_matrix_summary.json`.
+
+Matched short-run before/after aggregates:
+
+| Case | mean_mppi before | mean_mppi after | rollout before | rollout after | terrain_features before | terrain_features after | fdm_inference before | fdm_inference after |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| nominal_risk_off | 23.76 | 22.75 | 10.71 | 9.43 | n/a | n/a | n/a | n/a |
+| nominal_risk_on | 18.87 | 17.17 | 10.28 | 8.73 | n/a | n/a | n/a | n/a |
+| learned_risk_off | 44.55 | 40.80 | 40.35 | 36.66 | 0.928 | 0.850 | 0.232 | 0.223 |
+| learned_risk_on | 44.09 | 40.86 | 38.85 | 35.74 | 0.913 | 0.852 | 0.192 | 0.183 |
+
+Paired learned risk-on minus nominal risk-on changed from `+25.22 ms` to `+23.69 ms` in mean MPPI time and from `+28.57 ms` to `+27.01 ms` in profiled rollout time.
+
+Interpretation boundary: this is a behavior-preserving runtime hygiene change with modest measured benefit on the short profiler. It does not close the learned-vs-nominal runtime gap. The next meaningful optimization still needs to attack the learned rollout loop, especially per-horizon terrain feature and residual model calls.
+
 ## Boundary
 
 This is a first S6-002 optimization, not a complete runtime closure. Learned Torch is still slower than nominal. Remaining likely hotspots:

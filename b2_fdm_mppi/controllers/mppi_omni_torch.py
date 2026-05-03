@@ -97,6 +97,10 @@ class MppiOmniTorch(MppiOmniNumpy):
         )
 
     def compute_control(self, state: np.ndarray, cost_params):
+        with torch.inference_mode():
+            return self._compute_control_impl(state, cost_params)
+
+    def _compute_control_impl(self, state: np.ndarray, cost_params):
         if self.profile_enabled:
             self._profile_total_calls += 1
         goal = torch.as_tensor(np.asarray(cost_params[3], dtype=np.float32), device=self.torch_device)

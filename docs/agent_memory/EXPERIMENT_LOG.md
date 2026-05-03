@@ -1449,3 +1449,30 @@ Cross-scenario learned deltas versus nominal:
 - Boundary:
   - This is a short profiling smoke, not a paper runtime benchmark.
   - It confirms terrain-risk cost is not the dominant learned-vs-nominal runtime gap; learned rollout/feature/integration work remains the next optimization target.
+
+### 2026-05-03: S6-002 Torch Inference Mode Runtime Cleanup
+
+- Goal: continue Stage 6 runtime optimization with a behavior-preserving Torch hygiene change: disable autograd for the full MPPI `compute_control()` path.
+- Branch:
+  - `codex/s6-runtime-profiling`
+- Change:
+  - Wrapped `MppiOmniTorch.compute_control()` in `torch.inference_mode()`.
+  - Because `LearnedFdmMppiOmniTorch` inherits the same entry point, nominal Torch and learned Torch both run candidate sampling, rollout/cost, distribution update, and CPU transfer without autograd bookkeeping.
+- TDD evidence:
+  - Red test first: `python3 -m pytest tests/test_mppi_omni_torch.py::test_nominal_torch_compute_control_disables_grad_tracking -q` failed with `assert [True] == [False]`.
+  - After implementation: same test passed.
+  - Targeted regression passed: `python3 -m pytest tests/test_mppi_omni_torch.py tests/test_mppi_omni_learned_torch.py tests/test_stage6_runtime_matrix.py -q` with `17 passed`.
+- Real paired profiler smoke:
+  - Command: `python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed --output results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps_inference_mode --episodes 3 --steps 5 --base-seed 123 --backend torch --device cuda --risk-weight 3.0`
+  - Output: `results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps_inference_mode/stage6_runtime_matrix_summary.json`.
+- Key aggregate before -> after:
+  - nominal_risk_off mean MPPI: `23.76 -> 22.75 ms`; rollout: `10.71 -> 9.43 ms`.
+  - nominal_risk_on mean MPPI: `18.87 -> 17.17 ms`; rollout: `10.28 -> 8.73 ms`.
+  - learned_risk_off mean MPPI: `44.55 -> 40.80 ms`; rollout: `40.35 -> 36.66 ms`; terrain features: `0.928 -> 0.850 ms`; FDM inference: `0.232 -> 0.223 ms`.
+  - learned_risk_on mean MPPI: `44.09 -> 40.86 ms`; rollout: `38.85 -> 35.74 ms`; terrain features: `0.913 -> 0.852 ms`; FDM inference: `0.192 -> 0.183 ms`.
+- Key paired delta:
+  - learned_risk_on vs nominal_risk_on mean MPPI gap: `+25.22 -> +23.69 ms`.
+  - learned_risk_on vs nominal_risk_on rollout gap: `+28.57 -> +27.01 ms`.
+- Boundary:
+  - This is a small runtime cleanup, not a full runtime closure.
+  - Learned Torch remains materially slower than nominal Torch; next target remains per-horizon learned rollout work.
