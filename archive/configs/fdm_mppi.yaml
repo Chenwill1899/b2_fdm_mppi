@@ -1,0 +1,59 @@
+b2_fdm_mppi:
+  ros__parameters:
+    config_file: ""
+
+simulation:
+  sampling_rate: 10.0
+  time_horizon: 3.0
+  goal: [10.0, 0.0, 0.0, 0.0, 0.0]
+  initial_state: [0.01, 0.01, 0.0, 0.0, 0.0]
+  minimum_distance: 0.5
+  max_steps: 500
+  without_heading: true
+  print_out: false
+
+mppi:
+  state_dim: 5
+  control_dim: 2
+  num_trajectories: 2496
+  draw_num_traj: 50
+  exploration_variance: 1200.0
+  weights: [2.5, 2.5, 2.0, 0.0, 0.0]
+  dist_type: 2
+  std_normal: [0.0, 0.0]
+  std_slack: 0.1
+  lambda: 0.236
+  beta_1: 0.5
+  beta_2: 0.8
+  beta_3: 0.5
+  sg_window: 51
+  sg_poly_order: 3
+  soft_cbf: false
+
+robot:
+  state_dim: 5
+  max_linear_velocity: 1.2
+  max_angular_velocity: 1.5
+  radius: 0.6
+  safety_dist: 0.3
+  obstacle_state_num: 7
+
+cbf:
+  type: 1
+  dcbf_alpha: 0.1
+  dcbf_weight: 1000000.0
+  slack_weight: 100.0
+  check_dist: 6.0
+  max_slack_vari: 1.0
+  atau: 0.2
+
+obstacles:
+  num_max: 5
+  static_enabled: true
+  virtual:
+    - [10.0, -0.6, 0.4, 0.0, 0.0, -0.5, 0.0]
+
+results:
+  root: "./results/sim_results"
+  enable_plots: true
+  enable_animation: true

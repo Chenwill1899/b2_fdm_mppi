@@ -8,12 +8,10 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 from b2_fdm_mppi.data.oracle_dataset import build_oracle_dataset
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
@@ -21,8 +19,9 @@ def main() -> None:
     parser.add_argument("--val-ratio", type=float, default=0.15)
     parser.add_argument("--test-ratio", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=123)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
+    print("DEPRECATED: use `python3 tools/fdm_mppi.py dataset build ...`.", file=sys.stderr)
     summary = build_oracle_dataset(
         input_dir=args.input,
         output_dir=args.output,

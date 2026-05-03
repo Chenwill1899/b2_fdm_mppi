@@ -4,7 +4,13 @@ Last updated: 2026-05-03
 
 ## Current Stage
 
-S6-003 Final Convergence and Deployment Readiness: PR #28 is merged into `fdm`; the numerical risk-aware learned-FDM-MPPI package is closed as a reproducible reporting package with explicit runtime and deployment boundaries. Final entry points are `PROJECT_FINAL_STATUS.md`, `STAGE6_RUNTIME_CLOSURE.md`, `REAL_ROBOT_READINESS.md`, and `REPRODUCIBILITY_COMMANDS.md`.
+Project slimdown on `new`: the previous Stage 5/6 result package remains archived and reproducible, but the working project surface is being reduced to one FDM-MPPI pipeline: run simulation, collect oracle dataset, build/validate splits, train residual FDM, evaluate/benchmark, and write a compact report.
+
+Main entry point: `python3 tools/fdm_mppi.py`.
+
+Recommended configs: `configs/smoke.yaml`, `configs/dataset.yaml`, `configs/benchmark.yaml`.
+
+Historical stage scripts and published figures/tables now belong under `archive/`; root-level legacy scripts remain wrappers for compatibility only.
 
 ## Stage 0 Acceptance Criteria
 
@@ -66,6 +72,7 @@ S6-003 Final Convergence and Deployment Readiness: PR #28 is merged into `fdm`; 
 | S5-E5 | P0 | done | Package paper-ready risk-aware results and figures | Added protocol/results docs, Nature-style figure rules, `tools/plot_stage5_e_risk_aware_results.py`, fixed two-obstacle risk-aware visual mode, tracked `figures/stage5_e/` and `tables/stage5_e/`. low_friction_patch is the strong claim; safe_corridor supporting; risk_band limitation; fixed two-obstacle visual continuity. |
 | S6-002 | P0 | done | Profile and optimize learned Torch/CUDA runtime | Review package completed on `codex/s6-runtime-profiling`: batched Torch bilinear sampling, fixed-seed 2x2 runtime profiler, forced-step runtime semantics (`simulation.disable_goal_termination=true`), Torch `inference_mode()`, sample/update paired delta buckets, 10ep x 10step closeout profiler, and Stage 6 runtime figures/tables. Closeout learned risk-on remains `+26.02 ms` mean MPPI over nominal risk-on, dominated by rollout (`+26.44 ms`), with all closeout runs reporting `profile_total_calls=10`; no real-time equivalence claim is made. Details: `docs/agent_memory/STAGE6_RUNTIME_PROFILE.md`. |
 | S6-003 | P0 | done | Final convergence and deployment readiness | Closed the current numerical package without new model structure, new maps, MuJoCo, or real-robot closed loop. Added final status, runtime closure, reproducibility commands, and real-robot readiness docs. Boundary: no learned-vs-nominal global win claim, no real-time equivalence claim, and no direct hardware deployment claim. Next stage may only start as read-only shadow mode. |
+| R7-001 | P0 | in progress | Slim project to one reproducible FDM-MPPI pipeline | Branch `new` synced latest `fdm`; added `tools/fdm_mppi.py`, `configs/`, package modules for training/evaluation/reporting, compatibility wrappers, and `archive/` for stage assets. Verification and Notion sync pending. |
 
 ## Later Stages
 
@@ -78,4 +85,4 @@ S6-003 Final Convergence and Deployment Readiness: PR #28 is merged into `fdm`; 
 | 5 | done | Stage 5-D 50-episode benchmark completed and packaged with calibrated operating-mode framing. |
 | 5-E | done | Explicit terrain-risk MPPI cost, same-backend Torch risk-aware ablation, fixed two-obstacle visual evidence, and Nature-style paper figures completed. |
 | 6 | done | Paper-ready risk-aware Stage 5-E package merged via PR #27; runtime profiling package merged via PR #28; S6-003 final convergence docs define reproducibility, runtime closure, and real-robot readiness boundaries. |
-| 7 | pending | Shadow-mode adapter design only after minimum readiness gates are met. |
+| 7 | pending | Future work starts after slim pipeline verification; shadow-mode adapter design remains gated by readiness checks. |

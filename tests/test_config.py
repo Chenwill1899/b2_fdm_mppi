@@ -154,6 +154,27 @@ def test_b2_omni_oracle_random100_dataset_config_loads_stage3_prep_parameters():
     assert config["results"]["enable_animation"] is False
 
 
+def test_slim_pipeline_configs_load_and_use_recommended_defaults():
+    smoke = load_config(Path("configs/smoke.yaml"))
+    dataset = load_config(Path("configs/dataset.yaml"))
+    benchmark = load_config(Path("configs/benchmark.yaml"))
+
+    assert smoke["mppi"]["backend"] == "numpy"
+    assert smoke["results"]["run_name"] == "fdm_mppi_smoke_latest"
+    assert smoke["results"]["overwrite"] is True
+    assert smoke["results"]["enable_animation"] is True
+
+    assert dataset["mppi"]["backend"] == "numpy"
+    assert dataset["scenario"]["random_start_goal_enabled"] is False
+    assert dataset["simulation"]["goal"][:2] == [1.2, 0.0]
+    assert dataset["results"]["enable_plots"] is False
+    assert dataset["results"]["enable_animation"] is False
+
+    assert benchmark["simulation"]["world_mode"] == "oracle"
+    assert benchmark["mppi"]["backend"] == "numpy"
+    assert benchmark["results"]["run_name"] == "fdm_mppi_benchmark"
+
+
 def test_b2_omni_oracle_random100_ood_configs_load_and_change_one_axis():
     base = load_config(Path("config/b2_omni_oracle_random100_dataset.yaml"))
     ood_obstacle = load_config(Path("config/b2_omni_oracle_random100_dataset_ood_obstacle.yaml"))
