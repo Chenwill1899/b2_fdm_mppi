@@ -84,6 +84,70 @@
 
 每次 experiment 会写出 `experiment_summary.json`，里面列出 `summary.json`、`trajectory.csv`、`trajectory.png`、`oracle_diagnostics.png`、`animation.gif` 等可检查产物路径。
 
+## Experiment Profile 配置
+
+`configs/experiment.yaml` 是推荐入口配置。它不是完整底层配置，而是 overlay：
+
+```text
+先加载 experiment.base_config -> 再应用 scenario/controllers/visualization -> 生成完整仿真配置
+```
+
+常用改动位置：
+
+- `experiment`: 设置实验名、默认 seed、输出根目录和 run name 模板。
+- `scenario`: 设置环境，包括 `initial_state`、`goal`、`world_mode`、`max_steps`、障碍物和地形。
+- `controllers`: 定义可选 MPPI 方法，例如 `nominal_cuda`、`nominal_numpy`、`learned_torch`。
+- `learned_fdm`: 给 learned controller 指定 `model_dir`、`checkpoint`、`normalization`、`device` 和 `residual_gain`。
+- `visualization`: 控制 `trajectory.png`、`oracle_diagnostics.png` 和 `animation.gif`。
+
+静态障碍物写在 `scenario.obstacles.virtual`：
+
+```yaml
+scenario:
+  obstacles:
+    static_enabled: true
+    virtual:
+      - [0.55, 0.18, 0.14, 0.0, 0.0, 0.0, 0.0]
+      - [0.85, -0.22, 0.16, 0.0, 0.0, 0.0, 0.0]
+```
+
+每个障碍物使用 7 个字段：
+
+```text
+[x, y, radius, unused, theta, vx, vy]
+```
+
+静态场景主要使用 `x, y, radius`；后四个字段保留给动态障碍和 legacy schema 兼容。
+
+随机障碍物可以这样启用：
+
+```yaml
+scenario:
+  obstacles:
+    static_enabled: true
+    virtual: []
+    random_enabled: true
+    random_seed: 123
+    num_random: 4
+    radius_range: [0.12, 0.22]
+    x_range: [0.25, 1.0]
+    y_range: [-0.45, 0.45]
+    min_obstacle_gap: 0.35
+    min_start_goal_clearance: 0.35
+```
+
+切换 learned FDM 模型时，优先用命令行覆盖，不必改 profile：
+
+```bash
+/usr/bin/python3 tools/fdm_mppi.py experiment \
+  --profile configs/experiment.yaml \
+  --controller learned_torch \
+  --model-dir results/fdm_baselines/my_model \
+  --checkpoint best_model.pt \
+  --normalization normalization.npz \
+  --device cuda
+```
+
 低层仿真命令仍然保留：
 
 ```bash
