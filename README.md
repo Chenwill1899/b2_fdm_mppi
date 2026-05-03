@@ -107,6 +107,7 @@
 
 - `experiment`: 设置实验名、默认 seed、输出根目录、run name 模板，或用 `results_dir` 直接指定最终结果目录。
 - `scenario`: 设置环境，包括 `initial_state`、`goal`、`world_mode`、`max_steps`、障碍物和地形。
+- `scenario.terrain.goal_relief`: 终点附近的地形风险递减；`center: auto` 会跟随 `scenario.goal[:2]`，避免风险代价阻止收敛到终点。
 - `controllers`: 定义可选 MPPI 方法，例如 `nominal_cuda`、`nominal_numpy`、`learned_torch`。
 - `learned_fdm`: 给 learned controller 指定 `model_dir`、`checkpoint`、`normalization`、`device` 和 `residual_gain`。
 - `visualization`: 控制 `trajectory.png`、`oracle_diagnostics.png` 和 `animation.gif`。

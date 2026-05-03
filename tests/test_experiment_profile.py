@@ -78,6 +78,7 @@ def test_build_experiment_config_maps_scene_controller_model_and_visuals(tmp_pat
     assert config["simulation"]["minimum_distance"] == 0.35
     assert config["obstacles"]["virtual"] == [[1.0, 0.2, 0.25, 0.0, 0.0, 0.0, 0.0]]
     assert config["terrain"]["friction_base"] == 0.65
+    assert config["terrain"]["goal_relief"]["center"] == [2.0, 0.5]
     assert config["visualization"]["terrain_grid_resolution"] == 24
     assert config["mppi"]["backend"] == "torch"
     assert config["mppi"]["num_trajectories"] == 32
@@ -91,6 +92,21 @@ def test_build_experiment_config_maps_scene_controller_model_and_visuals(tmp_pat
     assert config["results"]["run_name"] == "unit_profile_learned_torch_seed456"
     assert config["results"]["enable_plots"] is True
     assert config["results"]["enable_animation"] is False
+
+
+def test_build_experiment_config_preserves_explicit_goal_relief_center(tmp_path):
+    profile_path = write_profile(tmp_path / "profile.yaml")
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    profile["scenario"]["terrain"]["goal_relief"] = {
+        "enabled": True,
+        "center": [4.0, -1.0],
+        "sigma": [0.8, 0.8],
+    }
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    config, _metadata = build_experiment_config(profile_path, controller_name="nominal_cuda")
+
+    assert config["terrain"]["goal_relief"]["center"] == [4.0, -1.0]
 
 
 def test_build_experiment_config_accepts_explicit_results_dir(tmp_path):
