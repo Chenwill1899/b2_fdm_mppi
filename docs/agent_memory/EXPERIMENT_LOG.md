@@ -1507,6 +1507,10 @@ Cross-scenario learned deltas versus nominal:
   - `python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed_closeout --output results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout --episodes 10 --steps 10 --base-seed 123 --backend torch --device cuda --risk-weight 3.0`
 - Closeout profiler output:
   - `results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout/stage6_runtime_matrix_summary.json`
+- Runtime semantics:
+  - Stage 6 profiler now sets `simulation.disable_goal_termination=true` by default.
+  - `--steps 10` means forced 10 `compute_control()` calls per run, not ordinary benchmark max steps.
+  - `profile_call_consistency.consistent=true`; `unique_total_calls=[10]`.
 - Plot command:
   - `python3 tools/plot_stage6_runtime_results.py --summary results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps_inference_mode/stage6_runtime_matrix_summary.json results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout/stage6_runtime_matrix_summary.json --output figures/stage6 --tables-output tables/stage6`
 - Generated figures:
@@ -1520,12 +1524,12 @@ Cross-scenario learned deltas versus nominal:
   - `tables/stage6/table_stage6_runtime_summary.csv`
   - `tables/stage6/table_stage6_runtime_paired_deltas.csv`
 - Closeout aggregate means:
-  - nominal_risk_off: mean MPPI `14.27 ms`, rollout `8.74 ms`.
-  - nominal_risk_on: mean MPPI `14.31 ms`, rollout `8.58 ms`.
-  - learned_risk_off: mean MPPI `40.57 ms`, rollout `36.39 ms`, terrain features `0.867 ms`, FDM inference `0.195 ms`.
-  - learned_risk_on: mean MPPI `41.38 ms`, rollout `36.17 ms`, terrain features `0.865 ms`, FDM inference `0.187 ms`.
+  - nominal_risk_off: mean MPPI `13.90 ms`, rollout `8.67 ms`, profile calls/run `10`.
+  - nominal_risk_on: mean MPPI `13.91 ms`, rollout `8.54 ms`, profile calls/run `10`.
+  - learned_risk_off: mean MPPI `38.97 ms`, rollout `34.94 ms`, terrain features `0.834 ms`, FDM inference `0.178 ms`, profile calls/run `10`.
+  - learned_risk_on: mean MPPI `39.93 ms`, rollout `34.98 ms`, terrain features `0.839 ms`, FDM inference `0.172 ms`, profile calls/run `10`.
 - Closeout paired delta:
-  - learned_risk_on vs nominal_risk_on: mean MPPI `+27.08 ms`, rollout `+27.58 ms`, sample `+0.001 ms`, update `-0.006 ms`, terrain-risk cost `-0.555 ms`.
+  - learned_risk_on vs nominal_risk_on: mean MPPI `+26.02 ms`, rollout `+26.44 ms`, sample `+0.003 ms`, update `+0.001 ms`, terrain-risk cost `-0.501 ms`.
 - Validation:
   - `python3 -m pytest tests/test_stage6_runtime_plot.py tests/test_stage6_runtime_matrix.py tests/test_mppi_omni_torch.py tests/test_mppi_omni_learned_torch.py -q` -> `18 passed`.
   - `git diff --check` -> pass.

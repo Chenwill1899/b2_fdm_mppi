@@ -84,6 +84,7 @@ def run_runtime_matrix(
     fdm_residual_gain: float = 0.5,
     learned_goal_xy_weight: float = 3.0,
     learned_smooth_weight: float = 0.75,
+    force_steps: bool = True,
     command: str | None = None,
     argv: Sequence[str] | None = None,
     runner_cls=OmniMppiSimulationRunner,
@@ -120,6 +121,7 @@ def run_runtime_matrix(
                 fdm_residual_gain=fdm_residual_gain,
                 learned_goal_xy_weight=learned_goal_xy_weight,
                 learned_smooth_weight=learned_smooth_weight,
+                force_steps=force_steps,
             )
             runner = runner_cls(
                 run_config,
@@ -155,6 +157,8 @@ def run_runtime_matrix(
             "device": device,
             "episodes": int(episodes),
             "steps": int(steps),
+            "steps_semantics": "forced_compute_control_calls" if force_steps else "maximum_simulation_steps",
+            "force_steps": bool(force_steps),
             "base_seed": int(base_seed),
             "seeds": seeds,
             "risk_weight": float(risk_weight),
@@ -171,6 +175,7 @@ def run_runtime_matrix(
             **current_git_metadata(),
         },
         "runs": runs,
+        "profile_call_consistency": profile_call_consistency(runs, expected_calls=int(steps) if force_steps else None),
         "aggregates": aggregate_runs_by_case(runs),
         "paired_deltas": compute_case_pair_deltas(runs),
     }
@@ -201,10 +206,12 @@ def prepare_runtime_run_config(
     fdm_residual_gain: float,
     learned_goal_xy_weight: float,
     learned_smooth_weight: float,
+    force_steps: bool = True,
 ) -> dict:
     config = copy.deepcopy(base_config)
     config.setdefault("simulation", {})["world_mode"] = "oracle"
     config["simulation"]["max_steps"] = int(steps)
+    config["simulation"]["disable_goal_termination"] = bool(force_steps)
     _apply_episode_seed(config, seed)
     mppi = config.setdefault("mppi", {})
     mppi["backend"] = str(backend).lower()
@@ -265,6 +272,35 @@ def aggregate_runs_by_case(runs: Sequence[dict]) -> dict:
                 aggregate[f"{key}_mean"] = float(sum(values) / len(values))
         aggregates[case_name] = aggregate
     return aggregates
+
+
+def profile_call_consistency(runs: Sequence[dict], expected_calls: int | None = None) -> dict:
+    total_calls_by_case = {}
+    mismatches = []
+    for run in runs:
+        case = str(run["case"])
+        episode_id = int(run["episode_id"])
+        total_calls = int(run.get("profile_total_calls", 0))
+        total_calls_by_case.setdefault(case, []).append(total_calls)
+        if expected_calls is not None and total_calls != int(expected_calls):
+            mismatches.append(
+                {
+                    "case": case,
+                    "episode_id": episode_id,
+                    "seed": int(run["seed"]),
+                    "total_calls": total_calls,
+                    "expected_calls": int(expected_calls),
+                    "failed": bool(run.get("failed", False)),
+                }
+            )
+    unique_counts = sorted({count for counts in total_calls_by_case.values() for count in counts})
+    return {
+        "consistent": len(unique_counts) <= 1 and not mismatches,
+        "expected_calls_per_run": int(expected_calls) if expected_calls is not None else None,
+        "unique_total_calls": unique_counts,
+        "total_calls_by_case": total_calls_by_case,
+        "mismatches": mismatches,
+    }
 
 
 def compute_case_pair_deltas(runs: Sequence[dict]) -> dict:
@@ -334,6 +370,7 @@ def _run_record(
         "results_path": str(results_path),
         "summary_json": str(summary_path),
         "profile": profile,
+        "profile_total_calls": int(profile.get("total_calls", 0)),
     }
     for metric in RUN_METRICS:
         record[metric] = _json_scalar(summary.get(metric))
@@ -448,6 +485,11 @@ def main() -> None:
     parser.add_argument("--fdm-residual-gain", type=float, default=0.5)
     parser.add_argument("--learned-goal-xy-weight", type=float, default=3.0)
     parser.add_argument("--learned-smooth-weight", type=float, default=0.75)
+    parser.add_argument(
+        "--allow-goal-termination",
+        action="store_true",
+        help="Keep normal runner semantics where --steps is only max_steps. By default, Stage 6 profiling forces exactly --steps control calls unless the run fails.",
+    )
     args = parser.parse_args()
 
     summary = run_runtime_matrix(
@@ -469,6 +511,7 @@ def main() -> None:
         fdm_residual_gain=args.fdm_residual_gain,
         learned_goal_xy_weight=args.learned_goal_xy_weight,
         learned_smooth_weight=args.learned_smooth_weight,
+        force_steps=not args.allow_goal_termination,
         command=shell_join([sys.executable, *sys.argv]),
         argv=[sys.executable, *sys.argv],
     )

@@ -102,6 +102,7 @@ def test_runtime_matrix_profiles_fixed_seed_2x2_and_writes_summary(tmp_path):
     assert saved == summary
     assert summary["metadata"]["backend"] == "torch"
     assert summary["metadata"]["device"] == "cpu"
+    assert summary["metadata"]["force_steps"] is True
     assert summary["metadata"]["seeds"] == [123]
     assert {run["case"] for run in summary["runs"]} == {
         "nominal_risk_off",
@@ -110,6 +111,9 @@ def test_runtime_matrix_profiles_fixed_seed_2x2_and_writes_summary(tmp_path):
         "learned_risk_on",
     }
     assert all(run["profile"]["enabled"] is True for run in summary["runs"])
+    assert all(run["profile_total_calls"] == 2 for run in summary["runs"])
+    assert summary["profile_call_consistency"]["consistent"] is True
+    assert summary["profile_call_consistency"]["expected_calls_per_run"] == 2
     assert "learned_risk_on_vs_nominal_risk_on" in summary["paired_deltas"]
     learned_vs_nominal = summary["paired_deltas"]["learned_risk_on_vs_nominal_risk_on"]["aggregate"]
     assert learned_vs_nominal["profile_mean_sample_candidates_ms_delta_mean"] == pytest.approx(1.0)
@@ -127,6 +131,7 @@ def test_runtime_matrix_profiles_fixed_seed_2x2_and_writes_summary(tmp_path):
     assert learned_on["fdm"]["enabled"] is True
     assert learned_on["fdm"]["profile_enabled"] is True
     assert learned_on["fdm"]["residual_gain"] == pytest.approx(0.5)
+    assert learned_on["simulation"]["disable_goal_termination"] is True
     assert learned_on["mppi"]["terrain_risk_weight"] == pytest.approx(3.0)
     assert learned_on["mppi"]["weights"][0] == pytest.approx(3.0)
     assert learned_on["mppi"]["smooth_weight"] == pytest.approx(0.75)

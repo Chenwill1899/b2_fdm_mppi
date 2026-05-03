@@ -127,6 +127,7 @@ def _summary_rows(summaries: Sequence[dict]) -> list[dict]:
         "success_rate",
         "mean_mppi_time_ms_mean",
         "max_mppi_time_ms_mean",
+        "profile_total_calls_mean",
         "profile_mean_sample_candidates_ms_mean",
         "profile_mean_rollout_total_ms_mean",
         "profile_mean_terrain_features_ms_mean",

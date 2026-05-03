@@ -129,7 +129,7 @@ The original single-controller profiler was useful for hotspot direction but cou
 - learned Torch balanced, risk off;
 - learned Torch balanced, risk on.
 
-The tool forces explicit `scenario.random_seed = base_seed + episode_id` for random-start-goal configs and enables the appropriate Torch controller profile path for both nominal (`mppi.profile_enabled`) and learned (`fdm.profile_enabled`) controllers.
+The tool forces explicit `scenario.random_seed = base_seed + episode_id` for random-start-goal configs and enables the appropriate Torch controller profile path for both nominal (`mppi.profile_enabled`) and learned (`fdm.profile_enabled`) controllers. Stage 6 profiling also sets `simulation.disable_goal_termination=true` by default, so `--steps` means forced `compute_control()` calls per run instead of ordinary benchmark `max_steps`. The summary includes `steps_semantics`, `force_steps`, per-run `profile_total_calls`, and a `profile_call_consistency` block to catch mismatched runtime samples.
 
 Test:
 
@@ -287,21 +287,28 @@ python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_ra
 
 Output: `results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout/stage6_runtime_matrix_summary.json`.
 
-Closeout aggregate means:
+Closeout aggregate means after forcing exactly 10 control calls per run:
 
-| Case | mean_mppi_time_ms | rollout_total_ms | terrain_features_ms | fdm_inference_ms | terrain_risk_cost_ms |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| nominal_risk_off | 14.27 | 8.74 | n/a | n/a | 0.052 |
-| nominal_risk_on | 14.31 | 8.58 | n/a | n/a | 1.640 |
-| learned_risk_off | 40.57 | 36.39 | 0.867 | 0.195 | 0.050 |
-| learned_risk_on | 41.38 | 36.17 | 0.865 | 0.187 | 1.085 |
+| Case | calls/run | mean_mppi_time_ms | rollout_total_ms | terrain_features_ms | fdm_inference_ms | terrain_risk_cost_ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| nominal_risk_off | 10 | 13.90 | 8.67 | n/a | n/a | 0.042 |
+| nominal_risk_on | 10 | 13.91 | 8.54 | n/a | n/a | 1.473 |
+| learned_risk_off | 10 | 38.97 | 34.94 | 0.834 | 0.178 | 0.045 |
+| learned_risk_on | 10 | 39.93 | 34.98 | 0.839 | 0.172 | 0.972 |
+
+Profile call consistency:
+
+- `steps_semantics`: `forced_compute_control_calls`
+- `force_steps`: `true`
+- `profile_call_consistency.consistent`: `true`
+- `profile_call_consistency.unique_total_calls`: `[10]`
 
 Closeout paired deltas:
 
 | Pair | mean_mppi_time_ms_delta | rollout_total_ms_delta | sample_candidates_delta | update_distribution_delta | terrain_risk_cost_delta |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| learned_risk_on - nominal_risk_on | +27.08 | +27.58 | +0.001 | -0.006 | -0.555 |
-| learned_risk_off - nominal_risk_off | +26.30 | +27.65 | -0.388 | -0.422 | -0.002 |
-| learned_risk_on - learned_risk_off | +0.81 | -0.22 | +0.005 | +0.013 | +1.035 |
+| learned_risk_on - nominal_risk_on | +26.02 | +26.44 | +0.003 | +0.001 | -0.501 |
+| learned_risk_off - nominal_risk_off | +25.07 | +26.26 | -0.373 | -0.370 | +0.003 |
+| learned_risk_on - learned_risk_off | +0.96 | +0.04 | +0.002 | -0.010 | +0.927 |
 
-Interpretation: Stage 6 now has a reproducible runtime profiling package and paper-style runtime figures. It does not make a real-time learned-FDM-MPPI claim. The result is a bounded limitation: same-backend learned Torch remains about `+27 ms` slower than nominal Torch on the closeout profile, and the dominant gap is learned rollout rather than terrain-risk cost, sample generation, or distribution update.
+Interpretation: Stage 6 now has a reproducible runtime profiling package and paper-style runtime figures. It does not make a real-time learned-FDM-MPPI claim. The result is a bounded limitation: same-backend learned Torch remains about `+26 ms` slower than nominal Torch on the forced-step closeout profile, and the dominant gap is learned rollout rather than terrain-risk cost, sample generation, or distribution update.
