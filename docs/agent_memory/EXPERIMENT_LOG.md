@@ -1476,3 +1476,20 @@ Cross-scenario learned deltas versus nominal:
 - Boundary:
   - This is a small runtime cleanup, not a full runtime closure.
   - Learned Torch remains materially slower than nominal Torch; next target remains per-horizon learned rollout work.
+
+### 2026-05-03: S6-002 Runtime Matrix Delta Bucket Enhancement
+
+- Goal: improve the fixed-seed Stage 6 runtime matrix so paired deltas expose candidate sampling and distribution update overhead, not only rollout/risk/FDM buckets.
+- Change:
+  - Added `profile_mean_sample_candidates_ms` and `profile_mean_update_distribution_ms` to `DELTA_METRICS` in `tools/profile_stage6_runtime_matrix.py`.
+  - Extended `tests/test_stage6_runtime_matrix.py` to assert the paired delta aggregate includes both fields.
+- TDD evidence:
+  - Red test first: `python3 -m pytest tests/test_stage6_runtime_matrix.py -q` failed with `KeyError: 'profile_mean_sample_candidates_ms_delta_mean'`.
+  - After implementation: same test passed with `1 passed`.
+- Real profiler smoke:
+  - Command: `python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed_delta_buckets --output results/stage6_runtime_profile/paired_id_random_fixed_seed_1ep_2steps_delta_buckets --episodes 1 --steps 2 --base-seed 123 --backend torch --device cuda --risk-weight 3.0`
+  - Output: `results/stage6_runtime_profile/paired_id_random_fixed_seed_1ep_2steps_delta_buckets/stage6_runtime_matrix_summary.json`.
+  - Confirmed JSON fields: `profile_mean_sample_candidates_ms_delta_mean` and `profile_mean_update_distribution_ms_delta_mean`.
+- Boundary:
+  - This is profiler instrumentation only; it does not change controller behavior or runtime.
+  - The 1ep x 2step output is a schema smoke, not a performance conclusion.

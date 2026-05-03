@@ -171,6 +171,21 @@ Paired deltas from the same run:
 
 Interpretation boundary: this is a short profiling run, not a paper runtime benchmark. It confirms the next large bottleneck is still learned rollout work: learned risk-on adds about `+25.22 ms` mean MPPI time and `+28.57 ms` profiled rollout time over nominal risk-on under matched seeds. Terrain-risk cost itself is not the main learned overhead; FDM rollout/feature/integration work remains the target.
 
+Profiler delta enhancement:
+
+```bash
+python3 tools/profile_stage6_runtime_matrix.py --config config/b2_omni_oracle_random100_dataset.yaml --scenario-name id_random_fixed_seed_delta_buckets --output results/stage6_runtime_profile/paired_id_random_fixed_seed_1ep_2steps_delta_buckets --episodes 1 --steps 2 --base-seed 123 --backend torch --device cuda --risk-weight 3.0
+```
+
+Output: `results/stage6_runtime_profile/paired_id_random_fixed_seed_1ep_2steps_delta_buckets/stage6_runtime_matrix_summary.json`.
+
+The paired delta JSON now includes:
+
+- `profile_mean_sample_candidates_ms_delta_mean`
+- `profile_mean_update_distribution_ms_delta_mean`
+
+This makes first-call sampling/update overhead visible in paired comparisons, which matters when interpreting very short profiling runs.
+
 ## Torch Inference Mode Guard
 
 The next low-risk runtime cleanup disables autograd for the entire Torch MPPI `compute_control()` path. Rollout already used a local `torch.no_grad()` block, but candidate sampling, cost aggregation, distribution update, and the learned controller entry path still ran under the caller's default grad-enabled context.

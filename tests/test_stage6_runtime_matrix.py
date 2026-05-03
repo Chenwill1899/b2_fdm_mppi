@@ -26,9 +26,21 @@ class FakeProfiledController:
         return {
             "enabled": True,
             "total_calls": 2,
-            "totals_ms": {"rollout_total_ms": 10.0 * multiplier},
-            "means_ms": {"rollout_total_ms": 5.0 * multiplier},
-            "counts": {"rollout_total_ms": 2},
+            "totals_ms": {
+                "rollout_total_ms": 10.0 * multiplier,
+                "sample_candidates_ms": 2.0 * multiplier,
+                "update_distribution_ms": 4.0 * multiplier,
+            },
+            "means_ms": {
+                "rollout_total_ms": 5.0 * multiplier,
+                "sample_candidates_ms": 1.0 * multiplier,
+                "update_distribution_ms": 2.0 * multiplier,
+            },
+            "counts": {
+                "rollout_total_ms": 2,
+                "sample_candidates_ms": 2,
+                "update_distribution_ms": 2,
+            },
         }
 
 
@@ -99,6 +111,9 @@ def test_runtime_matrix_profiles_fixed_seed_2x2_and_writes_summary(tmp_path):
     }
     assert all(run["profile"]["enabled"] is True for run in summary["runs"])
     assert "learned_risk_on_vs_nominal_risk_on" in summary["paired_deltas"]
+    learned_vs_nominal = summary["paired_deltas"]["learned_risk_on_vs_nominal_risk_on"]["aggregate"]
+    assert learned_vs_nominal["profile_mean_sample_candidates_ms_delta_mean"] == pytest.approx(1.0)
+    assert learned_vs_nominal["profile_mean_update_distribution_ms_delta_mean"] == pytest.approx(2.0)
 
     configs_by_name = {config["results"]["run_name"]: config for config in created_configs}
     nominal_off = configs_by_name["unit_random_episode_0000_nominal_risk_off"]

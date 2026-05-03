@@ -46,6 +46,8 @@ DELTA_METRICS = (
     "terrain_risk_exposure_ratio",
     "mean_mppi_time_ms",
     "max_mppi_time_ms",
+    "profile_mean_sample_candidates_ms",
+    "profile_mean_update_distribution_ms",
     "profile_mean_rollout_total_ms",
     "profile_mean_terrain_features_ms",
     "profile_mean_fdm_inference_ms",
