@@ -13,6 +13,26 @@ from typing import Sequence
 class PipelineCommands:
     """Command handlers kept thin so tests can inject a recorder."""
 
+    def experiment(self, args: argparse.Namespace) -> int:
+        from b2_fdm_mppi.experiment import run_experiment_profile
+
+        summary = run_experiment_profile(
+            args.profile,
+            controller_name=args.controller,
+            seed=args.seed,
+            backend=args.backend,
+            output_root=args.output,
+            model_dir=args.model_dir,
+            checkpoint=args.checkpoint,
+            normalization=args.normalization,
+            device=args.device,
+            residual_gain=args.residual_gain,
+            enable_plots=args.plots,
+            enable_animation=args.animation,
+        )
+        _print_json(summary)
+        return 0
+
     def run(self, args: argparse.Namespace) -> int:
         from b2_fdm_mppi.simulation.run_omni_mppi import print_run_summary, run_omni_mppi
 
@@ -169,6 +189,21 @@ class PipelineCommands:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="FDM-MPPI slim reproducible pipeline")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    experiment = subparsers.add_parser("experiment", help="Run a profile-defined MPPI experiment")
+    experiment.add_argument("--profile", default="configs/experiment.yaml")
+    experiment.add_argument("--controller", default=None)
+    experiment.add_argument("--seed", type=int, default=None)
+    experiment.add_argument("--backend", choices=["cuda", "numpy", "torch"], default=None)
+    experiment.add_argument("--output", default=None)
+    experiment.add_argument("--model-dir", default=None)
+    experiment.add_argument("--checkpoint", default=None)
+    experiment.add_argument("--normalization", default=None)
+    experiment.add_argument("--device", default=None)
+    experiment.add_argument("--residual-gain", type=float, default=None)
+    experiment.add_argument("--plots", action=argparse.BooleanOptionalAction, default=None)
+    experiment.add_argument("--animation", action=argparse.BooleanOptionalAction, default=None)
+    experiment.set_defaults(handler="experiment")
 
     run = subparsers.add_parser("run", help="Run one MPPI simulation")
     run.add_argument("--config", default="configs/smoke.yaml")

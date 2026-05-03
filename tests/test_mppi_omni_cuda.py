@@ -41,6 +41,29 @@ def test_cuda_omni_cost_matches_numpy_without_cbf():
     assert cuda_costs == pytest.approx(numpy_costs, rel=1e-4, abs=1e-4)
 
 
+def test_cuda_omni_cost_handles_empty_obstacle_list():
+    from b2_fdm_mppi.controllers.mppi_omni_cuda import MppiOmniCuda
+
+    config = make_config()
+    numpy_controller = MppiOmniNumpy.from_config(config, seed=1)
+    cuda_controller = MppiOmniCuda.from_config(config, seed=1)
+    state = np.array([0.1, -0.1, 0.2, 0.0, 0.0, 0.0], dtype=np.float32)
+    goal = np.array([1.0, 0.2, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    obstacles = np.zeros((0, 7), dtype=np.float32)
+    controls = np.array(
+        [
+            [[0.2, 0.0, 0.1], [0.3, 0.1, 0.0], [0.4, -0.1, -0.1]],
+            [[0.0, 0.2, 0.0], [0.1, 0.1, 0.1], [0.2, 0.0, 0.0]],
+        ],
+        dtype=np.float32,
+    )
+
+    numpy_costs = numpy_controller.trajectory_cost_batch(state, controls, goal, obstacles)
+    cuda_costs = cuda_controller.trajectory_cost_batch(state, controls, goal, obstacles)
+
+    assert cuda_costs == pytest.approx(numpy_costs, rel=1e-4, abs=1e-4)
+
+
 def test_cuda_omni_cbf_cost_penalizes_decreasing_barrier():
     from b2_fdm_mppi.controllers.mppi_omni_cuda import MppiOmniCuda
 

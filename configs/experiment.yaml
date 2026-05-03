@@ -1,0 +1,59 @@
+# Quick-start experiment profile for the FDM-MPPI workbench.
+# Run with:
+#   /usr/bin/python3 tools/fdm_mppi.py experiment --profile configs/experiment.yaml
+
+experiment:
+  name: quick_start
+  base_config: configs/smoke.yaml
+  seed: 123
+  output_root: results/experiments
+  run_name: "{experiment}_{controller}_seed{seed}"
+  timestamp_suffix: false
+  overwrite: true
+
+scenario:
+  world_mode: oracle
+  initial_state: [0.01, 0.01, 0.0, 0.0, 0.0, 0.0]
+  goal: [1.2, 0.0, 0.0, 0.0, 0.0, 0.0]
+  minimum_distance: 0.45
+  max_steps: 80
+  obstacles:
+    static_enabled: true
+    virtual: []
+  terrain:
+    enabled: true
+    friction_base: 0.72
+
+default_controller: nominal_cuda
+controllers:
+  - name: nominal_cuda
+    method: nominal
+    backend: cuda
+    mppi:
+      num_trajectories: 256
+      draw_num_traj: 20
+
+  - name: nominal_numpy
+    method: nominal
+    backend: numpy
+    mppi:
+      num_trajectories: 256
+      draw_num_traj: 20
+
+  - name: learned_torch
+    method: learned_fdm
+    backend: torch
+    mppi:
+      num_trajectories: 256
+      draw_num_traj: 20
+    learned_fdm:
+      model_dir: results/fdm_baselines/debug
+      checkpoint: best_model.pt
+      normalization: normalization.npz
+      device: cuda
+      residual_gain: 1.0
+
+visualization:
+  plots: true
+  animation: true
+  terrain_grid_resolution: 48

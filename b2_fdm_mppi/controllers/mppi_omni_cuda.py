@@ -432,6 +432,9 @@ class MppiOmniCuda:
         controls = np.ascontiguousarray(controls)
         num_samples = int(controls.shape[0])
         obstacles = np.ascontiguousarray(np.asarray(obstacles, dtype=np.float32).reshape(-1, 7))
+        obstacle_count = int(len(obstacles))
+        if obstacle_count == 0:
+            obstacles = np.zeros((1, 7), dtype=np.float32)
         costs_gpu = gpuarray.empty(num_samples, dtype=np.float32)
         grid_dim = ((num_samples + self.block_dim - 1) // self.block_dim, 1, 1)
         self.cost_kernel(
@@ -443,7 +446,7 @@ class MppiOmniCuda:
             costs_gpu,
             np.int32(num_samples),
             np.int32(self.horizon_steps),
-            np.int32(len(obstacles)),
+            np.int32(obstacle_count),
             np.float32(self.dt),
             np.float32(self.max_control[0]),
             np.float32(self.max_control[1]),

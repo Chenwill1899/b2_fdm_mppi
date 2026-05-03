@@ -21,6 +21,10 @@ class Recorder:
         self.calls.append(("benchmark", args))
         return 0
 
+    def experiment(self, args: Namespace) -> int:
+        self.calls.append(("experiment", args))
+        return 0
+
 
 def test_main_dispatches_run_subcommand_to_pipeline_command():
     recorder = Recorder()
@@ -84,3 +88,36 @@ def test_benchmark_subcommand_preserves_config_backend_by_default():
     assert name == "benchmark"
     assert args.config == "configs/benchmark.yaml"
     assert args.backend is None
+
+
+def test_experiment_subcommand_dispatches_profile_runner():
+    recorder = Recorder()
+
+    status = cli.main(
+        [
+            "experiment",
+            "--profile",
+            "configs/experiment.yaml",
+            "--controller",
+            "learned_torch",
+            "--seed",
+            "123",
+            "--backend",
+            "torch",
+            "--model-dir",
+            "results/fdm_baselines/demo",
+            "--output",
+            "results/experiments/demo",
+        ],
+        commands=recorder,
+    )
+
+    assert status == 0
+    name, args = recorder.calls[0]
+    assert name == "experiment"
+    assert args.profile == "configs/experiment.yaml"
+    assert args.controller == "learned_torch"
+    assert args.seed == 123
+    assert args.backend == "torch"
+    assert args.model_dir == "results/fdm_baselines/demo"
+    assert args.output == "results/experiments/demo"
