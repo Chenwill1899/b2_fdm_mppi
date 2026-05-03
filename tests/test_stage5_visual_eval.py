@@ -135,3 +135,97 @@ def test_run_visual_eval_enables_visual_outputs_and_writes_summary(tmp_path):
     assert learned_config["fdm"]["enabled"] is True
     assert learned_config["fdm"]["device"] == "cuda"
     assert learned_config["fdm"]["residual_gain"] == pytest.approx(0.5)
+
+
+def test_run_visual_eval_accepts_torch_backend(tmp_path):
+    module = load_visual_module()
+
+    class FakeRunner:
+        def __init__(self, config, controller_factory=None):
+            self.results_path = Path(config["results"]["root"]) / config["results"]["run_name"]
+            controller = "learned" if config.get("fdm", {}).get("enabled") else "nominal"
+            write_run_dir(
+                self.results_path,
+                final_distance=0.25 if controller == "learned" else 0.35,
+                steps=3 if controller == "learned" else 4,
+            )
+            (self.results_path / "trajectory.png").write_bytes(b"fake")
+            (self.results_path / "animation.gif").write_bytes(b"fake")
+
+        def run(self):
+            return SimpleNamespace(
+                steps=3,
+                reached_goal=True,
+                failed=False,
+                results_path=self.results_path,
+                run_time=0.3,
+            )
+
+    summary = module.run_visual_eval(
+        config_path="config/b2_omni_oracle.yaml",
+        scenario_name="unit",
+        output_dir=tmp_path / "visual_eval_torch",
+        seed=123,
+        backend="torch",
+        fdm_device="cpu",
+        runner_cls=FakeRunner,
+    )
+
+    assert summary["metadata"]["backend"] == "torch"
+    assert summary["metadata"]["fdm_device"] == "cpu"
+
+
+def test_run_risk_aware_visual_eval_builds_four_cases(tmp_path):
+    module = load_visual_module()
+    created_configs = []
+
+    class FakeRunner:
+        def __init__(self, config, controller_factory=None):
+            created_configs.append(config)
+            self.results_path = Path(config["results"]["root"]) / config["results"]["run_name"]
+            controller = "learned" if config.get("fdm", {}).get("enabled") else "nominal"
+            risk_weight = float(config["mppi"]["terrain_risk_weight"])
+            write_run_dir(
+                self.results_path,
+                final_distance=0.3 + risk_weight * 0.01 if controller == "learned" else 0.5,
+                steps=3 if controller == "learned" else 4,
+            )
+            (self.results_path / "trajectory.png").write_bytes(b"fake")
+            (self.results_path / "animation.gif").write_bytes(b"fake")
+
+        def run(self):
+            return SimpleNamespace(
+                steps=3,
+                reached_goal=True,
+                failed=False,
+                results_path=self.results_path,
+                run_time=0.3,
+            )
+
+    output_dir = tmp_path / "risk_visual_eval"
+    summary = module.run_risk_aware_visual_eval(
+        config_path="config/b2_omni_oracle.yaml",
+        scenario_name="two_obstacle_standard",
+        output_dir=output_dir,
+        seed=123,
+        backend="torch",
+        fdm_device="cpu",
+        fdm_residual_gain=0.5,
+        risk_weight=3.0,
+        learned_goal_xy_weight=3.0,
+        learned_smooth_weight=0.75,
+        runner_cls=FakeRunner,
+    )
+
+    assert (output_dir / "stage5_e_visual_eval_summary.json").is_file()
+    assert list(summary["runs"]) == [
+        "nominal_risk_off",
+        "nominal_risk_on",
+        "learned_risk_off",
+        "learned_risk_on",
+    ]
+    assert [config["mppi"]["terrain_risk_weight"] for config in created_configs] == [0.0, 3.0, 0.0, 3.0]
+    assert created_configs[2]["fdm"]["enabled"] is True
+    assert created_configs[2]["fdm"]["residual_gain"] == pytest.approx(0.5)
+    assert created_configs[2]["mppi"]["weights"][0] == pytest.approx(3.0)
+    assert created_configs[2]["mppi"]["smooth_weight"] == pytest.approx(0.75)

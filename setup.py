@@ -29,6 +29,7 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
         (f"share/{package_name}/config", glob("config/*.yaml")),
+        (f"share/{package_name}/configs", glob("configs/*.yaml")),
         (f"share/{package_name}/launch", glob("launch/*.launch.py")),
     ],
     install_requires=["setuptools"],
@@ -40,6 +41,7 @@ setup(
     license="Vim",
     entry_points={
         "console_scripts": [
+            "fdm_mppi = b2_fdm_mppi.cli:main",
             "fdm_mppi_sim_node = b2_fdm_mppi.fdm_mppi_sim_node:main",
         ],
     },
