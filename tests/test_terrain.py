@@ -93,6 +93,50 @@ def test_terrain_goal_relief_smoothly_reduces_goal_area_risk():
     assert far_risk > goal_risk
 
 
+def test_terrain_goal_relief_reduces_patch_risk_at_goal():
+    patch = {
+        "name": "goal_risk_patch",
+        "type": "ellipse",
+        "center": [18.0, 0.0],
+        "size": [4.0, 2.0],
+        "edge_width": 0.5,
+        "roughness_delta": 0.7,
+        "friction_delta": -0.4,
+    }
+    base = TerrainField(
+        enabled=True,
+        slope_scale=0.0,
+        roughness_scale=0.0,
+        friction_base=0.8,
+        friction_slope_scale=0.0,
+        friction_roughness_scale=0.0,
+        patches=[patch],
+    )
+    relieved = TerrainField(
+        enabled=True,
+        slope_scale=0.0,
+        roughness_scale=0.0,
+        friction_base=0.8,
+        friction_slope_scale=0.0,
+        friction_roughness_scale=0.0,
+        goal_relief={
+            "enabled": True,
+            "center": [18.0, 0.0],
+            "sigma": [2.0, 1.2],
+            "strength": 0.75,
+            "floor": 0.25,
+        },
+        patches=[patch],
+    )
+
+    base_goal_risk = base.risk_cost(18.0, 0.0)
+    relieved_goal_risk = relieved.risk_cost(18.0, 0.0)
+    relieved_edge_risk = relieved.risk_cost(20.0, 0.0)
+
+    assert relieved_goal_risk < base_goal_risk
+    assert relieved_goal_risk < relieved_edge_risk
+
+
 def test_terrain_empty_patches_preserve_legacy_features():
     config = {
         "enabled": True,

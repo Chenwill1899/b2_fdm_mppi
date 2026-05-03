@@ -101,6 +101,7 @@ def build_experiment_config(
     config = load_config(base_config_path)
 
     _apply_profile_config_groups(config, profile)
+    _sync_goal_relief_center(config, profile)
     controller = _select_controller(profile, controller_name)
     resolved_seed = int(seed if seed is not None else experiment.get("seed", 123))
     resolved_controller_name = str(controller.get("name", controller_name or "default"))
@@ -234,6 +235,47 @@ def _apply_profile_config_groups(config: dict[str, Any], profile: Mapping[str, A
             _deep_update(config.setdefault(key, {}), _mapping(value, f"scenario.{key}"))
         else:
             scenario_config[key] = deepcopy(value)
+
+
+def _sync_goal_relief_center(config: dict[str, Any], profile: Mapping[str, Any]) -> None:
+    terrain = config.get("terrain")
+    if not isinstance(terrain, dict):
+        return
+    relief = terrain.get("goal_relief")
+    if not isinstance(relief, dict) or not bool(relief.get("enabled", False)):
+        return
+    explicit_center = _profile_goal_relief_center(profile)
+    if explicit_center is not None and not _is_auto_center(explicit_center):
+        return
+    if explicit_center is None and not _profile_overrides_goal(profile) and not _is_auto_center(relief.get("center")):
+        return
+    goal = config.get("simulation", {}).get("goal")
+    if not isinstance(goal, list) or len(goal) < 2:
+        return
+    relief["center"] = [float(goal[0]), float(goal[1])]
+
+
+def _profile_goal_relief_center(profile: Mapping[str, Any]) -> Any:
+    for terrain in (
+        _optional_mapping(_optional_mapping(profile.get("scenario")).get("terrain")),
+        _optional_mapping(profile.get("terrain")),
+    ):
+        relief = _optional_mapping(terrain.get("goal_relief"))
+        if "center" in relief:
+            return relief["center"]
+    return None
+
+
+def _profile_overrides_goal(profile: Mapping[str, Any]) -> bool:
+    return "goal" in _optional_mapping(profile.get("scenario")) or "goal" in _optional_mapping(profile.get("simulation"))
+
+
+def _is_auto_center(value: Any) -> bool:
+    return isinstance(value, str) and value.lower() == "auto"
+
+
+def _optional_mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def _select_controller(profile: Mapping[str, Any], controller_name: str | None) -> dict[str, Any]:

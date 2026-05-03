@@ -38,11 +38,11 @@ scenario:
 
   # B2 omni state format: [x, y, yaw, vx, vy, wz].
   initial_state: [0.01, 0.01, 0.0, 0.0, 0.0, 0.0]
-  goal: [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  goal: [18.0, 1.0, 0.0, 0.0, 0.0, 0.0]
 
   # Goal is accepted when xy distance is below this threshold.
-  minimum_distance: 0.45
-  max_steps: 80
+  minimum_distance: 0.5
+  max_steps: 400
 
   obstacles:
     static_enabled: true
@@ -56,8 +56,9 @@ scenario:
 
     # Example static obstacles:
     virtual:
-      - [6.0, -0.5, 0.4, 0.0, 0.0, 0.0, 0.0]
-      - [12.0, 1.0, 0.4, 0.0, 0.0, 0.0, 0.0]
+      - [3.0, -0.5, 0.4, 0.0, 0.0, 0.0, 0.0]
+      - [8.0, 1.0, 0.4, 0.0, 0.0, 0.0, 0.0]
+      - [15.0, 2.0, 0.4, 0.0, 0.0, 0.0, 0.0]
     #
     # Example random obstacles:
     # random_enabled: true
@@ -72,6 +73,13 @@ scenario:
   terrain:
     enabled: true
     friction_base: 0.72
+    goal_relief:
+      # Use "auto" so the risk relief area follows scenario.goal[:2].
+      # This prevents terminal terrain risk from fighting goal convergence.
+      center: auto
+      sigma: [2.0, 1.2]
+      strength: 0.85
+      floor: 0.15
 
 # Choose the controller when --controller is omitted.
 default_controller: nominal_cuda
