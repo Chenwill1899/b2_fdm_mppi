@@ -8,7 +8,7 @@ from b2_fdm_mppi.controllers.mppi_omni_torch import MppiOmniTorch
 from b2_fdm_mppi.core.terrain import TerrainField
 
 
-def make_torch_controller(**overrides):
+def make_torch_controller(controller_cls=MppiOmniTorch, **overrides):
     params = {
         "dt": 0.1,
         "horizon_steps": 4,
@@ -29,7 +29,7 @@ def make_torch_controller(**overrides):
         "device": "cpu",
     }
     params.update(overrides)
-    return MppiOmniTorch(**params)
+    return controller_cls(**params)
 
 
 def make_numpy_controller(**overrides):
@@ -160,3 +160,53 @@ def test_nominal_torch_profile_records_runtime_buckets():
     for bucket in ("sample_candidates_ms", "rollout_total_ms", "cost_terms_ms", "cpu_transfer_ms"):
         assert bucket in profile["totals_ms"]
         assert profile["totals_ms"][bucket] >= 0.0
+
+
+def test_nominal_torch_compute_control_disables_grad_tracking():
+    class GradModeProbeController(MppiOmniTorch):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.grad_modes = []
+
+        def _trajectory_cost_batch_torch(self, initial_state, controls, goal, obstacles):
+            self.grad_modes.append(torch.is_grad_enabled())
+            return super()._trajectory_cost_batch_torch(initial_state, controls, goal, obstacles)
+
+    controller = make_torch_controller(controller_cls=GradModeProbeController)
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+
+    controller.compute_control(
+        state,
+        [None, None, None, goal, np.empty((0, 7), dtype=np.float32), 0],
+    )
+
+    assert controller.grad_modes == [False]
+
+
+def test_nominal_torch_bilinear_sample_many_matches_individual_samples():
+    terrain = TerrainField(
+        enabled=True,
+        noise_enabled=True,
+        noise_seed=7,
+        noise_grid_size=(5, 6),
+        noise_x_range=(-1.0, 2.0),
+        noise_y_range=(-2.0, 3.0),
+    )
+    controller = make_torch_controller(terrain=terrain)
+    x = torch.tensor([-2.0, -0.25, 0.5, 1.5, 3.0], dtype=torch.float32)
+    y = torch.tensor([-3.0, -1.0, 0.5, 2.5, 4.0], dtype=torch.float32)
+    grids = torch.stack([controller.noise_grid_t, controller.noise_grad_x_t, controller.noise_grad_y_t], dim=0)
+
+    batched = controller._bilinear_sample_many_torch(grids, x, y)
+    individual = torch.stack(
+        [
+            controller._bilinear_sample_torch(controller.noise_grid_t, x, y),
+            controller._bilinear_sample_torch(controller.noise_grad_x_t, x, y),
+            controller._bilinear_sample_torch(controller.noise_grad_y_t, x, y),
+        ],
+        dim=0,
+    )
+
+    assert batched.shape == individual.shape
+    assert torch.allclose(batched, individual, atol=1e-6)

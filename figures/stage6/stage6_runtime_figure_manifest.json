@@ -1,0 +1,18 @@
+{
+  "summary_count": 2,
+  "figure_dir": "figures/stage6",
+  "tables_dir": "tables/stage6",
+  "summary_paths": [
+    "results/stage6_runtime_profile/paired_id_random_fixed_seed_3ep_5steps_inference_mode/stage6_runtime_matrix_summary.json",
+    "results/stage6_runtime_profile/paired_id_random_fixed_seed_10ep_10steps_closeout/stage6_runtime_matrix_summary.json"
+  ],
+  "figures": [
+    "figures/stage6/fig_stage6_runtime_summary.png",
+    "figures/stage6/fig_stage6_runtime_breakdown.png",
+    "figures/stage6/fig_stage6_runtime_delta_buckets.png"
+  ],
+  "tables": [
+    "tables/stage6/table_stage6_runtime_summary.csv",
+    "tables/stage6/table_stage6_runtime_paired_deltas.csv"
+  ]
+}

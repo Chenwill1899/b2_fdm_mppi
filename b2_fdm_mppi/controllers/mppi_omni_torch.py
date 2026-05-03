@@ -97,6 +97,10 @@ class MppiOmniTorch(MppiOmniNumpy):
         )
 
     def compute_control(self, state: np.ndarray, cost_params):
+        with torch.inference_mode():
+            return self._compute_control_impl(state, cost_params)
+
+    def _compute_control_impl(self, state: np.ndarray, cost_params):
         if self.profile_enabled:
             self._profile_total_calls += 1
         goal = torch.as_tensor(np.asarray(cost_params[3], dtype=np.float32), device=self.torch_device)
@@ -321,9 +325,7 @@ class MppiOmniTorch(MppiOmniNumpy):
         )
         friction = friction - self.terrain.friction_roughness_scale * roughness
         if self.noise_grid_t is not None:
-            noise = self._bilinear_sample_torch(self.noise_grid_t, x, y)
-            grad_x = self._bilinear_sample_torch(self.noise_grad_x_t, x, y)
-            grad_y = self._bilinear_sample_torch(self.noise_grad_y_t, x, y)
+            noise, grad_x, grad_y = self._bilinear_sample_many_torch(self.noise_fields_t, x, y)
             roughness = roughness + self.terrain.noise_roughness_weight * noise
             friction = friction - self.terrain.noise_friction_weight * noise
             slope_f = slope_f + self.terrain.noise_slope_weight * grad_x
@@ -426,6 +428,23 @@ class MppiOmniTorch(MppiOmniNumpy):
         bottom = (1.0 - tx) * grid[y1, x0] + tx * grid[y1, x1]
         return ((1.0 - ty) * top + ty * bottom).to(torch.float32)
 
+    def _bilinear_sample_many_torch(self, grids: torch.Tensor, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        x_min, x_max = self.terrain.noise_x_range
+        y_min, y_max = self.terrain.noise_y_range
+        cols = int(grids.shape[2])
+        rows = int(grids.shape[1])
+        gx = torch.clamp((x - x_min) / max(1e-6, x_max - x_min), 0.0, 1.0) * (cols - 1)
+        gy = torch.clamp((y - y_min) / max(1e-6, y_max - y_min), 0.0, 1.0) * (rows - 1)
+        x0 = torch.floor(gx).to(torch.long)
+        y0 = torch.floor(gy).to(torch.long)
+        x1 = torch.clamp(x0 + 1, max=cols - 1)
+        y1 = torch.clamp(y0 + 1, max=rows - 1)
+        tx = (gx - x0.to(torch.float32)).to(torch.float32).unsqueeze(0)
+        ty = (gy - y0.to(torch.float32)).to(torch.float32).unsqueeze(0)
+        top = (1.0 - tx) * grids[:, y0, x0] + tx * grids[:, y0, x1]
+        bottom = (1.0 - tx) * grids[:, y1, x0] + tx * grids[:, y1, x1]
+        return ((1.0 - ty) * top + ty * bottom).to(torch.float32)
+
     def _goal_relief_attenuation_torch(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
         relief = self.terrain.goal_relief
         if not bool(relief.get("enabled", False)):
@@ -446,6 +465,7 @@ class MppiOmniTorch(MppiOmniNumpy):
             self.noise_grid_t = None
             self.noise_grad_x_t = None
             self.noise_grad_y_t = None
+            self.noise_fields_t = None
             return
         self.noise_grid_t = torch.as_tensor(self.terrain._noise_grid, dtype=torch.float32, device=self.torch_device)
         self.noise_grad_x_t = torch.as_tensor(
@@ -457,6 +477,10 @@ class MppiOmniTorch(MppiOmniNumpy):
             self.terrain._noise_grad_y,
             dtype=torch.float32,
             device=self.torch_device,
+        )
+        self.noise_fields_t = torch.stack(
+            [self.noise_grid_t, self.noise_grad_x_t, self.noise_grad_y_t],
+            dim=0,
         )
 
     @staticmethod

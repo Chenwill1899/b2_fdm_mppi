@@ -98,6 +98,22 @@ def test_omni_runner_trajectory_includes_final_state_after_last_action(tmp_path)
     assert trajectory.iloc[-1]["y"] == pytest.approx(float(runner.state[1]))
 
 
+def test_omni_runner_can_disable_goal_termination_for_fixed_step_profiling(tmp_path):
+    config = make_config(tmp_path, max_steps=3)
+    config["simulation"]["initial_state"] = config["simulation"]["goal"].copy()
+    config["simulation"]["disable_goal_termination"] = True
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    summary = runner.run()
+
+    assert summary.steps == 3
+    assert len(runner.mppi_time_history) == 3
+    assert summary.reached_goal is True
+
+
 def test_omni_runner_summary_reports_control_smoothness_metrics(tmp_path):
     runner = OmniMppiSimulationRunner(
         make_config(tmp_path),
