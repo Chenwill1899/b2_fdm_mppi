@@ -1537,3 +1537,35 @@ Cross-scenario learned deltas versus nominal:
   - Stage 6 now has a reviewable runtime profiling and plotting package.
   - It does not claim learned Torch is real-time equivalent to nominal Torch.
   - The remaining runtime limitation is explicit: learned-vs-nominal overhead is still dominated by learned rollout.
+
+### 2026-05-03: S6-003 Final Convergence And Deployment Readiness
+
+- Goal: close the current risk-aware learned-FDM-MPPI numerical simulation package as a reportable, reproducible, boundary-clear final package.
+- Branch:
+  - `codex/s6-003-final-readiness`
+  - base: `origin/fdm` after PR #28 merge (`67f3371`)
+- Scope boundaries:
+  - No new model structure.
+  - No new maps.
+  - No MuJoCo or real-robot closed loop.
+  - No claim that learned runtime equals nominal runtime.
+  - No claim that the current stack is directly deployable on hardware.
+- Added docs:
+  - `docs/agent_memory/PROJECT_FINAL_STATUS.md`
+  - `docs/agent_memory/STAGE6_RUNTIME_CLOSURE.md`
+  - `docs/agent_memory/REAL_ROBOT_READINESS.md`
+  - `docs/agent_memory/REPRODUCIBILITY_COMMANDS.md`
+- Updated docs:
+  - `README.md`
+  - `docs/agent_memory/TASK_BOARD.md`
+  - `docs/agent_memory/EXPERIMENT_LOG.md`
+- Final numerical framing:
+  - Strong risk-aware claim remains `low_friction_patch`.
+  - `safe_corridor` is supporting evidence.
+  - `risk_band` is a stress-test limitation.
+  - `two_obstacle_standard` is visual continuity plus fixed-scene evidence.
+  - Stage 6 runtime closure remains a limitation: forced-step closeout learned risk-on is about `+26.02 ms` mean MPPI over nominal risk-on, dominated by rollout.
+- Real-robot readiness:
+  - Current package is numerical simulation only.
+  - Next stage may start only as read-only shadow mode.
+  - Shadow-mode minimum entry conditions are listed in `REAL_ROBOT_READINESS.md`.
