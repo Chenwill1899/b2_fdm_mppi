@@ -27,7 +27,7 @@ Nominal B2 omni MPPI
 当前阶段：
 
 ```text
-Stage S5-E5 / S6: paper-ready risk-aware learned-FDM-MPPI result package
+S6-003: Final Convergence and Deployment Readiness
 ```
 
 Stage 3.5 已完成：
@@ -54,16 +54,32 @@ Stage 5 / S6 已完成：
 - Stage 5-D 50-episode ID/OOD benchmark 与三种 operating mode framing；
 - Stage 5-E explicit terrain-risk MPPI cost、same-backend Torch 2x2 risk-aware ablation；
 - `low_friction_patch` strong result、`safe_corridor` supporting result、`risk_band` stress-test limitation；
-- 固定双障碍标准图 `config/b2_omni_oracle.yaml` 的 risk-aware trajectory/risk/GIF 可视化。
+- 固定双障碍标准图 `config/b2_omni_oracle.yaml` 的 risk-aware trajectory/risk/GIF 可视化；
+- Stage 6 forced-step Torch runtime profiling closure，明确 learned runtime 仍慢于 nominal，不做 real-time equivalence claim；
+- S6-003 final status、real-robot readiness 和 reproducibility commands 已归档。
 
-当前 paper-ready risk-aware 入口：
+当前 final package 入口：
 
 ```text
+docs/agent_memory/PROJECT_FINAL_STATUS.md
+docs/agent_memory/STAGE6_RUNTIME_CLOSURE.md
+docs/agent_memory/REAL_ROBOT_READINESS.md
+docs/agent_memory/REPRODUCIBILITY_COMMANDS.md
+docs/agent_memory/STAGE6_RUNTIME_PROFILE.md
+docs/agent_memory/STAGE5_E_RISK_AWARE_RESULTS.md
 tools/sweep_stage5_e_risk_cost.py
 tools/analyze_stage5_e_risk_aware.py
 tools/plot_stage5_e_risk_aware_results.py
-docs/agent_memory/STAGE5_E_RISK_AWARE_RESULTS.md
+tools/profile_stage6_runtime_matrix.py
+tools/plot_stage6_runtime_results.py
 ```
+
+当前边界：
+
+- 可以汇报 numerical oracle simulation、same-backend risk-aware ablation、fixed-scene visual evidence 和 runtime limitation。
+- 不要宣称 learned-FDM-MPPI 全地图全指标优于 nominal。
+- 不要宣称 learned Torch runtime 等同 nominal Torch。
+- 不要宣称当前代码可直接实机闭环部署；下一阶段只允许 read-only shadow-mode 设计。
 
 ## 构建
 

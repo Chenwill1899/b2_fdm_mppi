@@ -4,7 +4,7 @@ Last updated: 2026-05-03
 
 ## Current Stage
 
-Stage 6: PR #27 merged the paper-ready Stage 5-E risk-aware result package into `fdm`; runtime profiling/optimization is now packaged for review. S6-002 completed terrain-noise sampling optimization, fixed-seed 2x2 paired runtime profiling, Torch inference-mode cleanup, sample/update delta buckets, and Stage 6 runtime figures/tables. Remaining learned rollout/FDM inference optimization is a later deep-runtime follow-up, not a blocker for PR #28 review.
+S6-003 Final Convergence and Deployment Readiness: PR #28 is merged into `fdm`; the numerical risk-aware learned-FDM-MPPI package is closed as a reproducible reporting package with explicit runtime and deployment boundaries. Final entry points are `PROJECT_FINAL_STATUS.md`, `STAGE6_RUNTIME_CLOSURE.md`, `REAL_ROBOT_READINESS.md`, and `REPRODUCIBILITY_COMMANDS.md`.
 
 ## Stage 0 Acceptance Criteria
 
@@ -65,7 +65,7 @@ Stage 6: PR #27 merged the paper-ready Stage 5-E risk-aware result package into 
 | S5-E3/E4 | P0 | done | Run risk-weight selection and official 50-episode Torch ablation | Ran 10-episode risk-weight sweeps and 50-episode official same-backend Torch ablations for low_friction_patch, safe_corridor, risk_band, and fixed two-obstacle standard scene. Selected weights: `10`, `0.5`, `5`, and `3`. |
 | S5-E5 | P0 | done | Package paper-ready risk-aware results and figures | Added protocol/results docs, Nature-style figure rules, `tools/plot_stage5_e_risk_aware_results.py`, fixed two-obstacle risk-aware visual mode, tracked `figures/stage5_e/` and `tables/stage5_e/`. low_friction_patch is the strong claim; safe_corridor supporting; risk_band limitation; fixed two-obstacle visual continuity. |
 | S6-002 | P0 | done | Profile and optimize learned Torch/CUDA runtime | Review package completed on `codex/s6-runtime-profiling`: batched Torch bilinear sampling, fixed-seed 2x2 runtime profiler, forced-step runtime semantics (`simulation.disable_goal_termination=true`), Torch `inference_mode()`, sample/update paired delta buckets, 10ep x 10step closeout profiler, and Stage 6 runtime figures/tables. Closeout learned risk-on remains `+26.02 ms` mean MPPI over nominal risk-on, dominated by rollout (`+26.44 ms`), with all closeout runs reporting `profile_total_calls=10`; no real-time equivalence claim is made. Details: `docs/agent_memory/STAGE6_RUNTIME_PROFILE.md`. |
-| S6-003 | P0 | done | Frame risk-aware result package for paper/Draft PR | Prepared Stage 5-E / S6 interpretation boundaries: explicit terrain-risk cost enables planner-risk claims, learned-vs-nominal benefits are map-level, and learned runtime remains an offline benchmark limitation. |
+| S6-003 | P0 | done | Final convergence and deployment readiness | Closed the current numerical package without new model structure, new maps, MuJoCo, or real-robot closed loop. Added final status, runtime closure, reproducibility commands, and real-robot readiness docs. Boundary: no learned-vs-nominal global win claim, no real-time equivalence claim, and no direct hardware deployment claim. Next stage may only start as read-only shadow mode. |
 
 ## Later Stages
 
@@ -77,5 +77,5 @@ Stage 6: PR #27 merged the paper-ready Stage 5-E risk-aware result package into 
 | 4 | done | Residual velocity FDM training baseline and open-loop/OOD validation. |
 | 5 | done | Stage 5-D 50-episode benchmark completed and packaged with calibrated operating-mode framing. |
 | 5-E | done | Explicit terrain-risk MPPI cost, same-backend Torch risk-aware ablation, fixed two-obstacle visual evidence, and Nature-style paper figures completed. |
-| 6 | done | Paper-ready risk-aware Stage 5-E package merged via PR #27; runtime profiling package completed in PR #28 with Stage 6 figures/tables and explicit learned-runtime limitation. |
-| 7 | pending | Paper-ready experiments and figures. |
+| 6 | done | Paper-ready risk-aware Stage 5-E package merged via PR #27; runtime profiling package merged via PR #28; S6-003 final convergence docs define reproducibility, runtime closure, and real-robot readiness boundaries. |
+| 7 | pending | Shadow-mode adapter design only after minimum readiness gates are met. |
