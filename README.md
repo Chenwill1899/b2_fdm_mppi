@@ -21,8 +21,8 @@
 
 - `b2_fdm_mppi/controllers/`: MPPI 控制器实现。
 - `b2_fdm_mppi/simulation/`: 仿真 runner、随机场景和结果写出。
-- `b2_fdm_mppi/data/`: oracle episode、dataset split、dataset validator。
-- `b2_fdm_mppi/training/`: residual FDM 训练。
+- `b2_fdm_mppi/data/`: oracle episode、dataset split、dataset validator、sequence FDM V2 collector。
+- `b2_fdm_mppi/training/`: residual FDM 训练、sequence FDM V2 课程训练。
 - `b2_fdm_mppi/evaluation/`: dataset/rollout 评估和 closed-loop benchmark。
 - `b2_fdm_mppi/experiment.py`: profile 驱动的仿真实验入口。
 - `b2_fdm_mppi/reporting/`: 最小报告汇总。
@@ -38,7 +38,66 @@
 
 旧 `config/*.yaml` 仍可用于复现实验和兼容测试，但主流程不再依赖这些路径。
 
-## 常用命令
+## Sequence FDM V2 数据采集与训练
+
+Sequence FDM V2 是一个端到端前向动力学模型：给定当前状态、H 步控制和地形网格，预测未来轨迹和二值风险。
+
+### 多轨迹数据采集
+
+同一地形上跑 K 条不同 start/goal 的轨迹，地形只生成一次：
+
+```bash
+python tools/collect_sequence_fdm_v2_data.py \
+  --base-config configs/smoke.yaml \
+  --episodes 300 \
+  --num-trajectories 3 \
+  --output-dir data/my_run \
+  --base-seed 0 \
+  --workers 16 \
+  --map-bounds -15 15 -15 15
+```
+
+起点/终点筛选：要求 `terrain.risk_cost <= 0.5`（安全区域），失败轨迹也保留作为负样本。
+
+每条轨迹保存为 `episode_XXXXXX_traj_YY.npz`，字段包含 `states`、`cmd_controls`、`binary_risk`、`terrain_seed`、`traj_idx`、`start_xy`、`goal_xy`。
+
+### 课程训练
+
+```bash
+python tools/train_sequence_fdm_v2.py \
+  --data-dir data/my_run \
+  --output-dir checkpoints/my_run \
+  --horizons 5 10 20 \
+  --epochs 50 50 100 \
+  --lrs 1e-3 5e-4 1e-4 \
+  --batch-size 16 \
+  --device cuda
+```
+
+支持 `--resume` 从上一个 checkpoint 继续训练（加载 model + optimizer 状态）。
+
+### 3 轮迭代训练
+
+自动编排：采集 → 训练 → resume → 重复：
+
+```bash
+python tools/run_iterative_training.py \
+  --base-config configs/smoke.yaml \
+  --episodes 100 100 200 \
+  --num-trajectories 3 \
+  --data-root data/iterative \
+  --checkpoint-root checkpoints/iterative \
+  --map-bounds -15 15 -15 15 \
+  --device cuda
+```
+
+- Round 1: 100 eps × 3 = 300 轨迹，无 resume
+- Round 2: 100 eps × 3 = 300 轨迹，resume Round 1
+- Round 3: 200 eps × 3 = 600 轨迹，resume Round 2
+
+每轮 checkpoint 保存到 `checkpoints/iterative/round_{N}/`，包含 `best_model.pt`、`optimizer.pt`、`normalization.npz`、`training_metrics.json`。
+
+
 
 运行推荐 experiment profile：
 
@@ -289,4 +348,10 @@ Dataset 输出通常包含：
 
 ```bash
 /usr/bin/python3 -m pytest -q
+```
+
+核心单元测试（Sequence FDM V2）：
+
+```bash
+/usr/bin/python3 -m pytest tests/test_sequence_fdm_collector.py -v
 ```
