@@ -30,8 +30,19 @@ def _sample_start_goal(
     map_bounds: tuple[float, float, float, float],
     min_distance: float = 10.0,
     max_attempts: int = 100,
+    terrain: TerrainField | None = None,
+    max_start_goal_risk: float = 0.3,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Sample start and goal positions at least min_distance apart."""
+    """Sample start and goal positions at least min_distance apart.
+
+    Args:
+        rng: random generator
+        map_bounds: (x_min, x_max, y_min, y_max)
+        min_distance: minimum Euclidean distance between start and goal
+        max_attempts: max sampling attempts before raising
+        terrain: if provided, start and goal must both have risk_cost <= max_start_goal_risk
+        max_start_goal_risk: maximum terrain risk for valid start/goal positions
+    """
     x_min, x_max, y_min, y_max = map_bounds
     for _ in range(max_attempts):
         start = np.array(
@@ -40,10 +51,17 @@ def _sample_start_goal(
         goal = np.array(
             [rng.uniform(x_min, x_max), rng.uniform(y_min, y_max)], dtype=np.float32
         )
-        if np.linalg.norm(goal - start) >= min_distance:
-            return start, goal
+        if np.linalg.norm(goal - start) < min_distance:
+            continue
+        if terrain is not None:
+            if terrain.risk_cost(float(start[0]), float(start[1])) > max_start_goal_risk:
+                continue
+            if terrain.risk_cost(float(goal[0]), float(goal[1])) > max_start_goal_risk:
+                continue
+        return start, goal
     raise RuntimeError(
-        f"Could not sample start/goal pair within {max_attempts} attempts"
+        f"Could not sample start/goal pair within {max_attempts} attempts "
+        f"(terrain risk threshold={max_start_goal_risk})"
     )
 
 
@@ -130,7 +148,10 @@ def collect_sequence_fdm_episode(
         # Sample start and goal independently per trajectory
         start_goal_rng = np.random.default_rng(terrain_seed + jj * 1000)
         start_xy, goal_xy = _sample_start_goal(
-            start_goal_rng, map_bounds, min_distance=min_start_goal_distance
+            start_goal_rng, map_bounds,
+            min_distance=min_start_goal_distance,
+            terrain=terrain,
+            max_start_goal_risk=0.3,
         )
 
         # Load and override base config
