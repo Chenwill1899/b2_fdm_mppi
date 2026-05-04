@@ -31,12 +31,13 @@ def main():
     parser = argparse.ArgumentParser(description="3-round iterative training")
     parser.add_argument("--base-config", default="configs/smoke.yaml")
     parser.add_argument("--episodes", type=int, nargs="+", default=[100, 100, 200],
-                        help="Episodes per round")
+                        help="Episodes per round (3 values for 3 rounds)")
     parser.add_argument("--num-trajectories", type=int, default=3)
     parser.add_argument("--data-root", default="data/iterative")
     parser.add_argument("--checkpoint-root", default="checkpoints/iterative")
     parser.add_argument("--map-bounds", type=float, nargs=4, default=[-15.0, 15.0, -15.0, 15.0])
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--base-seed", type=int, default=0,
                         help="Base seed for round 1 (each round offsets by 100000)")
     args = parser.parse_args()
@@ -75,7 +76,7 @@ def main():
             "--num-trajectories", str(args.num_trajectories),
             "--output-dir", str(data_dir),
             "--base-seed", str(seed),
-            "--workers", "4",
+            "--workers", "16",
             "--map-bounds",
             str(args.map_bounds[0]), str(args.map_bounds[1]),
             str(args.map_bounds[2]), str(args.map_bounds[3]),
@@ -88,6 +89,7 @@ def main():
             "--data-dir", str(data_dir),
             "--output-dir", str(ckpt_dir),
             "--device", device,
+            "--batch-size", str(args.batch_size),
         ]
         if round_idx > 1:
             prev_ckpt = Path(args.checkpoint_root) / f"round_{round_idx - 1}"
