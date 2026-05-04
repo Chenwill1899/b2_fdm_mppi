@@ -191,3 +191,52 @@ def collect_sequence_fdm_episode(
         return metadata
     finally:
         temp_config_path.unlink(missing_ok=True)
+
+
+def build_sequence_fdm_windows(
+    episode_path: str | Path,
+    horizon_steps: int,
+    stride: int = 1,
+    map_bounds: tuple[float, float, float, float] = (-20.0, 20.0, -20.0, 20.0),
+    terrain_grid_size: int = 9,
+    terrain_grid_span: float = 18.0,
+) -> list[dict]:
+    """Extract sliding windows from a collected episode for sequence FDM training.
+
+    Returns a list of dicts, each containing one training sample.
+    """
+    from b2_fdm_mppi.core.terrain_grid import sample_terrain_risk_grid_np
+
+    episode = np.load(episode_path, allow_pickle=True)
+    states = episode["states"].astype(np.float32)
+    controls = episode["cmd_controls"].astype(np.float32)
+    binary_risk = episode["binary_risk"].astype(np.float32)
+    terrain_seed = int(episode["terrain_seed"][0])
+    episode.close()
+
+    # Reconstruct terrain for grid sampling
+    generator = RandomTerrainGenerator(map_bounds=map_bounds)
+    terrain = generator.generate(seed=terrain_seed)
+
+    T = len(states)
+    windows: list[dict] = []
+    for t in range(0, T - horizon_steps, stride):
+        state_t = states[t]
+        controls_t = controls[t : t + horizon_steps]
+        terrain_grid = sample_terrain_risk_grid_np(
+            terrain, float(state_t[0]), float(state_t[1]),
+            size=terrain_grid_size, span=terrain_grid_span,
+        )
+        target_states = states[t + 1 : t + 1 + horizon_steps]
+        target_risk = binary_risk[t + 1 : t + 1 + horizon_steps]
+
+        windows.append({
+            "state": state_t,
+            "controls": controls_t,
+            "terrain_grid": terrain_grid,
+            "target_states": target_states,
+            "target_risk": target_risk,
+            "episode_id": str(episode_path),
+            "timestep": t,
+        })
+    return windows
