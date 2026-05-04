@@ -124,12 +124,12 @@ def collect_sequence_fdm_episode(
     config.setdefault("results", {})["enable_animation"] = False
     # Enable terrain risk avoidance so MPPI avoids high-risk patches
     mppi_cfg = config.setdefault("mppi", {})
-    mppi_cfg["terrain_risk_weight"] = 100.0
+    mppi_cfg["terrain_risk_weight"] = 50.0
     mppi_cfg["terrain_risk_threshold"] = risk_threshold
     mppi_cfg["terrain_risk_mode"] = "excess"
     # Add random static obstacles
     rng_obs = np.random.default_rng(terrain_seed + 50000)
-    num_obs = int(rng_obs.integers(3, 11))
+    num_obs = int(rng_obs.integers(3, 7))
     obs_list = []
     for _ in range(num_obs):
         ox = float(rng_obs.uniform(map_bounds[0] + 2.0, map_bounds[1] - 2.0))

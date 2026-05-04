@@ -50,9 +50,9 @@ def _estimate_workers_from_gpu(free_mb: float | None, total_mb: float | None) ->
         return 1
     # Heuristic: each episode needs ~500MB GPU memory for MPPI torch backend
     # Reserve 2GB headroom for system / spikes
-    usable = max(0, free_mb - 2048)
-    workers = max(1, int(usable / 500))
-    return min(workers, 8)  # Cap at 8 to avoid CPU contention
+    usable = max(0, free_mb - 1536)
+    workers = max(1, int(usable / 400))
+    return min(workers, 16)  # Cap at 16 for RTX 4090
 
 
 def main():
