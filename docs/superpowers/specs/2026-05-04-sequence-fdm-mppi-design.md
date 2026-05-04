@@ -26,7 +26,7 @@ MPPI then uses these predictions directly to compute candidate costs, replacing 
 | State prediction | Absolute coordinates | No nominal model ambiguity; supervise against real trajectories |
 | Risk representation | Binary (0/1), triggered on threshold exceedance | RL-style trial-and-error signal; once triggered, all subsequent timesteps are 1 |
 | Risk trigger | Enter terrain high-risk area (`risk_cost > threshold`) | Core scenario: MPPI avoids obstacles but may plan into dangerous terrain |
-| Terrain encoding | 9x9 risk grid, 18m x 18m (2m resolution), centered on robot | Spatial awareness of nearby risk zones; compact enough for MLP |
+| Terrain encoding | 9x9 risk grid, 18m x 18m, centered on robot | Spatial awareness of nearby risk zones; compact enough for MLP |
 | Model type | Pure MLP + curriculum learning (Approach A) | Minimal baseline; fast single-pass inference; upgrade path to temporal encoder (Approach C) |
 | Gradient mode | Training + inference both retain gradients | Enables future end-to-end MPPI parameter tuning |
 | Obstacle cost | Independent computation, NOT from FDM | Explicit safety guarantee; FDM focuses on terrain dynamics |
