@@ -63,6 +63,7 @@ def train_sequence_fdm_v2(
     patience: int = 10,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
     use_tensorboard: bool = True,
+    resume_from: str | Path | None = None,
 ) -> dict[str, Any]:
     """Train SequenceFdmMlpV2 with curriculum learning.
 
@@ -78,6 +79,7 @@ def train_sequence_fdm_v2(
         patience: Early stopping patience (epochs)
         device: "cuda" or "cpu"
         use_tensorboard: Whether to log metrics to TensorBoard
+        resume_from: Checkpoint directory to resume from (loads best_model.pt + optimizer.pt)
     """
     from b2_fdm_mppi.core.sequence_fdm_v2 import SequenceFdmMlpV2
 
@@ -148,13 +150,30 @@ def train_sequence_fdm_v2(
 
         # Create or load model
         model = SequenceFdmMlpV2(horizon_steps=horizon, hidden_dims=hidden_dims).to(torch_device)
-        if best_ckpt_path is not None and best_ckpt_path.exists():
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+
+        # Resume logic: load model + optimizer from previous training round
+        if resume_from is not None:
+            resume_path = Path(resume_from)
+            resume_model_path = resume_path / "best_model.pt"
+            resume_opt_path = resume_path / "optimizer.pt"
+            if resume_model_path.exists():
+                ckpt = torch.load(resume_model_path, map_location=device, weights_only=False)
+                if ckpt.get("horizon_steps") == horizon:
+                    model.load_state_dict(ckpt["model_state_dict"])
+                    print(f"  Resumed model from {resume_model_path}")
+                else:
+                    print(f"  Warning: checkpoint horizon {ckpt.get('horizon_steps')} != current {horizon}, starting fresh")
+            if resume_opt_path.exists():
+                opt_ckpt = torch.load(resume_opt_path, map_location=device, weights_only=False)
+                optimizer.load_state_dict(opt_ckpt["optimizer_state_dict"])
+                print(f"  Resumed optimizer state from {resume_opt_path}")
+            resume_from = None  # only resume on first phase
+        elif best_ckpt_path is not None and best_ckpt_path.exists():
             ckpt = torch.load(best_ckpt_path, map_location=device, weights_only=False)
             if ckpt.get("horizon_steps") == horizon:
                 model.load_state_dict(ckpt["model_state_dict"])
                 print(f"  Loaded checkpoint from phase {phase_idx}")
-
-        optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
         mse_loss = nn.MSELoss()
         bce_loss = nn.BCEWithLogitsLoss()
 
@@ -262,6 +281,11 @@ def train_sequence_fdm_v2(
                         "target_dim": 6 * horizon + horizon,
                         "phase": phase_idx,
                     }, output_dir / "best_model.pt")
+                    torch.save({
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "horizon_steps": horizon,
+                        "lr": lr,
+                    }, output_dir / "optimizer.pt")
             else:
                 no_improve += 1
                 if no_improve >= patience:

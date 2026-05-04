@@ -23,6 +23,8 @@ def main():
     parser.add_argument("--w-risk", type=float, default=0.5)
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--device", default="cuda" if __import__("torch").cuda.is_available() else "cpu")
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Checkpoint directory to resume from (best_model.pt + optimizer.pt)")
     args = parser.parse_args()
 
     if not (len(args.horizons) == len(args.epochs) == len(args.lrs)):
@@ -50,6 +52,7 @@ def main():
         w_risk=args.w_risk,
         patience=args.patience,
         device=args.device,
+        resume_from=args.resume,
     )
 
     with open(Path(args.output_dir) / "training_metrics.json", "w") as f:

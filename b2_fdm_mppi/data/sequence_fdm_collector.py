@@ -31,7 +31,7 @@ def _sample_start_goal(
     min_distance: float = 10.0,
     max_attempts: int = 100,
     terrain: TerrainField | None = None,
-    max_start_goal_risk: float = 0.3,
+    max_start_goal_risk: float = 0.5,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Sample start and goal positions at least min_distance apart.
 
@@ -151,7 +151,7 @@ def collect_sequence_fdm_episode(
             start_goal_rng, map_bounds,
             min_distance=min_start_goal_distance,
             terrain=terrain,
-            max_start_goal_risk=0.3,
+            max_start_goal_risk=0.5,
         )
 
         # Load and override base config
@@ -164,7 +164,7 @@ def collect_sequence_fdm_episode(
         config.setdefault("results", {})["enable_animation"] = False
         # Enable terrain risk avoidance so MPPI avoids high-risk patches
         mppi_cfg = config.setdefault("mppi", {})
-        mppi_cfg["terrain_risk_weight"] = 50.0
+        mppi_cfg["terrain_risk_weight"] = 1.0
         mppi_cfg["terrain_risk_threshold"] = risk_threshold
         mppi_cfg["terrain_risk_mode"] = "excess"
         config["obstacles"] = {
