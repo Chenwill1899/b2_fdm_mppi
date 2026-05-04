@@ -211,7 +211,7 @@ def build_sequence_fdm_windows(
     states = episode["states"].astype(np.float32)
     controls = episode["cmd_controls"].astype(np.float32)
     binary_risk = episode["binary_risk"].astype(np.float32)
-    terrain_seed = int(episode["terrain_seed"][0])
+    terrain_seed = int(episode["terrain_seed"].item())
     episode.close()
 
     # Reconstruct terrain for grid sampling
