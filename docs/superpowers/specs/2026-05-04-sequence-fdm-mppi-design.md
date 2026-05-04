@@ -81,11 +81,48 @@ Sliding window extraction from episodes:
 **Input**:
 - Current state `s_t`: 6D
 - Future H-step controls `U_{t:t+H-1}`: H x 3, flattened to 3H
-- Local terrain encoding `E_t`: 9 x 9 = 81D (18m x 18m risk grid, 2m resolution)
+- Local terrain encoding `E_t`: 9 x 9 = 81D (18m x 18m risk grid centered on robot)
 
 **Target**:
 - Future H-step states `X_{t+1:t+H}`: H x 6 (absolute coordinates)
 - Future H-step binary risk `R_{t+1:t+H}`: H x 1
+
+### 3.4 Parallel Collection
+
+Each episode is fully independent (random terrain seed + random start/goal + MPPI rollout). Parallel collection is **strongly recommended**:
+
+```python
+def collect_episode(seed: int) -> EpisodeData:
+    terrain = generator.generate(seed)
+    start, goal = sample_start_goal(terrain, min_distance=10.0)
+    trajectory = run_mppi_nominal(terrain, start, goal)
+    return process_trajectory(trajectory, terrain)
+
+# Parallel execution
+with ProcessPoolExecutor(max_workers=8) as executor:
+    episodes = list(executor.map(collect_episode, range(num_episodes)))
+```
+
+**Reuse existing infrastructure**: The project already has `tools/generate_oracle_episodes.py` with `--num-workers` support. The sequence FDM collector should follow the same pattern: sorted manifest, raw results per episode, single-episode failures do not stop the run.
+
+### 3.5 Collection Quantity
+
+**Target**: ~200 training episodes + 50 validation + 50 test = **300 total episodes**.
+
+**Rationale**:
+- Each episode of ~500 steps with H=20 and stride 1 yields ~480 windows
+- 200 episodes × 480 windows = ~96,000 training samples
+- After accounting for highly overlapping windows, effective diversity ≈ 30,000-50,000 unique samples
+- For an MLP with ~200K parameters (256×3), this is a comfortable ratio
+
+**Risk class balance requirement**:
+- At least **30% of episodes should contain risky trajectories** (enter high-risk zones)
+- If natural MPPI behavior produces too few failures, intentionally generate "hard" terrains with dense risk patches or narrow safe corridors
+- Failure episodes are more valuable per-sample because they teach the model what to avoid
+
+**Scaling rule of thumb**:
+- If validation ADE > 0.5m after full curriculum: collect 2× more episodes
+- If risk F1 < 0.5: prioritize hard terrains that force trajectories near risk boundaries
 
 **Data split**: By terrain seed (not by window), ensuring validation terrains are unseen during training.
 
