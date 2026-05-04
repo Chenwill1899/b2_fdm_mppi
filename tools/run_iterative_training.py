@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -18,8 +19,9 @@ def run(cmd: list[str], desc: str) -> None:
     print(f"\n{'=' * 60}")
     print(f"{desc}")
     print(f"{'=' * 60}")
+    env = {**os.environ, "PYTHONPATH": "/home/test/docker/prjcwl/b2_fdm_mppi"}
     t0 = time.time()
-    result = subprocess.run(cmd, cwd="/home/test/docker/prjcwl/b2_fdm_mppi")
+    result = subprocess.run(cmd, cwd="/home/test/docker/prjcwl/b2_fdm_mppi", env=env)
     elapsed = time.time() - t0
     if result.returncode != 0:
         print(f"FAILED after {elapsed:.0f}s")
