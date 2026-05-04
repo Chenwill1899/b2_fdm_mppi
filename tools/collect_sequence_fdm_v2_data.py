@@ -18,8 +18,8 @@ mp.set_start_method("spawn", force=True)
 from b2_fdm_mppi.data.sequence_fdm_collector import collect_sequence_fdm_episode
 
 
-def _collect_one(args: tuple) -> dict:
-    base_config_path, episode_id, terrain_seed, output_dir, map_bounds = args
+def _collect_one(args: tuple) -> list[dict]:
+    base_config_path, episode_id, terrain_seed, output_dir, map_bounds, num_trajectories = args
     try:
         return collect_sequence_fdm_episode(
             base_config_path=base_config_path,
@@ -27,9 +27,10 @@ def _collect_one(args: tuple) -> dict:
             terrain_seed=terrain_seed,
             output_dir=output_dir,
             map_bounds=map_bounds,
+            num_trajectories=num_trajectories,
         )
     except Exception as e:
-        return {"episode_id": episode_id, "error": str(e), "success": False}
+        return [{"episode_id": episode_id, "error": str(e), "success": False}]
 
 
 def _get_gpu_memory_info():
@@ -64,6 +65,8 @@ def main():
     parser.add_argument("--workers", type=int, default=None, help="Max parallel workers (auto if unset)")
     parser.add_argument("--map-bounds", type=float, nargs=4, default=[-15.0, 15.0, -15.0, 15.0])
     parser.add_argument("--batch-size", type=int, default=10, help="Episodes per batch before rechecking GPU")
+    parser.add_argument("--num-trajectories", type=int, default=1,
+                        help="Number of MPPI trajectories per episode (default: 1)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -108,6 +111,7 @@ def main():
                 args.base_seed + i,
                 str(output_dir),
                 tuple(args.map_bounds),
+                args.num_trajectories,
             )
             for i in batch_ids
         ]
@@ -119,17 +123,18 @@ def main():
         with ProcessPoolExecutor(max_workers=current_max) as executor:
             futures = {executor.submit(_collect_one, t): t for t in tasks}
             for future in as_completed(futures):
-                result = future.result()
-                batch_results.append(result)
-                if result.get("error"):
-                    failed += 1
-                    print(f"  FAILED episode {result['episode_id']}: {result['error']}")
-                else:
-                    completed += 1
-                    status = "SUCCESS" if result.get("success") else "FAILURE"
-                    print(f"  {status} episode {result['episode_id']}: "
-                          f"steps={result.get('num_transitions', '?')}, "
-                          f"final_dist={result.get('final_distance', '?'):.2f}")
+                result_list = future.result()
+                for result in result_list:
+                    if result.get("error"):
+                        failed += 1
+                        print(f"  FAILED episode {result['episode_id']}: {result['error']}")
+                    else:
+                        completed += 1
+                        status = "SUCCESS" if result.get("success") else "FAILURE"
+                        print(f"  {status} episode {result['episode_id']}: "
+                              f"steps={result.get('num_transitions', '?')}, "
+                              f"final_dist={result.get('final_distance', '?'):.2f}")
+                batch_results.extend(result_list)
 
         results.extend(batch_results)
         elapsed = time.time() - t_start
@@ -149,14 +154,17 @@ def main():
         "failed": failed,
         "elapsed_seconds": time.time() - t_start,
         "output_dir": str(output_dir),
+        "episodes": args.episodes,
+        "trajectories_per_episode": args.num_trajectories,
     }
 
     with open(output_dir / "manifest.json", "w") as f:
         json.dump({"results": results, "summary": summary}, f, indent=2)
 
     print(f"\n=== Collection Complete ===")
-    print(f"Total: {summary['total']}, Success: {summary['success']}, "
+    print(f"Total trajectories: {summary['total']}, Success: {summary['success']}, "
           f"Failure: {summary['failure']}, Crashed: {summary['failed']}")
+    print(f"Episodes: {summary['episodes']} x {summary['trajectories_per_episode']} trajectories/episode")
     print(f"Elapsed: {summary['elapsed_seconds']:.1f}s")
     print(f"Results saved to: {output_dir}")
 
