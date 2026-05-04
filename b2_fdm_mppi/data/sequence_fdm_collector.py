@@ -95,13 +95,18 @@ def collect_sequence_fdm_episode(
     min_start_goal_distance: float = 10.0,
     risk_threshold: float = 0.6,
     num_patches_range: tuple[int, int] = (3, 6),
-) -> dict:
-    """Generate random terrain, run MPPI, and save an episode with binary risk labels."""
+    num_trajectories: int = 1,
+) -> list[dict]:
+    """Generate random terrain, run MPPI, and save an episode with binary risk labels.
+
+    When num_trajectories > 1, the same terrain is reused but each trajectory
+    gets independent start/goal positions and a different MPPI noise seed.
+    Returns a list of metadata dicts, one per trajectory.
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"episode_{int(episode_id):06d}.npz"
 
-    # Generate random terrain
+    # Generate random terrain once (before the loop)
     rng = np.random.default_rng(terrain_seed)
     terrain_gen = RandomTerrainGenerator(
         map_bounds=map_bounds,
@@ -109,25 +114,7 @@ def collect_sequence_fdm_episode(
     )
     terrain = terrain_gen.generate(seed=terrain_seed)
 
-    # Sample start and goal
-    start_xy, goal_xy = _sample_start_goal(
-        rng, map_bounds, min_distance=min_start_goal_distance
-    )
-
-    # Load and override base config
-    config = load_config(base_config_path)
-    config["terrain"] = _terrain_to_config(terrain)
-    config.setdefault("mppi", {})["backend"] = "torch"
-    config["simulation"]["max_steps"] = 500
-    # Disable expensive visualization to speed up collection
-    config.setdefault("results", {})["enable_plots"] = False
-    config.setdefault("results", {})["enable_animation"] = False
-    # Enable terrain risk avoidance so MPPI avoids high-risk patches
-    mppi_cfg = config.setdefault("mppi", {})
-    mppi_cfg["terrain_risk_weight"] = 50.0
-    mppi_cfg["terrain_risk_threshold"] = risk_threshold
-    mppi_cfg["terrain_risk_mode"] = "excess"
-    # Add random static obstacles
+    # Sample obstacles once (same for all trajectories)
     rng_obs = np.random.default_rng(terrain_seed + 50000)
     num_obs = int(rng_obs.integers(3, 7))
     obs_list = []
@@ -136,61 +123,91 @@ def collect_sequence_fdm_episode(
         oy = float(rng_obs.uniform(map_bounds[2] + 2.0, map_bounds[3] - 2.0))
         radius = float(rng_obs.uniform(0.8, 2.0))
         obs_list.append([ox, oy, radius, 0.0, 0.0, 0.0, 0.0])
-    config["obstacles"] = {
-        "num_max": num_obs,
-        "static_enabled": True,
-        "virtual": obs_list,
-    }
 
-    initial_state = list(config["simulation"]["initial_state"])
-    goal_state = list(config["simulation"]["goal"])
-    initial_state[0] = float(start_xy[0])
-    initial_state[1] = float(start_xy[1])
-    goal_state[0] = float(goal_xy[0])
-    goal_state[1] = float(goal_xy[1])
-    config["simulation"]["initial_state"] = initial_state
-    config["simulation"]["goal"] = goal_state
+    all_metadata: list[dict] = []
 
-    # Write temporary config (convert tuples to lists for YAML compatibility)
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yaml", delete=False
-    ) as temp_file:
-        yaml.dump(_convert_tuples_to_lists(config), temp_file)
-        temp_config_path = Path(temp_file.name)
-
-    try:
-        # Collect oracle episode
-        metadata = collect_oracle_episode(
-            config_path=temp_config_path,
-            episode_id=episode_id,
-            seed=terrain_seed,
-            output_path=output_path,
+    for jj in range(num_trajectories):
+        # Sample start and goal independently per trajectory
+        start_goal_rng = np.random.default_rng(terrain_seed + jj * 1000)
+        start_xy, goal_xy = _sample_start_goal(
+            start_goal_rng, map_bounds, min_distance=min_start_goal_distance
         )
 
-        # Load saved NPZ, augment, and re-save
-        data = dict(np.load(output_path, allow_pickle=True))
-        for key in data:
-            if isinstance(data[key], np.ndarray) and data[key].dtype == object:
-                data[key] = data[key].item()
+        # Load and override base config
+        config = load_config(base_config_path)
+        config["terrain"] = _terrain_to_config(terrain)
+        config.setdefault("mppi", {})["backend"] = "torch"
+        config["simulation"]["max_steps"] = 500
+        # Disable expensive visualization to speed up collection
+        config.setdefault("results", {})["enable_plots"] = False
+        config.setdefault("results", {})["enable_animation"] = False
+        # Enable terrain risk avoidance so MPPI avoids high-risk patches
+        mppi_cfg = config.setdefault("mppi", {})
+        mppi_cfg["terrain_risk_weight"] = 50.0
+        mppi_cfg["terrain_risk_threshold"] = risk_threshold
+        mppi_cfg["terrain_risk_mode"] = "excess"
+        config["obstacles"] = {
+            "num_max": num_obs,
+            "static_enabled": True,
+            "virtual": obs_list,
+        }
 
-        terrain_risk = data["terrain_risk"]
-        binary_risk = _mark_binary_risk(terrain_risk, threshold=risk_threshold)
-        data["binary_risk"] = binary_risk
-        data["terrain_seed"] = np.asarray(int(terrain_seed), dtype=np.int64)
-        data["start_xy"] = start_xy.astype(np.float32)
-        data["goal_xy"] = goal_xy.astype(np.float32)
+        initial_state = list(config["simulation"]["initial_state"])
+        goal_state = list(config["simulation"]["goal"])
+        initial_state[0] = float(start_xy[0])
+        initial_state[1] = float(start_xy[1])
+        goal_state[0] = float(goal_xy[0])
+        goal_state[1] = float(goal_xy[1])
+        config["simulation"]["initial_state"] = initial_state
+        config["simulation"]["goal"] = goal_state
 
-        np.savez_compressed(output_path, **data)
+        # Output filename: episode_{id:06d}_traj_{jj:02d}.npz
+        output_path = output_dir / f"episode_{int(episode_id):06d}_traj_{jj:02d}.npz"
 
-        metadata["binary_risk"] = binary_risk.tolist()
-        metadata["terrain_seed"] = int(terrain_seed)
-        metadata["start_xy"] = start_xy.tolist()
-        metadata["goal_xy"] = goal_xy.tolist()
-        metadata["output_path"] = str(output_path)
+        # Write temporary config (convert tuples to lists for YAML compatibility)
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        ) as temp_file:
+            yaml.dump(_convert_tuples_to_lists(config), temp_file)
+            temp_config_path = Path(temp_file.name)
 
-        return metadata
-    finally:
-        temp_config_path.unlink(missing_ok=True)
+        try:
+            # Collect oracle episode; MPPI seed = terrain_seed + jj for noise diversity
+            metadata = collect_oracle_episode(
+                config_path=temp_config_path,
+                episode_id=episode_id,
+                seed=terrain_seed + jj,
+                output_path=output_path,
+            )
+
+            # Load saved NPZ, augment, and re-save
+            data = dict(np.load(output_path, allow_pickle=True))
+            for key in data:
+                if isinstance(data[key], np.ndarray) and data[key].dtype == object:
+                    data[key] = data[key].item()
+
+            terrain_risk = data["terrain_risk"]
+            binary_risk = _mark_binary_risk(terrain_risk, threshold=risk_threshold)
+            data["binary_risk"] = binary_risk
+            data["terrain_seed"] = np.asarray(int(terrain_seed), dtype=np.int64)
+            data["start_xy"] = start_xy.astype(np.float32)
+            data["goal_xy"] = goal_xy.astype(np.float32)
+            data["traj_idx"] = np.asarray(int(jj), dtype=np.int64)
+
+            np.savez_compressed(output_path, **data)
+
+            metadata["binary_risk"] = binary_risk.tolist()
+            metadata["terrain_seed"] = int(terrain_seed)
+            metadata["traj_idx"] = int(jj)
+            metadata["start_xy"] = start_xy.tolist()
+            metadata["goal_xy"] = goal_xy.tolist()
+            metadata["output_path"] = str(output_path)
+
+            all_metadata.append(metadata)
+        finally:
+            temp_config_path.unlink(missing_ok=True)
+
+    return all_metadata
 
 
 def build_sequence_fdm_windows(
