@@ -15,17 +15,18 @@ import numpy as np
 import multiprocessing as mp
 mp.set_start_method("spawn", force=True)
 
-from b2_fdm_mppi.data.sequence_fdm_collector import collect_sequence_fdm_episode
-
-
 def _collect_one(args: tuple) -> list[dict]:
     (base_config_path, episode_id, terrain_seed, output_dir,
      map_bounds, num_trajectories, learned_model_dir,
      learned_traj_ratio, learned_device) = args
 
     # 瓶颈2: 根据 episode_id 奇偶性绑定 GPU，实现双 GPU 负载均衡
+    # 必须在任何 CUDA/PyCUDA import 之前设置环境变量
     import os
     os.environ["CUDA_VISIBLE_DEVICES"] = str(int(episode_id) % 2)
+
+    # 惰性导入：确保 CUDA_VISIBLE_DEVICES 在 CUDA 初始化前生效
+    from b2_fdm_mppi.data.sequence_fdm_collector import collect_sequence_fdm_episode
 
     try:
         return collect_sequence_fdm_episode(
