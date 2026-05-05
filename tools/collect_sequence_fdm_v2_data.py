@@ -22,6 +22,11 @@ def _collect_one(args: tuple) -> list[dict]:
     (base_config_path, episode_id, terrain_seed, output_dir,
      map_bounds, num_trajectories, learned_model_dir,
      learned_traj_ratio, learned_device) = args
+
+    # 瓶颈2: 根据 episode_id 奇偶性绑定 GPU，实现双 GPU 负载均衡
+    import os
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(int(episode_id) % 2)
+
     try:
         return collect_sequence_fdm_episode(
             base_config_path=base_config_path,
@@ -39,26 +44,42 @@ def _collect_one(args: tuple) -> list[dict]:
 
 
 def _get_gpu_memory_info():
-    """Return (free_mb, total_mb) for GPU 0."""
+    """Return (free_mb_total, total_mb_total) across all visible GPUs."""
     try:
         import torch
         if not torch.cuda.is_available():
             return None, None
-        free, total = torch.cuda.mem_get_info(0)
-        return free / (1024 * 1024), total / (1024 * 1024)
+        total_free = 0
+        total_mem = 0
+        for i in range(torch.cuda.device_count()):
+            free, total = torch.cuda.mem_get_info(i)
+            total_free += free
+            total_mem += total
+        return total_free / (1024 * 1024), total_mem / (1024 * 1024)
     except Exception:
         return None, None
 
 
 def _estimate_workers_from_gpu(free_mb: float | None, total_mb: float | None) -> int:
-    """Estimate safe number of parallel workers based on available GPU memory."""
+    """Estimate safe number of parallel workers based on available GPU memory.
+
+    With N GPUs, we return workers proportional to total free memory,
+    but cap at 8 workers per GPU to avoid context-switch thrashing.
+    """
     if free_mb is None:
         return 1
-    # Heuristic: each episode needs ~500MB GPU memory for MPPI torch backend
-    # Reserve 2GB headroom for system / spikes
-    usable = max(0, free_mb - 1536)
+    try:
+        import torch
+        num_gpus = torch.cuda.device_count()
+    except Exception:
+        num_gpus = 1
+
+    # Heuristic: each episode needs ~500MB GPU memory
+    # Reserve 2GB headroom per GPU for system / spikes
+    usable = max(0, free_mb - 1536 * num_gpus)
     workers = max(1, int(usable / 400))
-    return min(workers, 16)  # Cap at 16 for RTX 4090
+    # Cap at 8 per GPU to avoid thrashing
+    return min(workers, 8 * num_gpus)
 
 
 def main():
@@ -69,7 +90,7 @@ def main():
     parser.add_argument("--base-seed", type=int, default=0, help="Base seed for terrain generation")
     parser.add_argument("--workers", type=int, default=None, help="Max parallel workers (auto if unset)")
     parser.add_argument("--map-bounds", type=float, nargs=4, default=[-15.0, 15.0, -15.0, 15.0])
-    parser.add_argument("--batch-size", type=int, default=10, help="Episodes per batch before rechecking GPU")
+    parser.add_argument("--batch-size", type=int, default=10, help="Deprecated: no longer used, kept for CLI compatibility")
     parser.add_argument("--num-trajectories", type=int, default=1,
                         help="Number of MPPI trajectories per episode (default: 1)")
     parser.add_argument("--learned-model-dir", type=str, default=None,
@@ -99,63 +120,49 @@ def main():
     failed = 0
     t_start = time.time()
 
-    # Process in batches to allow dynamic worker adjustment
-    remaining = list(range(args.episodes))
-    batch_num = 0
+    # 瓶颈4: 一次性创建所有任务，只启动一次 ProcessPoolExecutor
+    # 避免每 batch 销毁/重建 worker 进程的开销
+    all_ids = list(range(args.episodes))
+    tasks = [
+        (
+            args.base_config,
+            args.base_seed + i,
+            args.base_seed + i,
+            str(output_dir),
+            tuple(args.map_bounds),
+            args.num_trajectories,
+            args.learned_model_dir,
+            args.learned_traj_ratio,
+            args.learned_device,
+        )
+        for i in all_ids
+    ]
 
-    while remaining:
-        batch_num += 1
-        # Recheck GPU memory before each batch
-        free_mb, total_mb = _get_gpu_memory_info()
-        current_max = _estimate_workers_from_gpu(free_mb, total_mb)
-        if args.workers is not None:
-            current_max = min(current_max, args.workers)
+    print(f"\n[Collection] {args.episodes} episodes with {max_workers} workers "
+          f"({max_workers // 2} per GPU)")
 
-        batch_size = min(args.batch_size, len(remaining))
-        batch_ids = remaining[:batch_size]
-        remaining = remaining[batch_size:]
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_collect_one, t): t for t in tasks}
+        for future in as_completed(futures):
+            result_list = future.result()
+            for result in result_list:
+                if result.get("error"):
+                    failed += 1
+                    print(f"  FAILED episode {result['episode_id']}: {result['error']}")
+                else:
+                    completed += 1
+                    status = "SUCCESS" if result.get("success") else "FAILURE"
+                    print(f"  {status} episode {result['episode_id']}: "
+                          f"steps={result.get('num_transitions', '?')}, "
+                          f"final_dist={result.get('final_distance', '?'):.2f}")
+            results.extend(result_list)
 
-        tasks = [
-            (
-                args.base_config,
-                args.base_seed + i,
-                args.base_seed + i,
-                str(output_dir),
-                tuple(args.map_bounds),
-                args.num_trajectories,
-                args.learned_model_dir,
-                args.learned_traj_ratio,
-                args.learned_device,
-            )
-            for i in batch_ids
-        ]
-
-        print(f"\n[Batch {batch_num}] Collecting episodes {batch_ids[0]}-{batch_ids[-1]} "
-              f"with {current_max} workers (GPU free: {free_mb:.0f}MB)")
-
-        batch_results = []
-        with ProcessPoolExecutor(max_workers=current_max) as executor:
-            futures = {executor.submit(_collect_one, t): t for t in tasks}
-            for future in as_completed(futures):
-                result_list = future.result()
-                for result in result_list:
-                    if result.get("error"):
-                        failed += 1
-                        print(f"  FAILED episode {result['episode_id']}: {result['error']}")
-                    else:
-                        completed += 1
-                        status = "SUCCESS" if result.get("success") else "FAILURE"
-                        print(f"  {status} episode {result['episode_id']}: "
-                              f"steps={result.get('num_transitions', '?')}, "
-                              f"final_dist={result.get('final_distance', '?'):.2f}")
-                batch_results.extend(result_list)
-
-        results.extend(batch_results)
-        elapsed = time.time() - t_start
-        rate = completed / elapsed if elapsed > 0 else 0
-        eta = f"{(args.episodes - completed) / rate:.0f}s" if rate > 0 else "N/A"
-        print(f"  Progress: {completed}/{args.episodes} completed, {failed} failed, "
-              f"{rate:.1f} eps/s, ETA {eta}")
+            elapsed = time.time() - t_start
+            rate = completed / elapsed if elapsed > 0 else 0
+            eta = f"{(args.episodes - completed) / rate:.0f}s" if rate > 0 else "N/A"
+            if completed % 30 == 0 or completed == args.episodes:
+                print(f"  Progress: {completed}/{args.episodes} completed, {failed} failed, "
+                      f"{rate:.1f} eps/s, ETA {eta}")
 
     # Final summary
     success_count = sum(1 for r in results if r.get("success") and not r.get("error"))
