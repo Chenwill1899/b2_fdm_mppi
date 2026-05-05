@@ -33,8 +33,8 @@ class SequenceFdmDynamics:
         self.state_std = torch.from_numpy(state_std).to(device)
         self.control_mean = torch.from_numpy(control_mean).to(device)
         self.control_std = torch.from_numpy(control_std).to(device)
-        self.state_target_mean = torch.from_numpy(state_target_mean).to(device).view(self.horizon_steps, 6)
-        self.state_target_std = torch.from_numpy(state_target_std).to(device).view(self.horizon_steps, 6)
+        self.state_target_mean = torch.from_numpy(state_target_mean).to(device)
+        self.state_target_std = torch.from_numpy(state_target_std).to(device)
 
     @classmethod
     def from_artifacts(cls, model_dir: Path, device: str = "cpu") -> "SequenceFdmDynamics":
