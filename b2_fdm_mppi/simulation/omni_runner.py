@@ -15,6 +15,7 @@ import yaml
 from b2_fdm_mppi.controllers.mppi_omni_learned_numpy import LearnedFdmMppiOmniNumpy
 from b2_fdm_mppi.controllers.mppi_omni_learned_torch import LearnedFdmMppiOmniTorch
 from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
+from b2_fdm_mppi.controllers.mppi_omni_sequence_fdm_v2_torch import MppiOmniSequenceFdmV2Torch
 from b2_fdm_mppi.controllers.mppi_omni_torch import MppiOmniTorch
 from b2_fdm_mppi.core.learned_residual_dynamics import LearnedResidualDynamics
 from b2_fdm_mppi.core.omni_b2 import OmniB2
@@ -36,6 +37,22 @@ ControllerFactory = Callable[..., object]
 
 def create_omni_controller(config: dict, seed: int = 123) -> object:
     backend = str(config["mppi"].get("backend", "numpy")).lower()
+    seq_fdm_v2_cfg = config.get("sequence_fdm_v2", {})
+    if bool(seq_fdm_v2_cfg.get("enabled", False)):
+        model_dir = seq_fdm_v2_cfg.get("model_dir")
+        if not model_dir:
+            raise ValueError("sequence_fdm_v2.enabled=True but model_dir missing")
+        from b2_fdm_mppi.core.sequence_fdm_dynamics import SequenceFdmDynamics
+        device = seq_fdm_v2_cfg.get("device", "cuda")
+        dynamics = SequenceFdmDynamics.from_artifacts(Path(model_dir), device=device)
+        fdm_risk_weight = float(seq_fdm_v2_cfg.get("fdm_risk_weight", 10.0))
+        return MppiOmniSequenceFdmV2Torch.from_config(
+            config,
+            seed=seed,
+            sequence_dynamics=dynamics,
+            device=device,
+            fdm_risk_weight=fdm_risk_weight,
+        )
     fdm_cfg = config.get("fdm", {})
     if bool(fdm_cfg.get("enabled", False)):
         if backend == "numpy":

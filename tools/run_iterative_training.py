@@ -97,8 +97,7 @@ def main():
         seed = args.base_seed + (round_idx - 1) * 100000
 
         # --- Collect data ---
-        t0 = time.time()
-        run([
+        collect_cmd = [
             sys.executable, "tools/collect_sequence_fdm_v2_data.py",
             "--base-config", base_config,
             "--episodes", str(episodes),
@@ -109,7 +108,13 @@ def main():
             "--map-bounds",
             str(args.map_bounds[0]), str(args.map_bounds[1]),
             str(args.map_bounds[2]), str(args.map_bounds[3]),
-        ], f"[Round {round_idx}] Collecting {episodes} episodes × {args.num_trajectories} trajectories")
+        ]
+        if round_idx > 1:
+            prev_ckpt = Path(args.checkpoint_root) / f"round_{round_idx - 1}"
+            collect_cmd += ["--learned-model-dir", str(prev_ckpt), "--learned-traj-ratio", "0.5"]
+            print(f"  Learned model: {prev_ckpt} (50% trajectories)")
+        t0 = time.time()
+        run(collect_cmd, f"[Round {round_idx}] Collecting {episodes} episodes × {args.num_trajectories} trajectories")
         collect_time = time.time() - t0
 
         # --- Train ---

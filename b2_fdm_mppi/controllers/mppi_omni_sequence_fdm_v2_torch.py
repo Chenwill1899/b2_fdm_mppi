@@ -31,6 +31,34 @@ class MppiOmniSequenceFdmV2Torch(MppiOmniTorch):
         # Ensure model is on correct device
         self.sequence_dynamics.model.to(self.torch_device)
 
+    @classmethod
+    def from_config(
+        cls,
+        config: dict,
+        seed: int | None = None,
+        **overrides,
+    ) -> "MppiOmniSequenceFdmV2Torch":
+        """Create controller from config, auto-adjusting horizon to match V2 model."""
+        sequence_dynamics = overrides.pop("sequence_dynamics")
+        device = overrides.pop("device", "cuda")
+        fdm_risk_weight = overrides.pop("fdm_risk_weight", 10.0)
+        profile_enabled = overrides.pop("profile_enabled", False)
+
+        # Adjust config time_horizon to match V2 model's horizon_steps
+        adj_config = dict(config)
+        sim = dict(adj_config["simulation"])
+        h_v2 = int(sequence_dynamics.horizon_steps)
+        sim["time_horizon"] = h_v2 / float(sim["sampling_rate"])
+        adj_config["simulation"] = sim
+
+        # Build via parent and reclass
+        instance = MppiOmniTorch.from_config(adj_config, seed=seed, **overrides)
+        instance.__class__ = cls
+        instance.sequence_dynamics = sequence_dynamics
+        instance.fdm_risk_weight = fdm_risk_weight
+        instance.sequence_dynamics.model.to(instance.torch_device)
+        return instance
+
     def _trajectory_cost_batch_torch(
         self,
         initial_state: np.ndarray,

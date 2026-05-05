@@ -114,15 +114,29 @@ def collect_sequence_fdm_episode(
     risk_threshold: float = 0.6,
     num_patches_range: tuple[int, int] = (3, 6),
     num_trajectories: int = 1,
+    learned_model_dir: str | None = None,
+    learned_traj_ratio: float = 0.5,
+    learned_device: str = "cuda",
 ) -> list[dict]:
     """Generate random terrain, run MPPI, and save an episode with binary risk labels.
 
     When num_trajectories > 1, the same terrain is reused but each trajectory
     gets independent start/goal positions and a different MPPI noise seed.
+    If learned_model_dir is provided, the first ceil(learned_traj_ratio * num_trajectories)
+    trajectories use the Sequence FDM V2 learned model for MPPI planning; the rest use
+    oracle MPPI.
     Returns a list of metadata dicts, one per trajectory.
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Validate learned model path if provided
+    if learned_model_dir is not None:
+        ckpt = Path(learned_model_dir) / "best_model.pt"
+        if not ckpt.exists():
+            raise FileNotFoundError(f"Learned model checkpoint not found: {ckpt}")
+
+    num_learned = int(np.ceil(learned_traj_ratio * num_trajectories)) if learned_model_dir else 0
 
     # Generate random terrain once (before the loop)
     rng = np.random.default_rng(terrain_seed)
@@ -145,6 +159,8 @@ def collect_sequence_fdm_episode(
     all_metadata: list[dict] = []
 
     for jj in range(num_trajectories):
+        use_learned = learned_model_dir is not None and jj < num_learned
+
         # Sample start and goal independently per trajectory
         start_goal_rng = np.random.default_rng(terrain_seed + jj * 1000)
         start_xy, goal_xy = _sample_start_goal(
@@ -172,6 +188,14 @@ def collect_sequence_fdm_episode(
             "static_enabled": True,
             "virtual": obs_list,
         }
+
+        if use_learned:
+            config["sequence_fdm_v2"] = {
+                "enabled": True,
+                "model_dir": str(Path(learned_model_dir).resolve()),
+                "device": learned_device,
+                "fdm_risk_weight": 10.0,
+            }
 
         initial_state = list(config["simulation"]["initial_state"])
         goal_state = list(config["simulation"]["goal"])
@@ -214,6 +238,7 @@ def collect_sequence_fdm_episode(
             data["start_xy"] = start_xy.astype(np.float32)
             data["goal_xy"] = goal_xy.astype(np.float32)
             data["traj_idx"] = np.asarray(int(jj), dtype=np.int64)
+            data["use_learned"] = np.asarray(int(use_learned), dtype=np.int8)
 
             np.savez_compressed(output_path, **data)
 
@@ -223,6 +248,7 @@ def collect_sequence_fdm_episode(
             metadata["start_xy"] = start_xy.tolist()
             metadata["goal_xy"] = goal_xy.tolist()
             metadata["output_path"] = str(output_path)
+            metadata["use_learned"] = bool(use_learned)
 
             all_metadata.append(metadata)
         finally:

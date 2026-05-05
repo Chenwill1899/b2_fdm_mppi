@@ -19,7 +19,9 @@ from b2_fdm_mppi.data.sequence_fdm_collector import collect_sequence_fdm_episode
 
 
 def _collect_one(args: tuple) -> list[dict]:
-    base_config_path, episode_id, terrain_seed, output_dir, map_bounds, num_trajectories = args
+    (base_config_path, episode_id, terrain_seed, output_dir,
+     map_bounds, num_trajectories, learned_model_dir,
+     learned_traj_ratio, learned_device) = args
     try:
         return collect_sequence_fdm_episode(
             base_config_path=base_config_path,
@@ -28,6 +30,9 @@ def _collect_one(args: tuple) -> list[dict]:
             output_dir=output_dir,
             map_bounds=map_bounds,
             num_trajectories=num_trajectories,
+            learned_model_dir=learned_model_dir,
+            learned_traj_ratio=learned_traj_ratio,
+            learned_device=learned_device,
         )
     except Exception as e:
         return [{"episode_id": episode_id, "error": str(e), "success": False}]
@@ -67,6 +72,12 @@ def main():
     parser.add_argument("--batch-size", type=int, default=10, help="Episodes per batch before rechecking GPU")
     parser.add_argument("--num-trajectories", type=int, default=1,
                         help="Number of MPPI trajectories per episode (default: 1)")
+    parser.add_argument("--learned-model-dir", type=str, default=None,
+                        help="Directory with best_model.pt + normalization.npz for learned collection")
+    parser.add_argument("--learned-traj-ratio", type=float, default=0.5,
+                        help="Fraction of trajectories per episode using learned model (0.0-1.0)")
+    parser.add_argument("--learned-device", type=str, default="cuda",
+                        help="Device for learned model inference")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -112,6 +123,9 @@ def main():
                 str(output_dir),
                 tuple(args.map_bounds),
                 args.num_trajectories,
+                args.learned_model_dir,
+                args.learned_traj_ratio,
+                args.learned_device,
             )
             for i in batch_ids
         ]
@@ -156,6 +170,8 @@ def main():
         "output_dir": str(output_dir),
         "episodes": args.episodes,
         "trajectories_per_episode": args.num_trajectories,
+        "learned_model_dir": args.learned_model_dir,
+        "learned_traj_ratio": args.learned_traj_ratio,
     }
 
     with open(output_dir / "manifest.json", "w") as f:
