@@ -18,7 +18,7 @@ class ConstantResidualDynamics:
         return residuals
 
 
-def make_learned_controller():
+def make_learned_controller(*, residual_gain=1.0):
     return LearnedFdmMppiOmniNumpy(
         dt=0.1,
         horizon_steps=3,
@@ -37,6 +37,7 @@ def make_learned_controller():
         draw_num_traj=2,
         seed=1,
         learned_dynamics=ConstantResidualDynamics(),
+        residual_gain=residual_gain,
     )
 
 
@@ -53,6 +54,18 @@ def test_learned_numpy_rollout_applies_residual_to_response_limited_command():
     assert real_controls[0, 0] == pytest.approx([0.7, 0.1, 0.15], abs=1e-6)
     assert states[0, 1, 3:] == pytest.approx([0.7, 0.1, 0.15], abs=1e-6)
     assert np.all(np.isfinite(states))
+
+
+def test_learned_numpy_rollout_scales_residual_with_gain():
+    controller = make_learned_controller(residual_gain=0.25)
+    controls = np.zeros((1, controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, :] = np.array([0.5, 0.2, 0.1], dtype=np.float32)
+    state = np.zeros(6, dtype=np.float32)
+
+    _states, real_controls = controller._rollout_batch(state, controls, return_controls=True)
+
+    assert controller.residual_gain == pytest.approx(0.25)
+    assert real_controls[0, 0] == pytest.approx([0.55, 0.175, 0.1125], abs=1e-6)
 
 
 def test_learned_numpy_batch_cost_is_finite_and_shape_compatible():

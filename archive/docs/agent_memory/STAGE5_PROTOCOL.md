@@ -77,7 +77,17 @@ fdm:
   checkpoint: best_model.pt
   normalization: normalization.npz
   device: cpu
+  residual_gain: 1.0
+  profile_enabled: false
 ```
+
+`residual_gain` scales the learned residual before rollout integration:
+
+```text
+real_control = clip(response_command + residual_gain * du_hat)
+```
+
+`residual_gain=0.0` keeps the learned backend, artifact loading, terrain features, and Torch rollout path active but disables residual correction. It is the Stage 5-C backend control group.
 
 CLI smoke command:
 
@@ -90,10 +100,11 @@ python3 tools/run_omni_mppi.py \
   --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
   --fdm-checkpoint best_model.pt \
   --fdm-normalization normalization.npz \
-  --fdm-device cpu
+  --fdm-device cpu \
+  --fdm-residual-gain 1.0
 ```
 
-If `fdm.enabled=true` with `mppi.backend=cuda`, controller creation must fail with a clear NumPy-only error.
+If `fdm.enabled=true` with `mppi.backend=cuda`, the learned controller uses the Torch rollout backend from PR #19. If CUDA is requested but unavailable, controller creation fails with a clear Torch CUDA availability error.
 
 ## Closed-loop Smoke Protocol
 
@@ -113,7 +124,8 @@ python3 tools/run_omni_mppi.py \
   --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
   --fdm-checkpoint best_model.pt \
   --fdm-normalization normalization.npz \
-  --fdm-device cpu
+  --fdm-device cpu \
+  --fdm-residual-gain 1.0
 ```
 
 Required outputs:
@@ -185,6 +197,47 @@ The detailed protocol and output schema live in:
 docs/agent_memory/STAGE5_BENCHMARK.md
 ```
 
+## Stage 5-C Calibration And Profiling
+
+Stage 5-C starts after PR #18 and PR #19 are merged. It keeps the MLP residual FDM fixed and calibrates closed-loop use of that model before adding history-conditioned FDM.
+
+Residual-gain sweep tool:
+
+```text
+tools/sweep_stage5_calibration.py
+```
+
+Runtime profile tool:
+
+```text
+tools/profile_stage5_learned_torch.py
+```
+
+Primary question:
+
+```text
+Does random-task degradation come from full residual correction being too strong,
+or from the MLP residual model itself?
+```
+
+The first ablation must include:
+
+```text
+residual_gain = 0.0 / 0.25 / 0.5 / 0.75 / 1.0
+```
+
+Cost calibration should be small and learned-controller-only at first. Supported override keys:
+
+```text
+goal_xy_weight
+obstacle_weight
+obstacle_soft_weight
+smooth_weight
+accel_weight
+lateral_weight
+yaw_rate_weight
+```
+
 ## Visual Evaluation Protocol
 
 Use the visual evaluation tool when inspecting the closed-loop learning effect for a single scenario:
@@ -251,6 +304,38 @@ PR #19 result boundary:
 - ID/OOD random tasks: learned reaches 100% success but does not stably outperform nominal on final distance, steps, or clearance.
 - learned consistently reduces terrain risk, command-real error, residual norm, smoothness, and jerk.
 - Torch CUDA learned rollout makes benchmark practical, but is still slower than nominal CUDA.
+
+S5-008 calibrated result boundary:
+
+- Calibrated learned `residual_gain=0.5`, `goal_xy_weight=3.5`, `smooth_weight=1.0` reaches 100% success on ID, OOD obstacle, and OOD terrain 20-episode suites.
+- It removes the default learned `residual_gain=1.0` regression on random-task final distance and steps:
+  - ID random: final distance `0.6766` vs nominal `0.6795`, steps `129.8` vs nominal `137.1`.
+  - OOD obstacle: final distance `0.6775` vs nominal `0.6768`, steps `130.4` vs nominal `142.3`.
+  - OOD terrain: final distance `0.6785` vs nominal `0.6848`, steps `130.2` vs nominal `141.8`.
+- The calibration trades away part of default learned `residual_gain=1.0`'s terrain-risk and smoothness advantage. Treat default learned as the conservative/smooth reference and calibrated learned as the efficiency candidate.
+- Stage 5-D should include at least nominal CUDA, learned default `residual_gain=1.0`, and calibrated learned `residual_gain=0.5`, `goal_xy_weight=3.5`, `smooth_weight=1.0`. If the paper claim needs one learned controller to improve both efficiency and risk/smoothness, run a small Pareto cost sweep before expanding to 50-100 episodes.
+
+S5-009 Pareto result boundary:
+
+- The full ID grid used `residual_gain=0.4/0.5/0.6`, `goal_xy_weight=3.0/3.5/4.0`, and `smooth_weight=0.75/1.0/1.25` for `10` episodes per case.
+- OOD validation then used three selected candidates for `10` episodes each on OOD obstacle and OOD terrain.
+- `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75` is the current balanced candidate. Across ID/OOD obstacle/OOD terrain, mean deltas versus nominal are final distance `-0.0025`, steps `-5.57`, terrain risk `+0.0023`, smoothness `+0.000081`, and jerk `+0.000046`.
+- `residual_gain=0.6`, `goal_xy_weight=4.0`, `smooth_weight=1.0` is the aggressive efficiency candidate. It improves mean final distance by `-0.0066` and steps by `-13.20`, but has larger risk/smoothness/jerk penalties.
+- Stage 5-D should compare nominal CUDA, default learned `residual_gain=1.0`, current efficiency `0.5/3.5/1.0`, balanced `0.5/3.0/0.75`, and optionally aggressive efficiency `0.6/4.0/1.0`.
+- History-conditioned FDM is still deferred. The current MLP-FDM has not yet failed calibrated closed-loop evaluation strongly enough to justify changing model structure.
+
+S5-010 50-episode result boundary:
+
+- Official S5-010 results use ID random, OOD obstacle, and OOD terrain with `50` episodes per official controller/scenario and `base_seed=123`.
+- Official controllers are nominal CUDA, default learned `residual_gain=1.0`, current efficiency `0.5/3.5/1.0`, and balanced `0.5/3.0/0.75`.
+- Aggressive efficiency `0.6/4.0/1.0` was stopped during the parallel run and is excluded from official S5-010 conclusions.
+- All official groups reached `100%` success with no aggregate errors.
+- Default learned `residual_gain=1.0` is the conservative/smooth mode: it reduces terrain risk, smoothness, and jerk, but regresses final distance and steps.
+- Current efficiency `0.5/3.5/1.0` is the efficiency mode: it gives the best official average final-distance and steps gains, but slightly increases risk/smoothness/jerk.
+- Balanced `0.5/3.0/0.75` is a balanced operating-point candidate: it improves steps, keeps average final distance essentially tied with nominal, and keeps terrain risk essentially tied/slightly lower than nominal, with small smoothness/jerk penalties.
+- No controller dominates all metrics. Do not claim that the balanced candidate is the final winner.
+- Learned runtime is still much slower than nominal CUDA (`~52-61 ms` versus `~5.8-6.4 ms` per MPPI step). Stage 5 can use it for offline benchmark claims, but runtime profiling is required before real-time claims.
+- History-conditioned FDM remains deferred unless larger benchmarks or failure analysis reveal model-structure-specific failures.
 
 ## Failure Modes
 

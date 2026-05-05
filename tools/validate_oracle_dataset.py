@@ -8,18 +8,17 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 from b2_fdm_mppi.data.oracle_dataset_validator import validate_oracle_dataset
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True)
-    parser.add_argument("--output", required=True)
-    args = parser.parse_args()
+    parser.add_argument("--output", default=None)
+    args = parser.parse_args(argv)
 
-    quality = validate_oracle_dataset(Path(args.dataset), Path(args.output))
+    print("DEPRECATED: use `python3 tools/fdm_mppi.py dataset validate ...`.", file=sys.stderr)
+    quality = validate_oracle_dataset(Path(args.dataset), Path(args.output or args.dataset))
     print(json.dumps(quality, indent=2))
 
 

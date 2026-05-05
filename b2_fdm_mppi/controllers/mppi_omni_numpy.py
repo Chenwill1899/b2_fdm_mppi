@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from b2_fdm_mppi.core.omni_b2 import OmniB2
+from b2_fdm_mppi.core.terrain import TerrainField
 
 
 class MppiOmniNumpy:
@@ -34,6 +35,11 @@ class MppiOmniNumpy:
         yaw_rate_weight: float = 0.0,
         accel_weight: float = 0.0,
         jerk_weight: float = 0.0,
+        terrain: TerrainField | None = None,
+        terrain_risk_weight: float = 0.0,
+        terrain_risk_power: float = 2.0,
+        terrain_risk_threshold: float = 0.0,
+        terrain_risk_mode: str = "excess",
         robot_radius: float = 0.6,
         safety_dist: float = 0.3,
         draw_num_traj: int = 50,
@@ -58,6 +64,11 @@ class MppiOmniNumpy:
         self.yaw_rate_weight = float(yaw_rate_weight)
         self.accel_weight = float(accel_weight)
         self.jerk_weight = float(jerk_weight)
+        self.terrain = terrain if terrain is not None else TerrainField()
+        self.terrain_risk_weight = float(terrain_risk_weight)
+        self.terrain_risk_power = float(terrain_risk_power)
+        self.terrain_risk_threshold = float(terrain_risk_threshold)
+        self.terrain_risk_mode = str(terrain_risk_mode).lower()
         self.robot_radius = float(robot_radius)
         self.safety_dist = float(safety_dist)
         self.draw_num_traj = min(int(draw_num_traj), self.num_samples)
@@ -76,6 +87,7 @@ class MppiOmniNumpy:
         sim = config["simulation"]
         mppi = config["mppi"]
         robot = config["robot"]
+        terrain = TerrainField.from_config(config.get("terrain"))
         sampling_rate = float(sim["sampling_rate"])
         dt = 1.0 / sampling_rate
         horizon_steps = int(float(sim["time_horizon"]) * sampling_rate)
@@ -107,6 +119,13 @@ class MppiOmniNumpy:
             yaw_rate_weight=float(overrides.get("yaw_rate_weight", mppi.get("yaw_rate_weight", 0.0))),
             accel_weight=float(overrides.get("accel_weight", mppi.get("accel_weight", 0.0))),
             jerk_weight=float(overrides.get("jerk_weight", mppi.get("jerk_weight", 0.0))),
+            terrain=terrain,
+            terrain_risk_weight=float(overrides.get("terrain_risk_weight", mppi.get("terrain_risk_weight", 0.0))),
+            terrain_risk_power=float(overrides.get("terrain_risk_power", mppi.get("terrain_risk_power", 2.0))),
+            terrain_risk_threshold=float(
+                overrides.get("terrain_risk_threshold", mppi.get("terrain_risk_threshold", 0.0))
+            ),
+            terrain_risk_mode=str(overrides.get("terrain_risk_mode", mppi.get("terrain_risk_mode", "excess"))),
             robot_radius=float(robot["radius"]),
             safety_dist=float(robot["safety_dist"]),
             draw_num_traj=int(mppi["draw_num_traj"]),
@@ -175,6 +194,7 @@ class MppiOmniNumpy:
         lateral_cost = self.lateral_weight * float(np.sum(real_controls[:, 1] * real_controls[:, 1]))
         yaw_rate_cost = self.yaw_rate_weight * float(np.sum(real_controls[:, 2] * real_controls[:, 2]))
         obstacle_cost = self._obstacle_cost(states[1:], obstacles)
+        terrain_risk_cost = self._terrain_risk_cost(states[1:])
         return (
             goal_cost
             + yaw_cost
@@ -185,6 +205,7 @@ class MppiOmniNumpy:
             + lateral_cost
             + yaw_rate_cost
             + obstacle_cost
+            + terrain_risk_cost
         )
 
     def trajectory_cost_batch(
@@ -215,6 +236,7 @@ class MppiOmniNumpy:
         lateral_cost = self.lateral_weight * np.sum(real_controls[:, :, 1] * real_controls[:, :, 1], axis=1)
         yaw_rate_cost = self.yaw_rate_weight * np.sum(real_controls[:, :, 2] * real_controls[:, :, 2], axis=1)
         obstacle_cost = self._obstacle_cost_batch(states[:, 1:, :], obstacles)
+        terrain_risk_cost = self._terrain_risk_cost_batch(states[:, 1:, :])
         return (
             goal_cost
             + yaw_cost
@@ -225,6 +247,7 @@ class MppiOmniNumpy:
             + lateral_cost
             + yaw_rate_cost
             + obstacle_cost
+            + terrain_risk_cost
         ).astype(np.float32)
 
     def _rollout_batch(
@@ -304,6 +327,38 @@ class MppiOmniNumpy:
                 soft_margin = np.where(clearance > self.safety_dist, soft_margin, 0.0)
                 costs += self.obstacle_soft_weight * np.sum(soft_margin * soft_margin, axis=1)
         return costs
+
+    def _terrain_risk_cost(self, states: np.ndarray) -> float:
+        return float(self._terrain_risk_cost_batch(np.asarray(states, dtype=np.float32)[None, :, :])[0])
+
+    def _terrain_risk_cost_batch(self, states: np.ndarray) -> np.ndarray:
+        states = np.asarray(states, dtype=np.float32)
+        costs = np.zeros(states.shape[0], dtype=np.float32)
+        if self.terrain_risk_weight <= 0.0 or self.terrain_risk_mode == "none" or not self.terrain.enabled:
+            return costs
+        risks = self._terrain_risk_values_batch(states)
+        terms = self._terrain_risk_terms(risks)
+        return (self.terrain_risk_weight * np.sum(terms, axis=1)).astype(np.float32)
+
+    def _terrain_risk_values_batch(self, states: np.ndarray) -> np.ndarray:
+        flat = np.asarray(states, dtype=np.float32).reshape(-1, states.shape[-1])
+        risks = np.zeros(flat.shape[0], dtype=np.float32)
+        for idx, state in enumerate(flat):
+            features = self.terrain.feature(float(state[0]), float(state[1]))
+            risks[idx] = self.terrain.risk_cost(float(state[0]), float(state[1]), features=features)
+        return risks.reshape(states.shape[0], states.shape[1])
+
+    def _terrain_risk_terms(self, risks: np.ndarray) -> np.ndarray:
+        mode = str(self.terrain_risk_mode).lower()
+        if mode == "cumulative":
+            values = np.maximum(risks, 0.0)
+        elif mode == "excess":
+            values = np.maximum(risks - self.terrain_risk_threshold, 0.0)
+        elif mode == "none":
+            return np.zeros_like(risks, dtype=np.float32)
+        else:
+            raise ValueError(f"Unsupported terrain_risk_mode: {self.terrain_risk_mode}")
+        return np.power(values, self.terrain_risk_power).astype(np.float32)
 
     def _shift_nominal_controls(self) -> None:
         self.nominal_u[:-1] = self.nominal_u[1:]

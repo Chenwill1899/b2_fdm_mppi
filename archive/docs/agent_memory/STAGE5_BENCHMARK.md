@@ -1,0 +1,514 @@
+# Stage 5-B Closed-loop Benchmark Protocol
+
+Last updated: 2026-05-01
+
+## Goal
+
+Stage 5-B tests whether the Stage 4 MLP residual FDM improves closed-loop MPPI behavior in the oracle world. This is the first benchmark layer after the PR #17 NumPy smoke path.
+
+This protocol is still Stage 5 validation work. It does not claim full Stage 5 completion. PR #19 adds a Torch CUDA learned-FDM rollout backend so ID/OOD closed-loop benchmark runs are practical, but the benchmark result does not yet show learned-FDM-MPPI is stably better than nominal MPPI on random tasks.
+
+## Benchmark Tool
+
+Tool:
+
+```text
+tools/benchmark_learned_fdm_mppi.py
+```
+
+Default standard-scene CUDA command:
+
+```bash
+python3 tools/benchmark_learned_fdm_mppi.py \
+  --config config/b2_omni_oracle.yaml \
+  --scenario-name standard \
+  --output results/stage5_benchmark/standard_seed123_cuda \
+  --episodes 1 \
+  --base-seed 123 \
+  --backend cuda \
+  --controllers nominal,learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cuda
+```
+
+The tool runs paired `Nominal-MPPI` and `Learned-FDM-MPPI` simulations in `simulation.world_mode: oracle`. It supports `numpy` and `cuda` backend selection, disables plots and animation by default, and writes each run under an episode-scoped directory. With `fdm.enabled=true` and `mppi.backend: cuda`, the learned controller uses the Torch CUDA rollout backend, not the legacy PyCUDA nominal kernel.
+
+## Output Schema
+
+Main output:
+
+```text
+stage5_benchmark_summary.json
+```
+
+Top-level sections:
+
+```text
+metadata
+runs
+aggregates
+paired_deltas
+```
+
+`metadata` records the command, argv, git SHA/branch/dirty flag, config, backend, controllers, episode count, seeds, output directory, and learned FDM artifact paths.
+
+Each `runs` entry records:
+
+```text
+scenario
+controller
+episode_id
+seed
+results_path
+success
+failed
+final_distance
+steps
+arrival_time
+path_length
+min_obstacle_clearance
+mean_terrain_risk
+mean_cmd_real_error
+mean_residual_norm
+control_smoothness
+control_jerk
+mean_mppi_time_ms
+max_mppi_time_ms
+```
+
+`aggregates` reports per-controller counts, success rate, and mean/std for numeric metrics. `paired_deltas` reports learned-minus-nominal deltas for matched `scenario + episode_id + seed` pairs.
+
+## Stage 5-B Scenarios
+
+PR #19 benchmark commands:
+
+```bash
+# Standard scene
+python3 tools/benchmark_learned_fdm_mppi.py \
+  --config config/b2_omni_oracle.yaml \
+  --scenario-name standard \
+  --output results/stage5_benchmark/standard_seed123_cuda \
+  --episodes 1 \
+  --base-seed 123 \
+  --backend cuda \
+  --controllers nominal,learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-device cuda
+
+# ID random-task benchmark
+python3 tools/benchmark_learned_fdm_mppi.py \
+  --config config/b2_omni_oracle_random100_dataset.yaml \
+  --scenario-name id_random_tasks \
+  --output results/stage5_benchmark/id_random_tasks_seed123_cuda \
+  --episodes 20 \
+  --base-seed 123 \
+  --backend cuda \
+  --controllers nominal,learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-device cuda
+
+# OOD obstacle benchmark
+python3 tools/benchmark_learned_fdm_mppi.py \
+  --config config/b2_omni_oracle_random100_dataset_ood_obstacle.yaml \
+  --scenario-name ood_obstacle \
+  --output results/stage5_benchmark/ood_obstacle_seed123_cuda \
+  --episodes 20 \
+  --base-seed 123 \
+  --backend cuda \
+  --controllers nominal,learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-device cuda
+
+# OOD terrain benchmark
+python3 tools/benchmark_learned_fdm_mppi.py \
+  --config config/b2_omni_oracle_random100_dataset_ood_terrain.yaml \
+  --scenario-name ood_terrain \
+  --output results/stage5_benchmark/ood_terrain_seed123_cuda \
+  --episodes 20 \
+  --base-seed 123 \
+  --backend cuda \
+  --controllers nominal,learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-device cuda
+```
+
+Use `episodes=20` for the first PR #19 pass. Expand to `50` only after the 20-episode run is stable and the runtime is acceptable for offline analysis.
+
+## Metrics And Gates
+
+Core metrics:
+
+```text
+success_rate
+final_distance
+steps
+arrival_time
+path_length
+min_obstacle_clearance
+mean_terrain_risk
+mean_cmd_real_error
+mean_residual_norm
+control_smoothness
+control_jerk
+mean_mppi_time_ms
+max_mppi_time_ms
+```
+
+Primary gate metrics:
+
+```text
+success_rate
+final_distance
+min_obstacle_clearance
+mean_mppi_time_ms
+```
+
+Learned-FDM-MPPI should not be called a closed-loop improvement unless it is at least comparable on safety and success while improving final distance or other task-quality metrics.
+
+## PR #19 Results
+
+All runs use `backend: cuda`, `fdm.device: cuda`, and `best_model.pt`.
+
+| Scenario | Episodes | Controller | Success | Final Dist Mean | Steps Mean | Clearance Mean | Terrain Risk Mean | Smoothness Mean | Jerk Mean | Mean MPPI ms |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| standard | 1 | nominal | 1.00 | 0.3461 | 225.0 | 0.1198 | 0.4289 | 0.003071 | 0.003512 | 6.59 |
+| standard | 1 | learned | 1.00 | 0.3371 | 214.0 | 0.2024 | 0.4140 | 0.002760 | 0.002405 | 27.03 |
+| ID random | 20 | nominal | 1.00 | 0.6795 | 137.1 | 3.5621 | 0.3285 | 0.003186 | 0.002828 | 6.41 |
+| ID random | 20 | learned | 1.00 | 0.6930 | 155.8 | 3.5254 | 0.3121 | 0.002782 | 0.002014 | 50.75 |
+| OOD obstacle | 20 | nominal | 1.00 | 0.6768 | 142.4 | 2.7875 | 0.3269 | 0.003156 | 0.002765 | 7.19 |
+| OOD obstacle | 20 | learned | 1.00 | 0.6878 | 175.1 | 2.8150 | 0.3133 | 0.002764 | 0.002156 | 53.85 |
+| OOD terrain | 20 | nominal | 1.00 | 0.6848 | 141.9 | 3.5747 | 0.3633 | 0.003084 | 0.002728 | 6.43 |
+| OOD terrain | 20 | learned | 1.00 | 0.6900 | 153.7 | 3.5101 | 0.3409 | 0.002704 | 0.001871 | 51.39 |
+
+Learned-minus-nominal paired deltas:
+
+| Scenario | Final Dist Delta | Steps Delta | Clearance Delta | Terrain Risk Delta | Smoothness Delta | Jerk Delta | Mean MPPI Delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| standard | -0.0090 | -11.0 | +0.0826 | -0.0149 | -0.000311 | -0.001107 | +20.44 ms |
+| ID random | +0.0135 | +18.7 | -0.0366 | -0.0164 | -0.000404 | -0.000814 | +44.34 ms |
+| OOD obstacle | +0.0109 | +32.8 | +0.0276 | -0.0136 | -0.000392 | -0.000609 | +46.67 ms |
+| OOD terrain | +0.0051 | +11.8 | -0.0645 | -0.0224 | -0.000381 | -0.000857 | +44.96 ms |
+
+Conclusion:
+
+- CUDA learned rollout makes Stage 5-B benchmark practical: standard learned runtime drops from roughly `1203 ms/step` in the NumPy reference path to `27 ms/step`, and random-task learned runs are around `51-54 ms/step`.
+- Learned-FDM-MPPI improves the single standard scene on final distance, steps, clearance, terrain risk, and smoothness.
+- On ID/OOD random tasks, learned-FDM-MPPI reaches 100% success but does not stably outperform nominal MPPI on final distance, steps, or clearance. It consistently reduces terrain risk, command-real error, residual norm, smoothness, and jerk.
+- Current MLP residual FDM should be treated as a valid closed-loop baseline, not a final improvement claim. The next step is Stage 5-C profiling/tuning and likely rollout/cost calibration before considering history-conditioned FDM.
+
+## Runtime Boundary
+
+The PR #17 smoke measured learned-FDM NumPy MPPI at roughly `1143 ms` mean per step versus nominal NumPy at roughly `13.5 ms`. PR #19 adds a Torch CUDA learned rollout path that brings standard learned mean runtime to roughly `27 ms/step` and ID/OOD learned mean runtime to roughly `51-54 ms/step`.
+
+Stage 5-C should profile before optimizing:
+
+```text
+terrain feature/risk
+FDM Torch inference
+Python horizon loop
+cost evaluation
+array copy / device transfer
+```
+
+Do not replace the MLP model before using the Stage 5-B evidence to tune closed-loop rollout/cost calibration and profile the remaining runtime overhead.
+
+## Stage 5-C Residual Gain And Cost Calibration
+
+Stage 5-C adds:
+
+```text
+fdm.residual_gain
+tools/sweep_stage5_calibration.py
+tools/profile_stage5_learned_torch.py
+```
+
+`fdm.residual_gain` scales the learned residual in both NumPy and Torch learned rollout:
+
+```text
+real_control = clip(response_command + residual_gain * du_hat)
+```
+
+`residual_gain=0.0` is the learned-backend control group: same learned controller path and artifacts, but residual correction disabled.
+
+### Stage 5-C Quick Commands
+
+Standard residual-gain sweep:
+
+```bash
+python3 tools/sweep_stage5_calibration.py \
+  --config config/b2_omni_oracle.yaml \
+  --scenario-name standard_residual_gain_quick \
+  --output results/stage5_calibration/standard_residual_gain_seed123_cuda \
+  --episodes 1 \
+  --base-seed 123 \
+  --backend cuda \
+  --controllers nominal,learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cuda \
+  --residual-gains 0.0,0.25,0.5,0.75,1.0
+```
+
+ID random-task residual-gain quick sweep:
+
+```bash
+python3 tools/sweep_stage5_calibration.py \
+  --config config/b2_omni_oracle_random100_dataset.yaml \
+  --scenario-name id_random_tasks_residual_gain_quick \
+  --output results/stage5_calibration/id_random_tasks_residual_gain_seed123_cuda \
+  --episodes 5 \
+  --base-seed 123 \
+  --backend cuda \
+  --controllers nominal,learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cuda \
+  --residual-gains 0.0,0.25,0.5,0.75,1.0
+```
+
+Small learned-only cost sanity grid:
+
+```bash
+python3 tools/sweep_stage5_calibration.py \
+  --config config/b2_omni_oracle_random100_dataset.yaml \
+  --scenario-name id_random_tasks_cost_quick \
+  --output results/stage5_calibration/id_random_tasks_cost_seed123_cuda \
+  --episodes 5 \
+  --base-seed 123 \
+  --backend cuda \
+  --controllers learned \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cuda \
+  --residual-gains 0.5 \
+  --cost-grid goal_xy_weight=2.5,3.5 \
+  --cost-grid smooth_weight=0.5,1.0
+```
+
+Runtime profile:
+
+```bash
+python3 tools/profile_stage5_learned_torch.py \
+  --config config/b2_omni_oracle_random100_dataset.yaml \
+  --output results/stage5_profile/id_random_tasks_seed123_cuda_10steps \
+  --steps 10 \
+  --seed 123 \
+  --fdm-model-dir results/fdm_baselines/stage4_mlp_seed123_hardened \
+  --fdm-checkpoint best_model.pt \
+  --fdm-normalization normalization.npz \
+  --fdm-device cuda \
+  --fdm-residual-gain 0.5
+```
+
+### Stage 5-C Quick Results
+
+Standard scene, `episodes=1`, learned controller:
+
+| residual_gain | Success | Final Dist | Steps | Mean MPPI ms |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.00 | 1.00 | 0.3476 | 245.0 | 26.28 |
+| 0.25 | 1.00 | 0.3346 | 240.0 | 24.82 |
+| 0.50 | 1.00 | 0.3439 | 217.0 | 25.27 |
+| 0.75 | 1.00 | 0.3416 | 211.0 | 25.41 |
+| 1.00 | 1.00 | 0.3371 | 214.0 | 25.11 |
+
+ID random tasks, `episodes=5`, learned controller:
+
+| residual_gain | Success | Final Dist | Steps | Mean MPPI ms |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.00 | 1.00 | 0.6826 | 115.2 | 49.89 |
+| 0.25 | 1.00 | 0.6811 | 119.0 | 49.40 |
+| 0.50 | 1.00 | 0.6811 | 121.2 | 49.94 |
+| 0.75 | 1.00 | 0.6927 | 134.4 | 49.63 |
+| 1.00 | 1.00 | 0.6926 | 147.0 | 49.29 |
+
+The matching 5-episode ID nominal baseline in this sweep had success `1.00`, final distance `0.6827`, and steps `125.8`. This quick sweep suggests full residual correction is too strong for ID random tasks: `gain=0.0/0.25/0.5` preserves final distance and reduces steps, while `gain=0.75/1.0` degrades steps and final distance.
+
+Learned-only ID cost sanity grid at `residual_gain=0.5`:
+
+| goal_xy_weight | smooth_weight | Success | Final Dist | Steps | Mean MPPI ms |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 2.5 | 0.5 | 1.00 | 0.6842 | 124.4 | 49.62 |
+| 2.5 | 1.0 | 1.00 | 0.6811 | 121.2 | 48.52 |
+| 3.5 | 0.5 | 1.00 | 0.6707 | 116.0 | 48.54 |
+| 3.5 | 1.0 | 1.00 | 0.6774 | 114.8 | 48.76 |
+
+Early cost conclusion: increasing `goal_xy_weight` from `2.5` to `3.5` helps ID quick metrics at `residual_gain=0.5`; `smooth_weight=0.5` gives the best final distance, while `smooth_weight=1.0` gives the fewest steps. This is not enough for final Stage 5 claims; it identifies candidates for a 20-episode rerun.
+
+Runtime profile with `profile_enabled=true`, `steps=10`, `residual_gain=0.5`:
+
+| Bucket | Total ms | Mean ms | Count |
+| --- | ---: | ---: | ---: |
+| rollout_total | 587.55 | 58.76 | 10 |
+| terrain_features | 399.81 | 1.60 | 250 |
+| fdm_inference | 68.21 | 0.273 | 250 |
+| state_integrate | 68.29 | 0.273 | 250 |
+| obstacle_cost | 46.66 | 4.67 | 10 |
+| sample_candidates | 40.90 | 4.09 | 10 |
+| cost_terms | 31.63 | 3.16 | 10 |
+| update_distribution | 23.56 | 2.36 | 10 |
+
+Profiling uses synchronization around timing buckets, so the profiled `mean_mppi_time_ms` is higher than normal benchmark runtime. Use it for bottleneck proportions, not direct runtime claims. The first optimization target is terrain feature/risk computation inside the Torch rollout loop.
+
+### Stage 5-C Calibrated 20-Episode Results
+
+S5-008 reran the calibrated candidates on full 20-episode ID/OOD suites with:
+
+```text
+residual_gain=0.5
+goal_xy_weight=3.5
+smooth_weight=0.5 / 1.0
+```
+
+Seeds are `123..142` (`seed = base_seed + episode_id`). OOD default nominal/learned references are reused from the existing Stage 5-B 20-episode summaries under `results/stage5_benchmark/`.
+
+| Scenario | Controller | Success | Final Dist | Delta Final | Steps | Delta Steps | Clearance | Terrain Risk | Smooth | Jerk | MPPI ms |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ID random | nominal CUDA | 1.00 | 0.6795 | +0.0000 | 137.1 | +0.0 | 3.5621 | 0.3285 | 0.003186 | 0.002828 | 4.51 |
+| ID random | learned default `g=1.0` | 1.00 | 0.6930 | +0.0135 | 155.8 | +18.7 | 3.5254 | 0.3121 | 0.002782 | 0.002014 | 48.26 |
+| ID random | calibrated `smooth=0.5` | 1.00 | 0.6733 | -0.0062 | 132.0 | -5.1 | 3.5714 | 0.3295 | 0.003493 | 0.003626 | 49.41 |
+| ID random | calibrated `smooth=1.0` | 1.00 | 0.6766 | -0.0029 | 129.8 | -7.2 | 3.5750 | 0.3282 | 0.003401 | 0.002862 | 48.97 |
+| OOD obstacle | nominal CUDA | 1.00 | 0.6768 | +0.0000 | 142.3 | +0.0 | 2.7875 | 0.3269 | 0.003156 | 0.002765 | 7.19 |
+| OOD obstacle | learned default `g=1.0` | 1.00 | 0.6878 | +0.0109 | 175.1 | +32.8 | 2.8150 | 0.3133 | 0.002764 | 0.002156 | 53.85 |
+| OOD obstacle | calibrated `smooth=0.5` | 1.00 | 0.6717 | -0.0051 | 133.8 | -8.6 | 2.8106 | 0.3318 | 0.003503 | 0.003551 | 49.60 |
+| OOD obstacle | calibrated `smooth=1.0` | 1.00 | 0.6775 | +0.0006 | 130.4 | -11.9 | 2.8696 | 0.3302 | 0.003411 | 0.002790 | 49.00 |
+| OOD terrain | nominal CUDA | 1.00 | 0.6848 | +0.0000 | 141.8 | +0.0 | 3.5747 | 0.3633 | 0.003084 | 0.002728 | 6.43 |
+| OOD terrain | learned default `g=1.0` | 1.00 | 0.6900 | +0.0051 | 153.7 | +11.8 | 3.5101 | 0.3409 | 0.002704 | 0.001871 | 51.39 |
+| OOD terrain | calibrated `smooth=0.5` | 1.00 | 0.6774 | -0.0074 | 138.4 | -3.4 | 3.5778 | 0.3680 | 0.003434 | 0.003516 | 49.73 |
+| OOD terrain | calibrated `smooth=1.0` | 1.00 | 0.6785 | -0.0063 | 130.2 | -11.7 | 3.5788 | 0.3636 | 0.003330 | 0.002775 | 49.22 |
+
+S5-008 outcome:
+
+- `residual_gain=0.5` plus `goal_xy_weight=3.5` removes the default learned controller's final-distance and steps regression on the 20-episode ID/OOD suites.
+- `smooth_weight=1.0` is the best current efficiency candidate because it gives the lowest steps in all three random-task suites while keeping final distance at or slightly better than nominal.
+- `smooth_weight=0.5` is the best final-distance candidate but increases smoothness and jerk metrics.
+- Calibration trades away much of default learned `g=1.0`'s lower terrain-risk and smoother-control behavior. Treat default `g=1.0` as the conservative/smooth reference and calibrated `g=0.5`, `goal=3.5`, `smooth=1.0` as the efficiency candidate.
+
+### S5-009 Pareto Sweep Results
+
+S5-009 ran a local Pareto sweep before Stage 5-D:
+
+```text
+residual_gain = 0.4 / 0.5 / 0.6
+goal_xy_weight = 3.0 / 3.5 / 4.0
+smooth_weight = 0.75 / 1.0 / 1.25
+```
+
+The full `27`-case grid was run on ID random with `10` episodes. OOD obstacle and OOD terrain then validated three selected candidates with `10` episodes each:
+
+- balanced: `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75`
+- S5-008 current: `residual_gain=0.5`, `goal_xy_weight=3.5`, `smooth_weight=1.0`
+- aggressive efficiency: `residual_gain=0.6`, `goal_xy_weight=4.0`, `smooth_weight=1.0`
+
+All `390` S5-009 episode summaries succeeded.
+
+| Scenario | Controller | Success | Final | Delta Final | Steps | Delta Steps | Clearance | Delta Clear | Risk | Delta Risk | Smooth | Delta Smooth | Jerk | Delta Jerk | MPPI ms |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ID random | nominal | 1.00 | 0.6774 | +0.0000 | 136.0 | +0.0 | 3.4335 | +0.0000 | 0.3163 | +0.0000 | 0.003232 | +0.000000 | 0.002868 | +0.000000 | 5.64 |
+| ID random | default `g=1.0` | 1.00 | 0.6928 | +0.0154 | 168.4 | +32.4 | 3.3571 | -0.0763 | 0.2978 | -0.0185 | 0.002786 | -0.000446 | 0.002120 | -0.000748 | 51.64 |
+| ID random | balanced `0.5/3.0/0.75` | 1.00 | 0.6740 | -0.0034 | 132.6 | -3.4 | 3.3765 | -0.0570 | 0.3162 | -0.0001 | 0.003307 | +0.000075 | 0.002875 | +0.000007 | 50.74 |
+| ID random | current `0.5/3.5/1.0` | 1.00 | 0.6789 | +0.0015 | 129.1 | -6.9 | 3.4371 | +0.0036 | 0.3180 | +0.0017 | 0.003459 | +0.000227 | 0.002816 | -0.000052 | 49.64 |
+| ID random | efficiency `0.6/4.0/1.0` | 1.00 | 0.6761 | -0.0013 | 123.9 | -12.1 | 3.4352 | +0.0017 | 0.3216 | +0.0053 | 0.003540 | +0.000309 | 0.003201 | +0.000332 | 50.12 |
+| OOD obstacle | nominal | 1.00 | 0.6777 | +0.0000 | 140.5 | +0.0 | 2.9387 | +0.0000 | 0.3164 | +0.0000 | 0.003202 | +0.000000 | 0.002771 | +0.000000 | 5.17 |
+| OOD obstacle | default `g=1.0` | 1.00 | 0.6862 | +0.0086 | 167.5 | +27.0 | 2.9933 | +0.0546 | 0.3078 | -0.0087 | 0.002727 | -0.000475 | 0.002062 | -0.000709 | 50.99 |
+| OOD obstacle | balanced `0.5/3.0/0.75` | 1.00 | 0.6792 | +0.0015 | 133.3 | -7.2 | 3.0016 | +0.0629 | 0.3240 | +0.0076 | 0.003351 | +0.000150 | 0.002871 | +0.000100 | 52.77 |
+| OOD obstacle | current `0.5/3.5/1.0` | 1.00 | 0.6765 | -0.0012 | 129.9 | -10.6 | 3.0021 | +0.0634 | 0.3200 | +0.0035 | 0.003482 | +0.000280 | 0.002775 | +0.000004 | 50.54 |
+| OOD obstacle | efficiency `0.6/4.0/1.0` | 1.00 | 0.6738 | -0.0038 | 125.6 | -14.9 | 3.0298 | +0.0912 | 0.3228 | +0.0064 | 0.003560 | +0.000358 | 0.003107 | +0.000335 | 49.95 |
+| OOD terrain | nominal | 1.00 | 0.6872 | +0.0000 | 141.1 | +0.0 | 3.4548 | +0.0000 | 0.3512 | +0.0000 | 0.003183 | +0.000000 | 0.002735 | +0.000000 | 5.51 |
+| OOD terrain | default `g=1.0` | 1.00 | 0.6892 | +0.0020 | 167.3 | +26.2 | 3.3280 | -0.1269 | 0.3174 | -0.0338 | 0.002722 | -0.000461 | 0.001868 | -0.000867 | 52.43 |
+| OOD terrain | balanced `0.5/3.0/0.75` | 1.00 | 0.6817 | -0.0056 | 135.0 | -6.1 | 3.3819 | -0.0730 | 0.3508 | -0.0004 | 0.003200 | +0.000017 | 0.002765 | +0.000030 | 49.86 |
+| OOD terrain | current `0.5/3.5/1.0` | 1.00 | 0.6824 | -0.0048 | 127.4 | -13.7 | 3.4533 | -0.0016 | 0.3504 | -0.0008 | 0.003398 | +0.000215 | 0.002756 | +0.000021 | 51.00 |
+| OOD terrain | efficiency `0.6/4.0/1.0` | 1.00 | 0.6726 | -0.0146 | 128.5 | -12.6 | 3.4046 | -0.0502 | 0.3546 | +0.0033 | 0.003528 | +0.000345 | 0.002981 | +0.000246 | 51.28 |
+
+Average deltas over ID/OOD obstacle/OOD terrain:
+
+| Candidate | Delta Final | Delta Steps | Delta Risk | Delta Smooth | Delta Jerk |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| balanced `0.5/3.0/0.75` | -0.0025 | -5.57 | +0.0023 | +0.000081 | +0.000046 |
+| current `0.5/3.5/1.0` | -0.0015 | -10.40 | +0.0015 | +0.000241 | -0.000009 |
+| efficiency `0.6/4.0/1.0` | -0.0066 | -13.20 | +0.0050 | +0.000337 | +0.000304 |
+
+S5-009 outcome:
+
+- A more balanced candidate exists: `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75`.
+- The balanced candidate keeps 100% success and improves mean final distance/steps while keeping risk, smoothness, and jerk close to nominal. It does not strictly dominate nominal in every scenario.
+- The aggressive efficiency candidate `0.6/4.0/1.0` gives the strongest final-distance/steps gains but has the largest risk/smoothness/jerk penalty.
+- Stage 5-D should include nominal CUDA, default learned `g=1.0`, current efficiency `0.5/3.5/1.0`, balanced `0.5/3.0/0.75`, and optionally aggressive efficiency `0.6/4.0/1.0`.
+
+### S5-010 50-Episode Stage 5-D Benchmark
+
+S5-010 reran the Stage 5-D confirmation matrix with `50` episodes per official controller/scenario. The official output is:
+
+```text
+results/stage5_d/s5_010_parallel
+```
+
+Official summaries:
+
+```text
+results/stage5_d/s5_010_parallel/s5_010_official_50ep_summary.csv
+results/stage5_d/s5_010_parallel/s5_010_official_50ep_summary.json
+```
+
+The official matrix used ID random, OOD obstacle, and OOD terrain with `base_seed=123` and `episode_id=0..49`. Controllers:
+
+- nominal CUDA
+- default learned `residual_gain=1.0`
+- current efficiency `residual_gain=0.5`, `goal_xy_weight=3.5`, `smooth_weight=1.0`
+- balanced `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75`
+
+Aggressive efficiency `0.6/4.0/1.0` was started as an optional runtime-budget group but was stopped during parallelization and is excluded from the official S5-010 result.
+
+All official `12` controller/scenario groups completed with `success_rate=1.0` and no aggregate errors.
+
+| Scenario | Controller | Success | Final | Delta Final | Steps | Delta Steps | Clearance | Delta Clear | Risk | Delta Risk | Smooth | Delta Smooth | Jerk | Delta Jerk | MPPI ms |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ID random | nominal | 1.00 | 0.6808 | +0.0000 | 132.7 | +0.0 | 3.4794 | +0.0000 | 0.3404 | +0.0000 | 0.003192 | +0.000000 | 0.002735 | +0.000000 | 6.43 |
+| ID random | default `g=1.0` | 1.00 | 0.6908 | +0.0101 | 155.0 | +22.3 | 3.4873 | +0.0078 | 0.3198 | -0.0206 | 0.002795 | -0.000397 | 0.001919 | -0.000816 | 57.69 |
+| ID random | current `0.5/3.5/1.0` | 1.00 | 0.6785 | -0.0022 | 125.8 | -6.9 | 3.5157 | +0.0363 | 0.3424 | +0.0021 | 0.003405 | +0.000213 | 0.002855 | +0.000120 | 60.99 |
+| ID random | balanced `0.5/3.0/0.75` | 1.00 | 0.6799 | -0.0009 | 129.6 | -3.1 | 3.5078 | +0.0283 | 0.3403 | -0.0001 | 0.003316 | +0.000125 | 0.002838 | +0.000103 | 58.52 |
+| OOD obstacle | nominal | 1.00 | 0.6784 | +0.0000 | 134.8 | +0.0 | 2.8470 | +0.0000 | 0.3388 | +0.0000 | 0.003191 | +0.000000 | 0.002754 | +0.000000 | 6.07 |
+| OOD obstacle | default `g=1.0` | 1.00 | 0.6890 | +0.0105 | 165.6 | +30.8 | 2.8710 | +0.0240 | 0.3198 | -0.0191 | 0.002798 | -0.000393 | 0.002034 | -0.000720 | 53.89 |
+| OOD obstacle | current `0.5/3.5/1.0` | 1.00 | 0.6778 | -0.0007 | 127.1 | -7.7 | 2.9019 | +0.0549 | 0.3419 | +0.0031 | 0.003425 | +0.000234 | 0.002815 | +0.000061 | 52.86 |
+| OOD obstacle | balanced `0.5/3.0/0.75` | 1.00 | 0.6812 | +0.0027 | 130.7 | -4.0 | 2.9056 | +0.0586 | 0.3398 | +0.0009 | 0.003297 | +0.000105 | 0.002838 | +0.000083 | 52.36 |
+| OOD terrain | nominal | 1.00 | 0.6852 | +0.0000 | 134.0 | +0.0 | 3.4964 | +0.0000 | 0.3760 | +0.0000 | 0.003124 | +0.000000 | 0.002640 | +0.000000 | 5.79 |
+| OOD terrain | default `g=1.0` | 1.00 | 0.6886 | +0.0034 | 154.1 | +20.1 | 3.4684 | -0.0280 | 0.3503 | -0.0257 | 0.002688 | -0.000437 | 0.001744 | -0.000896 | 53.44 |
+| OOD terrain | current `0.5/3.5/1.0` | 1.00 | 0.6785 | -0.0067 | 127.0 | -6.9 | 3.5196 | +0.0232 | 0.3783 | +0.0023 | 0.003404 | +0.000280 | 0.002781 | +0.000141 | 53.40 |
+| OOD terrain | balanced `0.5/3.0/0.75` | 1.00 | 0.6835 | -0.0017 | 131.5 | -2.5 | 3.4890 | -0.0073 | 0.3750 | -0.0010 | 0.003213 | +0.000089 | 0.002754 | +0.000114 | 52.70 |
+
+Average learned deltas over ID/OOD obstacle/OOD terrain:
+
+| Candidate | Delta Final | Delta Steps | Delta Risk | Delta Smooth | Delta Jerk | Delta MPPI ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| default `g=1.0` | +0.00798 | +24.43 | -0.02179 | -0.000409 | -0.000811 | +48.91 |
+| current `0.5/3.5/1.0` | -0.00322 | -7.15 | +0.00247 | +0.000242 | +0.000107 | +49.65 |
+| balanced `0.5/3.0/0.75` | +0.00005 | -3.20 | -0.00002 | +0.000106 | +0.000100 | +48.43 |
+
+S5-010 outcome:
+
+- Default learned `g=1.0` should be framed as conservative/smooth: lower risk/smoothness/jerk, worse final distance and steps.
+- Current efficiency `0.5/3.5/1.0` should be framed as the efficiency mode: best official final-distance and steps gains, with small risk/smoothness/jerk penalties.
+- Balanced `0.5/3.0/0.75` should be framed as a balanced operating-point candidate: modest steps gain, cross-scenario final distance essentially tied with nominal, and terrain risk essentially tied/slightly lower than nominal.
+- No S5-010 controller dominates every metric. Do not claim that the balanced candidate is the final winner.
+- Learned runtime remains `~52-61 ms` per MPPI step versus nominal CUDA `~5.8-6.4 ms`, so runtime profiling remains a required next step before real-time claims.
+
+## Visual Inspection Entry
+
+For single-scene human inspection of learning-before/after closed-loop behavior, use:
+
+```text
+tools/visualize_stage5_closed_loop.py
+```
+
+Protocol:
+
+```text
+docs/agent_memory/STAGE5_VISUAL_EVAL.md
+```
+
+The visual tool is intentionally separate from the benchmark runner. It enables plots and animation, runs only one paired nominal/learned scenario, and writes `closed_loop_nominal_vs_learned.png` plus per-run GIFs. Benchmark runs should keep plots and animation disabled by default.

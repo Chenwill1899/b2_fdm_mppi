@@ -1,0 +1,127 @@
+# Quick-start experiment profile for the FDM-MPPI workbench.
+#
+# This file is a profile overlay, not a full low-level config. The runner first
+# loads experiment.base_config, then applies scenario/controllers/visualization
+# from this file. Use it as the main place to define a scene, choose an MPPI
+# method, attach a learned residual FDM model, and enable result visualization.
+#
+# Run with:
+#   /usr/bin/python3 tools/fdm_mppi.py experiment --profile configs/experiment.yaml
+
+experiment:
+  # Name used in output folders and experiment_summary.json.
+  name: quick_start
+
+  # Full base config. Robot limits, CBF defaults, residual world settings, and
+  # most MPPI costs are inherited from here unless overridden below.
+  base_config: configs/smoke.yaml
+
+  # Default seed for controller sampling and scenario/oracle seeds.
+  seed: 123
+
+  # Output folder becomes:
+  #   {output_root}/{run_name}
+  output_root: results/experiments
+  run_name: "{experiment}_{controller}_seed{seed}"
+
+  # Optional exact output directory for one run. When set, the runner writes
+  # directly to this directory and ignores output_root/run_name.
+  # CLI --results-dir has the same meaning and takes precedence.
+  # results_dir: results/experiments/manual_quick_start
+  timestamp_suffix: false
+  overwrite: true
+
+scenario:
+  # oracle = the executed robot receives residual dynamics from ResidualWorld.
+  # nominal = commanded controls are applied directly.
+  world_mode: oracle
+
+  # B2 omni state format: [x, y, yaw, vx, vy, wz].
+  initial_state: [0.01, 0.01, 0.0, 0.0, 0.0, 0.0]
+  goal: [18.0, 1.0, 0.0, 0.0, 0.0, 0.0]
+
+  # Goal is accepted when xy distance is below this threshold.
+  minimum_distance: 0.5
+  max_steps: 400
+
+  obstacles:
+    static_enabled: true
+
+    # Static obstacles. Each row is:
+    #   [x, y, radius, unused, theta, vx, vy]
+    #
+    # Static scenes normally use only x/y/radius. The remaining fields keep the
+    # legacy obstacle schema compatible with dynamic-obstacle experiments.
+    # virtual: []
+
+    # Example static obstacles:
+    virtual:
+      - [3.0, -0.5, 0.4, 0.0, 0.0, 0.0, 0.0]
+      - [8.0, 1.0, 0.4, 0.0, 0.0, 0.0, 0.0]
+      - [15.0, 2.0, 0.4, 0.0, 0.0, 0.0, 0.0]
+    #
+    # Example random obstacles:
+    # random_enabled: true
+    # random_seed: 123
+    # num_random: 4
+    # radius_range: [0.12, 0.22]
+    # x_range: [0.25, 1.0]
+    # y_range: [-0.45, 0.45]
+    # min_obstacle_gap: 0.35
+    # min_start_goal_clearance: 0.35
+
+  terrain:
+    enabled: true
+    friction_base: 0.72
+    goal_relief:
+      # Use "auto" so the risk relief area follows scenario.goal[:2].
+      # This prevents terminal terrain risk from fighting goal convergence.
+      center: auto
+      sigma: [2.0, 1.2]
+      strength: 0.85
+      floor: 0.15
+
+# Choose the controller when --controller is omitted.
+default_controller: nominal_cuda
+controllers:
+  - name: nominal_cuda
+    # Nominal MPPI with PyCUDA rollout/cost evaluation.
+    method: nominal
+    backend: cuda
+    mppi:
+      num_trajectories: 256
+      draw_num_traj: 20
+
+  - name: nominal_numpy
+    # NumPy reference backend. Useful for debugging or machines without CUDA.
+    method: nominal
+    backend: numpy
+    mppi:
+      num_trajectories: 256
+      draw_num_traj: 20
+
+  - name: learned_torch
+    # Learned residual FDM controller. Backend torch uses the Torch rollout path
+    # and injects residual predictions from the checkpoint below.
+    method: learned_fdm
+    backend: torch
+    mppi:
+      num_trajectories: 256
+      draw_num_traj: 20
+    learned_fdm:
+      # Override these with CLI flags when testing a newly trained model:
+      #   --model-dir ... --checkpoint ... --normalization ... --device cuda
+      model_dir: results/fdm_baselines/stage4_mlp_seed123_hardened
+      checkpoint: best_model.pt
+      normalization: normalization.npz
+      device: cuda
+      residual_gain: 1.0
+
+visualization:
+  # plots=true writes trajectory.png and oracle_diagnostics.png.
+  plots: true
+
+  # animation=true writes animation.gif. Disable with --no-animation for faster
+  # smoke runs.
+  animation: true
+  terrain_grid_resolution: 48

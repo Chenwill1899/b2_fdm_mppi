@@ -1,10 +1,16 @@
 # Task Board
 
-Last updated: 2026-05-01
+Last updated: 2026-05-03
 
 ## Current Stage
 
-Stage 5: learned residual FDM NumPy closed-loop benchmark.
+Project slimdown on `new`: the previous Stage 5/6 result package remains archived and reproducible, but the working project surface is being reduced to one FDM-MPPI pipeline: run simulation, collect oracle dataset, build/validate splits, train residual FDM, evaluate/benchmark, and write a compact report.
+
+Main entry point: `python3 tools/fdm_mppi.py`.
+
+Recommended configs: `configs/smoke.yaml`, `configs/dataset.yaml`, `configs/benchmark.yaml`.
+
+Historical stage scripts and published figures/tables now belong under `archive/`; root-level legacy scripts remain wrappers for compatibility only.
 
 ## Stage 0 Acceptance Criteria
 
@@ -52,6 +58,21 @@ Stage 5: learned residual FDM NumPy closed-loop benchmark.
 | S5-002 | P0 | done | Add Stage 5 closed-loop benchmark runner | Added `tools/benchmark_learned_fdm_mppi.py` and `docs/agent_memory/STAGE5_BENCHMARK.md` for paired nominal vs learned NumPy oracle benchmarks. The tool writes `stage5_benchmark_summary.json` with metadata, per-run metrics, per-controller aggregates, and learned-minus-nominal paired deltas. Full ID/OOD benchmark results are deferred to PR #19. |
 | S5-003 | P0 | done | Add Torch CUDA learned rollout and run Stage 5-B benchmark | Added `LearnedFdmMppiOmniTorch` and enabled `fdm.enabled=true` with `mppi.backend=cuda`. Ran standard plus 20-episode ID/OOD obstacle/OOD terrain benchmarks. Learned improves the standard scene and reaches 100% success in ID/OOD, but does not stably beat nominal on random-task final distance/steps/clearance. Torch CUDA learned runtime is practical (`~27 ms` standard, `~51-54 ms` ID/OOD) but still slower than nominal CUDA. |
 | S5-004 | P0 | done | Standardize Stage 5 closed-loop visual eval | Added `tools/visualize_stage5_closed_loop.py` and `docs/agent_memory/STAGE5_VISUAL_EVAL.md`. The tool runs paired nominal/learned oracle closed-loop simulations with plots and GIFs enabled, then writes `closed_loop_nominal_vs_learned.png`, metric CSV/JSON, and `stage5_visual_eval_summary.json`. |
+| S5-005 | P0 | done | Add residual-gain calibration and runtime profiling tools | Added `fdm.residual_gain` to NumPy/Torch learned rollout, `tools/sweep_stage5_calibration.py`, learned-only MPPI cost overrides in the benchmark runner, and `tools/profile_stage5_learned_torch.py`. Verified quick sweeps and profiler on CUDA. |
+| S5-006 | P0 | done | Run Stage 5-C quick residual-gain sweep | Standard scene favors nonzero gain; 5-episode ID quick sweep shows `residual_gain=0.0/0.25/0.5` preserves final distance and improves steps while `0.75/1.0` degrades ID random-task steps/final distance. Best next candidates: `0.25` and `0.5`. |
+| S5-007 | P0 | done | Run Stage 5-C cost sanity grid | Learned-only 5-episode ID grid at `residual_gain=0.5` shows `goal_xy_weight=3.5` improves final distance/steps versus default `2.5`; `smooth_weight=0.5` has best final distance and `smooth_weight=1.0` has fewest steps. |
+| S5-008 | P0 | done | Run calibrated 20-episode ID/OOD benchmark | ID/OOD 20-episode sweeps confirm `residual_gain=0.5`, `goal_xy_weight=3.5` removes the default learned `g=1.0` final-distance/steps regression. `smooth_weight=1.0` is the current efficiency candidate; `smooth_weight=0.5` has slightly better final distance but worse smoothness/jerk. |
+| S5-009 | P0 | done | Decide Stage 5-D entry or Pareto retune | Ran ID 27-case Pareto sweep plus OOD 3-candidate validation. Balanced candidate `residual_gain=0.5`, `goal_xy_weight=3.0`, `smooth_weight=0.75` keeps risk/smoothness/jerk closest to nominal while improving average final distance and steps. Aggressive efficiency candidate `0.6/4.0/1.0` gives strongest final/steps gains but larger risk/smoothness cost. |
+| S5-010 | P0 | done | Run Stage 5-D 50/100 episode ID/OOD benchmark | Completed the 50-episode official matrix for nominal CUDA, default learned `g=1.0`, current efficiency `0.5/3.5/1.0`, and balanced `0.5/3.0/0.75` across ID random, OOD obstacle, and OOD terrain. Output: `results/stage5_d/s5_010_parallel`; official errors `0`; all official groups success `1.0`. Aggressive efficiency was stopped and excluded from official reporting to keep runtime bounded. |
+| S5-011 | P0 | done | Record Stage 5-D paper-result framing and runtime next step | Stage 5-D is framed as three learned-FDM operating modes: default conservative/smooth, current efficiency, and balanced operating-point candidate. Stage 5-E replaces post-hoc risk interpretation with explicit terrain-risk MPPI cost before risk-aware claims. |
+| S6-001 | P0 | done | Build paper-ready Stage 5 result package | Added `tools/plot_stage5_results.py`, generated `docs/agent_memory/STAGE6_RESULT_PACKAGE.md`, `figures/stage5/`, `tables/stage5/`, and `results/stage6_result_package/stage5_result_package.zip`. Package includes main result table, operating modes table, paired delta boxplots, Pareto scatter, trajectory gallery, runtime table, failure/trade-off analysis, and fixed `config/b2_omni_oracle.yaml` seed123 parameter GIFs with dashed goal-tolerance circles. |
+| S5-E1 | P0 | done | Add risk-aware terrain MPPI groundwork | PR #25 added finite-band/ellipse terrain risk fields, risk-aware MPPI cost controls, risk metrics, shared override support, and risk-cost sweep tooling. |
+| S5-E2 | P0 | done | Add same-backend Torch nominal baseline and analysis | PR #26 added `MppiOmniTorch`, Torch same-backend benchmark support, learned Torch reuse of nominal rollout/cost/risk logic, and risk-aware paired analysis with bootstrap CI, Wilcoxon, Pareto, deltas, and curves. |
+| S5-E3/E4 | P0 | done | Run risk-weight selection and official 50-episode Torch ablation | Ran 10-episode risk-weight sweeps and 50-episode official same-backend Torch ablations for low_friction_patch, safe_corridor, risk_band, and fixed two-obstacle standard scene. Selected weights: `10`, `0.5`, `5`, and `3`. |
+| S5-E5 | P0 | done | Package paper-ready risk-aware results and figures | Added protocol/results docs, Nature-style figure rules, `tools/plot_stage5_e_risk_aware_results.py`, fixed two-obstacle risk-aware visual mode, tracked `figures/stage5_e/` and `tables/stage5_e/`. low_friction_patch is the strong claim; safe_corridor supporting; risk_band limitation; fixed two-obstacle visual continuity. |
+| S6-002 | P0 | done | Profile and optimize learned Torch/CUDA runtime | Review package completed on `codex/s6-runtime-profiling`: batched Torch bilinear sampling, fixed-seed 2x2 runtime profiler, forced-step runtime semantics (`simulation.disable_goal_termination=true`), Torch `inference_mode()`, sample/update paired delta buckets, 10ep x 10step closeout profiler, and Stage 6 runtime figures/tables. Closeout learned risk-on remains `+26.02 ms` mean MPPI over nominal risk-on, dominated by rollout (`+26.44 ms`), with all closeout runs reporting `profile_total_calls=10`; no real-time equivalence claim is made. Details: `docs/agent_memory/STAGE6_RUNTIME_PROFILE.md`. |
+| S6-003 | P0 | done | Final convergence and deployment readiness | Closed the current numerical package without new model structure, new maps, MuJoCo, or real-robot closed loop. Added final status, runtime closure, reproducibility commands, and real-robot readiness docs. Boundary: no learned-vs-nominal global win claim, no real-time equivalence claim, and no direct hardware deployment claim. Next stage may only start as read-only shadow mode. |
+| R7-001 | P0 | in progress | Slim project to one reproducible FDM-MPPI pipeline | Branch `new` synced latest `fdm`; added `tools/fdm_mppi.py`, `configs/`, package modules for training/evaluation/reporting, compatibility wrappers, and `archive/` for stage assets. Verification and Notion sync pending. |
 
 ## Later Stages
 
@@ -61,6 +82,7 @@ Stage 5: learned residual FDM NumPy closed-loop benchmark.
 | 2 | done | Oracle residual world. |
 | 3.5 | done | Parallel Oracle Dataset Generation with explicit episode seed mapping. |
 | 4 | done | Residual velocity FDM training baseline and open-loop/OOD validation. |
-| 5 | in_progress | Learned FDM-MPPI NumPy integration, closed-loop benchmark, and runtime profiling. |
-| 6 | pending | Unified evaluation system. |
-| 7 | pending | Paper-ready experiments and figures. |
+| 5 | done | Stage 5-D 50-episode benchmark completed and packaged with calibrated operating-mode framing. |
+| 5-E | done | Explicit terrain-risk MPPI cost, same-backend Torch risk-aware ablation, fixed two-obstacle visual evidence, and Nature-style paper figures completed. |
+| 6 | done | Paper-ready risk-aware Stage 5-E package merged via PR #27; runtime profiling package merged via PR #28; S6-003 final convergence docs define reproducibility, runtime closure, and real-robot readiness boundaries. |
+| 7 | pending | Future work starts after slim pipeline verification; shadow-mode adapter design remains gated by readiness checks. |

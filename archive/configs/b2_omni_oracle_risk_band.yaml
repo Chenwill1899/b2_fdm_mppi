@@ -1,0 +1,120 @@
+# Stage 5-E0 terrain-risk band map.
+b2_fdm_mppi:
+  ros__parameters:
+    config_file: ""
+
+simulation:
+  sampling_rate: 10.0
+  time_horizon: 2.5
+  map_size: [20.0, 10.0]
+  map_origin: [0.0, -5.0]
+  goal: [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  initial_state: [0.01, 0.01, 0.0, 0.0, 0.0, 0.0]
+  minimum_distance: 0.45
+  max_steps: 400
+  without_heading: true
+  print_out: false
+  world_mode: oracle
+
+mppi:
+  backend: cuda
+  state_dim: 6
+  control_dim: 3
+  num_trajectories: 1024
+  draw_num_traj: 50
+  exploration_variance: 1200.0
+  weights: [2.5, 2.5, 0.5, 0.0, 0.0, 0.0]
+  dist_type: 2
+  std_normal: [0.22, 0.16, 0.16]
+  std_slack: 0.1
+  lambda: 0.7
+  obstacle_weight: 300.0
+  obstacle_soft_weight: 0.5
+  obstacle_influence_dist: 1.2
+  cbf_weight: 0.0
+  control_weight: 0.02
+  smooth_weight: 1.0
+  lateral_weight: 0.2
+  yaw_rate_weight: 0.05
+  accel_weight: 0.45
+  jerk_weight: 0.0
+  terrain_risk_weight: 0.0
+  terrain_risk_power: 2.0
+  terrain_risk_threshold: 0.0
+  terrain_risk_mode: "excess"
+  beta_1: 0.5
+  beta_2: 0.8
+  beta_3: 0.5
+  sg_window: 51
+  sg_poly_order: 3
+  soft_cbf: false
+
+robot:
+  state_dim: 6
+  max_vx: 1.5
+  max_vy: 0.1
+  max_wz: 1
+  max_ax: 0.8
+  max_ay: 0.2
+  max_awz: 0.8
+  velocity_lag_beta: 0.35
+  radius: 0.6
+  safety_dist: 0.25
+  obstacle_state_num: 7
+
+cbf:
+  enabled: false
+  type: 0
+  dcbf_alpha: 0.1
+  dcbf_weight: 1000000.0
+  slack_weight: 100.0
+  check_dist: 6.0
+  max_slack_vari: 1.0
+  atau: 0.2
+
+obstacles:
+  num_max: 0
+  static_enabled: true
+  virtual: []
+
+results:
+  root: "./results/sim_results"
+  run_name: "b2_omni_oracle_risk_band"
+  timestamp_suffix: true
+  overwrite: false
+  enable_plots: false
+  enable_animation: false
+
+execution:
+  filter_enabled: false
+  filter_alpha: 0.0
+
+visualization:
+  terrain_grid_resolution: 120
+
+terrain:
+  enabled: true
+  friction_base: 0.74
+  slope_scale: 0.04
+  roughness_scale: 0.08
+  friction_slope_scale: 0.12
+  friction_roughness_scale: 0.08
+  patches:
+    - name: high_risk_band_crossing_shortest_path
+      type: band
+      center: [9.0, 0.0]
+      angle: 90.0
+      size: [8.0, 2.0]
+      edge_width: 0.8
+      slope_f_delta: 0.08
+      slope_l_delta: 0.04
+      roughness_delta: 0.65
+      friction_delta: -0.35
+
+oracle_residual:
+  enabled: true
+  alpha: 0.35
+  residual_scale: 0.35
+  noise_std: 0.012
+  max_residual_ratio: 0.3
+  seed: 123

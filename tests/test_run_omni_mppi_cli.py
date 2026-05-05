@@ -26,6 +26,7 @@ def test_apply_cli_overrides_enables_learned_fdm_and_backend():
         fdm_checkpoint="best_model.pt",
         fdm_normalization="normalization.npz",
         fdm_device="cpu",
+        fdm_residual_gain=0.5,
     )
 
     updated = module.apply_cli_overrides(config, args)
@@ -36,6 +37,7 @@ def test_apply_cli_overrides_enables_learned_fdm_and_backend():
     assert updated["fdm"]["checkpoint"] == "best_model.pt"
     assert updated["fdm"]["normalization"] == "normalization.npz"
     assert updated["fdm"]["device"] == "cpu"
+    assert updated["fdm"]["residual_gain"] == 0.5
 
 
 def test_apply_cli_overrides_leaves_fdm_disabled_by_default():
@@ -48,6 +50,7 @@ def test_apply_cli_overrides_leaves_fdm_disabled_by_default():
         fdm_checkpoint=None,
         fdm_normalization=None,
         fdm_device=None,
+        fdm_residual_gain=None,
     )
 
     updated = module.apply_cli_overrides(config, args)

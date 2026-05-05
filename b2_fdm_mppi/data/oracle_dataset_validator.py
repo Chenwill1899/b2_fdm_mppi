@@ -121,8 +121,8 @@ def _require_dataset_files(dataset_dir: Path) -> None:
     if missing:
         raise FileNotFoundError(
             f"{dataset_dir} is missing split dataset files: {missing}. "
-            "Run tools/build_oracle_dataset.py first, for example: "
-            "python3 tools/build_oracle_dataset.py --input datasets/oracle_debug "
+            "Run the dataset build step first, for example: "
+            "python3 tools/fdm_mppi.py dataset build --input datasets/oracle_debug "
             "--output datasets/oracle_debug_splits"
         )
 

@@ -15,6 +15,7 @@ import yaml
 from b2_fdm_mppi.controllers.mppi_omni_learned_numpy import LearnedFdmMppiOmniNumpy
 from b2_fdm_mppi.controllers.mppi_omni_learned_torch import LearnedFdmMppiOmniTorch
 from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
+from b2_fdm_mppi.controllers.mppi_omni_torch import MppiOmniTorch
 from b2_fdm_mppi.core.learned_residual_dynamics import LearnedResidualDynamics
 from b2_fdm_mppi.core.omni_b2 import OmniB2
 from b2_fdm_mppi.core.residual_world import ResidualWorld
@@ -39,9 +40,11 @@ def create_omni_controller(config: dict, seed: int = 123) -> object:
     if bool(fdm_cfg.get("enabled", False)):
         if backend == "numpy":
             return LearnedFdmMppiOmniNumpy.from_config(config, seed=seed)
-        if backend == "cuda":
+        if backend in {"cuda", "torch"}:
             return LearnedFdmMppiOmniTorch.from_config(config, seed=seed)
         raise ValueError(f"Unsupported learned FDM MPPI backend: {backend}")
+    if backend == "torch":
+        return MppiOmniTorch.from_config(config, seed=seed)
     if backend == "cuda":
         if MppiOmniCuda is None:
             raise RuntimeError("mppi.backend is 'cuda' but PyCUDA controller is unavailable")
@@ -80,6 +83,7 @@ class OmniMppiSimulationRunner:
         self.dt = 1.0 / self.hz
         self.max_steps = int(sim["max_steps"])
         self.minimum_distance = float(sim["minimum_distance"])
+        self.disable_goal_termination = bool(sim.get("disable_goal_termination", False))
         self.scenario_mode = "fixed"
         self.scenario_random_seed = None
         self._apply_random_start_goal()
@@ -167,7 +171,9 @@ class OmniMppiSimulationRunner:
         if self.world_mode == "oracle":
             self.oracle_world.reset()
         steps = 0
-        while steps < self.max_steps and not goal_reached_xy(self.state, self.goal, self.minimum_distance):
+        while steps < self.max_steps and (
+            self.disable_goal_termination or not goal_reached_xy(self.state, self.goal, self.minimum_distance)
+        ):
             self.step()
             steps += 1
             if self.failed:
@@ -269,8 +275,7 @@ class OmniMppiSimulationRunner:
         max_residual = float(np.max(residual_norms)) if residual_norms.size else 0.0
         mean_cmd_real_error = float(np.mean(cmd_real_errors)) if cmd_real_errors.size else 0.0
         max_cmd_real_error = float(np.max(cmd_real_errors)) if cmd_real_errors.size else 0.0
-        mean_terrain = float(np.mean(self.terrain_risk_history)) if self.terrain_risk_history else 0.0
-        max_terrain = float(np.max(self.terrain_risk_history)) if self.terrain_risk_history else 0.0
+        terrain_metrics = self._terrain_risk_metrics()
         return {
             "world_mode": self.world_mode,
             "controller_type": type(self.controller).__name__,
@@ -278,6 +283,7 @@ class OmniMppiSimulationRunner:
             "success": success,
             "reached_goal": success,
             "failed": self.failed,
+            "goal_termination_disabled": self.disable_goal_termination,
             "init_pose": self.init_pose.tolist(),
             "goal": self.goal.tolist(),
             "steps": len(self.state_history),
@@ -300,11 +306,35 @@ class OmniMppiSimulationRunner:
             "max_residual_norm": max_residual,
             "mean_cmd_real_error": mean_cmd_real_error,
             "max_cmd_real_error": max_cmd_real_error,
-            "mean_terrain_risk": mean_terrain,
-            "max_terrain_risk": max_terrain,
+            **terrain_metrics,
             **self._control_metrics(),
             **self._sample_coverage_metrics(),
         }
+
+    def _terrain_risk_metrics(self) -> dict:
+        risks = np.asarray(self.terrain_risk_history, dtype=np.float32)
+        if risks.size == 0:
+            return {
+                "mean_terrain_risk": 0.0,
+                "max_terrain_risk": 0.0,
+                "cumulative_terrain_risk": 0.0,
+                "terrain_risk_excess": 0.0,
+                "terrain_risk_excess_integral": 0.0,
+                "terrain_risk_exposure_ratio": 0.0,
+            }
+        threshold = self._terrain_risk_threshold()
+        excess = np.maximum(risks - threshold, 0.0)
+        return {
+            "mean_terrain_risk": float(np.mean(risks)),
+            "max_terrain_risk": float(np.max(risks)),
+            "cumulative_terrain_risk": float(np.sum(risks)),
+            "terrain_risk_excess": float(np.sum(excess)),
+            "terrain_risk_excess_integral": float(np.sum(excess * excess)),
+            "terrain_risk_exposure_ratio": float(np.mean(risks > threshold)),
+        }
+
+    def _terrain_risk_threshold(self) -> float:
+        return float(self.config.get("mppi", {}).get("terrain_risk_threshold", 0.0))
 
     def _fdm_metadata(self) -> dict:
         fdm_cfg = self.config.get("fdm", {})
@@ -315,6 +345,8 @@ class OmniMppiSimulationRunner:
             "fdm_checkpoint": fdm_cfg.get("checkpoint", "best_model.pt") if enabled else None,
             "fdm_normalization": fdm_cfg.get("normalization", "normalization.npz") if enabled else None,
             "fdm_device": fdm_cfg.get("device", "cpu") if enabled else None,
+            "fdm_residual_gain": float(fdm_cfg.get("residual_gain", 1.0)) if enabled else None,
+            "fdm_profile_enabled": bool(fdm_cfg.get("profile_enabled", False)) if enabled else None,
         }
         learned = getattr(self.controller, "learned_dynamics", None)
         if learned is not None:
@@ -323,6 +355,9 @@ class OmniMppiSimulationRunner:
         else:
             metadata["fdm_checkpoint_path"] = None
             metadata["fdm_normalization_path"] = None
+        profile_summary = getattr(self.controller, "profile_summary", None)
+        if enabled and callable(profile_summary):
+            metadata["fdm_runtime_profile"] = profile_summary()
         return metadata
 
     def _save_results(self) -> None:
@@ -422,9 +457,11 @@ class OmniMppiSimulationRunner:
 
     def _save_terrain(self) -> None:
         rows = []
+        threshold = self._terrain_risk_threshold()
         for idx, (state, features, risk) in enumerate(
             zip(self.state_history, self.terrain_history, self.terrain_risk_history)
         ):
+            risk_excess = max(float(risk) - threshold, 0.0)
             rows.append(
                 {
                     "step": idx,
@@ -435,6 +472,8 @@ class OmniMppiSimulationRunner:
                     "roughness": features[2],
                     "friction": features[3],
                     "risk_cost": risk,
+                    "risk_excess": risk_excess,
+                    "risk_exposed": bool(float(risk) > threshold),
                 }
             )
         pd.DataFrame(rows).to_csv(self.results_path / "terrain.csv", index=False)
@@ -476,6 +515,7 @@ class OmniMppiSimulationRunner:
         self._draw_obstacles(ax)
         ax.scatter([self.init_pose[0]], [self.init_pose[1]], color="green", label="start")
         ax.scatter([self.goal[0]], [self.goal[1]], color="purple", label="goal")
+        self._draw_goal_tolerance(ax)
         xlim, ylim = map_axis_limits_from_config(self.config)
         ax.set_xlim(*xlim)
         ax.set_ylim(*ylim)
@@ -511,6 +551,7 @@ class OmniMppiSimulationRunner:
             self._draw_obstacles(ax)
             ax.scatter([self.init_pose[0]], [self.init_pose[1]], color="green", label="start", zorder=5)
             ax.scatter([self.goal[0]], [self.goal[1]], color="purple", marker="*", s=110, label="goal", zorder=5)
+            self._draw_goal_tolerance(ax)
             if frame >= 0 and len(states):
                 self._draw_predicted_rollouts(ax, states[frame], frame)
                 if self.world_mode == "oracle" and residual_norms.size:
@@ -545,6 +586,7 @@ class OmniMppiSimulationRunner:
         handles = [
             Line2D([0], [0], marker="o", color="none", markerfacecolor="green", markersize=6, label="start"),
             Line2D([0], [0], marker="*", color="none", markerfacecolor="purple", markersize=10, label="goal"),
+            Line2D([0], [0], color="#f59e0b", linestyle="--", linewidth=1.2, label="goal tolerance"),
             Line2D([0], [0], marker="o", color="none", markerfacecolor="red", markersize=6, label="current state"),
             Line2D([0], [0], color="tab:cyan", linewidth=1.6, label="actual heading"),
             Line2D([0], [0], color="black", alpha=0.25, linewidth=1.0, label="nominal sampled rollouts"),
@@ -560,6 +602,24 @@ class OmniMppiSimulationRunner:
         else:
             handles.append(Line2D([0], [0], color="tab:blue", linewidth=1.6, label="executed path"))
         return handles
+
+    def _draw_goal_tolerance(self, ax) -> None:
+        from matplotlib.patches import Circle
+
+        if self.minimum_distance <= 0.0:
+            return
+        ax.add_patch(
+            Circle(
+                (float(self.goal[0]), float(self.goal[1])),
+                self.minimum_distance,
+                fill=False,
+                linestyle="--",
+                linewidth=1.2,
+                edgecolor="#f59e0b",
+                alpha=0.95,
+                zorder=4,
+            )
+        )
 
     def _terrain_risk_grid(self, xlim: tuple[float, float], ylim: tuple[float, float]) -> np.ndarray:
         resolution = int(self.config.get("visualization", {}).get("terrain_grid_resolution", 100))

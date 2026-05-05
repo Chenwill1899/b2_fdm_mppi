@@ -77,6 +77,10 @@ def test_omni_runner_saves_summary_csv_outputs(tmp_path):
     assert "max_cmd_real_error" in summary_json
     assert "mean_terrain_risk" in summary_json
     assert "max_terrain_risk" in summary_json
+    assert "cumulative_terrain_risk" in summary_json
+    assert "terrain_risk_excess" in summary_json
+    assert "terrain_risk_excess_integral" in summary_json
+    assert "terrain_risk_exposure_ratio" in summary_json
 
 
 def test_omni_runner_trajectory_includes_final_state_after_last_action(tmp_path):
@@ -92,6 +96,22 @@ def test_omni_runner_trajectory_includes_final_state_after_last_action(tmp_path)
     assert trajectory.iloc[-1]["step"] == summary.steps
     assert trajectory.iloc[-1]["x"] == pytest.approx(float(runner.state[0]))
     assert trajectory.iloc[-1]["y"] == pytest.approx(float(runner.state[1]))
+
+
+def test_omni_runner_can_disable_goal_termination_for_fixed_step_profiling(tmp_path):
+    config = make_config(tmp_path, max_steps=3)
+    config["simulation"]["initial_state"] = config["simulation"]["goal"].copy()
+    config["simulation"]["disable_goal_termination"] = True
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    summary = runner.run()
+
+    assert summary.steps == 3
+    assert len(runner.mppi_time_history) == 3
+    assert summary.reached_goal is True
 
 
 def test_omni_runner_summary_reports_control_smoothness_metrics(tmp_path):
@@ -294,6 +314,28 @@ def test_omni_runner_oracle_world_records_residuals(tmp_path):
     assert summary_json["mean_residual_norm"] > 0.0
     assert (summary.results_path / "residuals.csv").exists()
     assert (summary.results_path / "terrain.csv").exists()
+
+
+def test_omni_runner_summary_records_fdm_residual_gain(tmp_path):
+    config = make_config(tmp_path, max_steps=1)
+    config["fdm"] = {
+        "enabled": True,
+        "model_dir": "model",
+        "checkpoint": "best_model.pt",
+        "normalization": "normalization.npz",
+        "device": "cpu",
+        "residual_gain": 0.25,
+    }
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+
+    summary = runner.run()
+    summary_json = json.loads((summary.results_path / "summary.json").read_text())
+
+    assert summary_json["fdm_enabled"] is True
+    assert summary_json["fdm_residual_gain"] == pytest.approx(0.25)
 
 
 def test_omni_runner_uses_random_obstacles_and_records_summary(tmp_path):
@@ -529,6 +571,49 @@ def test_omni_runner_cmd_real_error_uses_executed_minus_commanded_norm(tmp_path)
     assert metrics["max_residual_norm"] == pytest.approx(float(np.max(residual_norms)))
 
 
+def test_omni_runner_reports_thresholded_terrain_risk_metrics(tmp_path):
+    config = make_config(tmp_path)
+    config["mppi"]["terrain_risk_threshold"] = 0.3
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    runner.terrain_risk_history = [0.1, 0.4, 0.8]
+
+    metrics = runner._summary_metrics()
+
+    assert metrics["mean_terrain_risk"] == pytest.approx(float(np.mean([0.1, 0.4, 0.8])))
+    assert metrics["max_terrain_risk"] == pytest.approx(0.8)
+    assert metrics["cumulative_terrain_risk"] == pytest.approx(1.3)
+    assert metrics["terrain_risk_excess"] == pytest.approx(0.6)
+    assert metrics["terrain_risk_excess_integral"] == pytest.approx(0.01 + 0.25)
+    assert metrics["terrain_risk_exposure_ratio"] == pytest.approx(2.0 / 3.0)
+
+
+def test_omni_runner_terrain_csv_records_risk_exposure_columns(tmp_path):
+    config = make_config(tmp_path)
+    config["mppi"]["terrain_risk_threshold"] = 0.3
+    runner = OmniMppiSimulationRunner(
+        config,
+        controller_factory=lambda *_args, **_kwargs: ConstantOmniController(),
+    )
+    runner.state_history = [
+        np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    ]
+    runner.terrain_history = [
+        np.array([0.0, 0.0, 0.1, 0.8], dtype=np.float32),
+        np.array([0.0, 0.0, 0.7, 0.4], dtype=np.float32),
+    ]
+    runner.terrain_risk_history = [0.2, 0.8]
+
+    runner._save_terrain()
+    terrain = pd.read_csv(runner.results_path / "terrain.csv")
+
+    assert terrain["risk_excess"].tolist() == pytest.approx([0.0, 0.5])
+    assert terrain["risk_exposed"].tolist() == [False, True]
+
+
 def test_omni_runner_uses_cuda_backend_when_configured(tmp_path, monkeypatch):
     config = make_config(tmp_path)
     config["mppi"]["backend"] = "cuda"
@@ -549,6 +634,19 @@ def test_omni_runner_uses_cuda_backend_when_configured(tmp_path, monkeypatch):
     assert created == [(config, 123)]
 
 
+def test_omni_runner_uses_nominal_torch_backend_when_configured(tmp_path):
+    config = make_config(tmp_path)
+    config["mppi"]["backend"] = "torch"
+    config["mppi"]["device"] = "cpu"
+
+    runner = OmniMppiSimulationRunner(config)
+
+    from b2_fdm_mppi.controllers.mppi_omni_torch import MppiOmniTorch
+
+    assert isinstance(runner.controller, MppiOmniTorch)
+    assert runner.controller.torch_device.type == "cpu"
+
+
 def test_omni_runner_summary_records_fdm_metadata(tmp_path):
     config = make_config(tmp_path, max_steps=1)
     config["fdm"] = {
@@ -557,6 +655,7 @@ def test_omni_runner_summary_records_fdm_metadata(tmp_path):
         "checkpoint": "best_model.pt",
         "normalization": "normalization.npz",
         "device": "cpu",
+        "residual_gain": 0.5,
     }
     runner = OmniMppiSimulationRunner(
         config,
@@ -586,6 +685,7 @@ def test_create_omni_controller_uses_learned_numpy_when_fdm_enabled(tmp_path, mo
         "checkpoint": "best_model.pt",
         "normalization": "normalization.npz",
         "device": "cpu",
+        "residual_gain": 0.5,
     }
 
     class StubDynamics:
@@ -605,6 +705,7 @@ def test_create_omni_controller_uses_learned_numpy_when_fdm_enabled(tmp_path, mo
     controller = omni_runner.create_omni_controller(config, seed=123)
 
     assert isinstance(controller, LearnedFdmMppiOmniNumpy)
+    assert controller.residual_gain == pytest.approx(0.5)
 
 
 def test_create_omni_controller_uses_learned_torch_for_cuda_backend(tmp_path, monkeypatch):
@@ -619,6 +720,8 @@ def test_create_omni_controller_uses_learned_torch_for_cuda_backend(tmp_path, mo
         "checkpoint": "best_model.pt",
         "normalization": "normalization.npz",
         "device": "cpu",
+        "residual_gain": 0.25,
+        "profile_enabled": True,
     }
 
     class StubDynamics:
@@ -640,3 +743,5 @@ def test_create_omni_controller_uses_learned_torch_for_cuda_backend(tmp_path, mo
     controller = omni_runner.create_omni_controller(config, seed=123)
 
     assert isinstance(controller, LearnedFdmMppiOmniTorch)
+    assert controller.residual_gain == pytest.approx(0.25)
+    assert controller.profile_enabled is True

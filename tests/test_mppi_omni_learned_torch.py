@@ -20,7 +20,7 @@ class ConstantTorchResidualDynamics:
         return residuals
 
 
-def make_controller():
+def make_controller(*, residual_gain=1.0, profile_enabled=False):
     return LearnedFdmMppiOmniTorch(
         dt=0.1,
         horizon_steps=3,
@@ -40,6 +40,8 @@ def make_controller():
         seed=1,
         learned_dynamics=ConstantTorchResidualDynamics(),
         device="cpu",
+        residual_gain=residual_gain,
+        profile_enabled=profile_enabled,
     )
 
 
@@ -56,6 +58,29 @@ def test_learned_torch_rollout_applies_residual_to_response_limited_command():
     assert real_controls[0, 0] == pytest.approx([0.7, 0.1, 0.15], abs=1e-6)
     assert states[0, 1, 3:] == pytest.approx([0.7, 0.1, 0.15], abs=1e-6)
     assert np.all(np.isfinite(states))
+
+
+def test_learned_torch_rollout_scales_residual_with_gain():
+    controller = make_controller(residual_gain=0.5)
+    controls = np.zeros((1, controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, :] = np.array([0.5, 0.2, 0.1], dtype=np.float32)
+    state = np.zeros(6, dtype=np.float32)
+
+    _states, real_controls = controller._rollout_batch(state, controls, return_controls=True)
+
+    assert controller.residual_gain == pytest.approx(0.5)
+    assert real_controls[0, 0] == pytest.approx([0.6, 0.15, 0.125], abs=1e-6)
+
+
+def test_learned_torch_rollout_zero_gain_matches_response_limited_command():
+    controller = make_controller(residual_gain=0.0)
+    controls = np.zeros((1, controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, :] = np.array([0.5, 0.2, 0.1], dtype=np.float32)
+    state = np.zeros(6, dtype=np.float32)
+
+    _states, real_controls = controller._rollout_batch(state, controls, return_controls=True)
+
+    assert real_controls[0, 0] == pytest.approx([0.5, 0.2, 0.1], abs=1e-6)
 
 
 def test_learned_torch_batch_cost_is_finite_and_shape_compatible():
@@ -89,6 +114,30 @@ def test_learned_torch_compute_control_returns_numpy_controller_outputs():
     assert np.isfinite(min_cost)
 
 
+def test_learned_torch_profile_records_runtime_buckets():
+    controller = make_controller(profile_enabled=True)
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+
+    controller.compute_control(
+        state,
+        [None, None, None, goal, np.empty((0, 7), dtype=np.float32), 0],
+    )
+
+    profile = controller.profile_summary()
+    assert profile["enabled"] is True
+    assert profile["total_calls"] == 1
+    for bucket in (
+        "sample_candidates_ms",
+        "rollout_total_ms",
+        "fdm_inference_ms",
+        "cost_terms_ms",
+        "cpu_transfer_ms",
+    ):
+        assert bucket in profile["totals_ms"]
+        assert profile["totals_ms"][bucket] >= 0.0
+
+
 def test_learned_torch_terrain_features_match_numpy_terrain_with_noise():
     config = load_config("config/b2_omni_oracle_random100_dataset.yaml")
     terrain = TerrainField.from_config(config["terrain"])
@@ -115,3 +164,111 @@ def test_learned_torch_terrain_features_match_numpy_terrain_with_noise():
     )
     assert features_t.detach().cpu().numpy() == pytest.approx(expected_features, abs=1e-6)
     assert risks_t.detach().cpu().numpy() == pytest.approx(expected_risks, abs=1e-6)
+
+
+def test_learned_torch_terrain_features_match_numpy_terrain_with_patches():
+    terrain = TerrainField(
+        enabled=True,
+        slope_scale=0.02,
+        roughness_scale=0.05,
+        friction_base=0.8,
+        friction_slope_scale=0.05,
+        friction_roughness_scale=0.05,
+        patches=[
+            {
+                "name": "risk_band",
+                "type": "band",
+                "center": [10.0, 0.0],
+                "angle": 90.0,
+                "size": [8.0, 2.0],
+                "edge_width": 0.5,
+                "slope_f_delta": 0.06,
+                "roughness_delta": 0.4,
+                "friction_delta": -0.25,
+            },
+            {
+                "name": "risk_island",
+                "type": "ellipse",
+                "center": [14.0, 1.5],
+                "angle": 25.0,
+                "size": [3.0, 1.5],
+                "edge_width": 0.5,
+                "roughness_delta": 0.3,
+                "friction_delta": -0.2,
+            },
+        ],
+    )
+    controller = make_controller()
+    controller.terrain = terrain
+    controller._setup_terrain_tensors()
+    states = torch.tensor(
+        [
+            [10.0, 0.0, 0.0, 0.1, 0.0, 0.0],
+            [14.0, 1.5, 0.2, 0.3, -0.1, 0.1],
+            [18.0, 5.5, 0.0, 0.0, 0.0, 0.0],
+        ],
+        dtype=torch.float32,
+    )
+
+    features_t, risks_t = controller._terrain_features_torch(states)
+
+    expected_features = np.asarray([terrain.feature(float(s[0]), float(s[1])) for s in states], dtype=np.float32)
+    expected_risks = np.asarray(
+        [
+            terrain.risk_cost(float(state[0]), float(state[1]), features=expected_features[idx])
+            for idx, state in enumerate(states)
+        ],
+        dtype=np.float32,
+    )
+    assert features_t.detach().cpu().numpy() == pytest.approx(expected_features, abs=1e-6)
+    assert risks_t.detach().cpu().numpy() == pytest.approx(expected_risks, abs=1e-6)
+
+
+def test_learned_torch_terrain_risk_cost_matches_numpy_on_patch_map():
+    terrain = TerrainField(
+        enabled=True,
+        slope_scale=0.0,
+        roughness_scale=0.0,
+        friction_base=0.8,
+        friction_slope_scale=0.0,
+        friction_roughness_scale=0.0,
+        patches=[
+            {
+                "name": "risk_band",
+                "type": "band",
+                "center": [0.2, 0.0],
+                "angle": 90.0,
+                "size": [1.0, 1.0],
+                "roughness_delta": 0.7,
+                "friction_delta": -0.4,
+            }
+        ],
+    )
+    controller = make_controller()
+    controller.terrain = terrain
+    controller.terrain_risk_weight = 10.0
+    controller.terrain_risk_threshold = 0.25
+    controller.terrain_risk_power = 2.0
+    controller.terrain_risk_mode = "excess"
+    controller._setup_terrain_tensors()
+    states = torch.tensor(
+        [
+            [
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.1, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.2, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ],
+            [
+                [0.0, 1.4, 0.0, 0.0, 0.0, 0.0],
+                [0.1, 1.4, 0.0, 0.0, 0.0, 0.0],
+                [0.2, 1.4, 0.0, 0.0, 0.0, 0.0],
+            ],
+        ],
+        dtype=torch.float32,
+    )
+
+    costs_t = controller._terrain_risk_cost_batch_torch(states)
+    costs_np = controller._terrain_risk_cost_batch(states.detach().cpu().numpy())
+
+    assert costs_t.detach().cpu().numpy() == pytest.approx(costs_np, abs=1e-5)
+    assert costs_t[0].item() > costs_t[1].item()
