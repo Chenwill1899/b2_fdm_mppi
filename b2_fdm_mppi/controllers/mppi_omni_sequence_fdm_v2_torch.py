@@ -1,4 +1,16 @@
-"""Torch MPPI controller using Sequence FDM V2 for direct trajectory + risk prediction."""
+"""Torch MPPI controller using Sequence FDM V2 as a risk-aware cost evaluator.
+
+This controller does NOT replace the nominal dynamics rollout. Instead:
+1. MPPI still uses the real nominal dynamics (MppiOmniTorch._rollout_batch_torch)
+   to compute accurate state trajectories for goal/obstacle/terrain costs.
+2. The V2 model provides an ADDITIONAL risk cost term based on its learned
+   prediction of terrain risk along the trajectory.
+3. The final cost = base_cost (from real dynamics) + fdm_risk_cost (from V2).
+
+This avoids the compounding error problem because the trajectory positions
+used for obstacle/goal costs come from the accurate real dynamics, while the
+V2 model only influences trajectory selection via its risk assessment.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +24,7 @@ from b2_fdm_mppi.core.terrain_grid import sample_terrain_risk_grid_torch
 
 
 class MppiOmniSequenceFdmV2Torch(MppiOmniTorch):
-    """MPPI controller that uses Sequence FDM V2 to predict trajectories and risks directly."""
+    """MPPI controller that adds Sequence FDM V2 risk cost on top of real dynamics."""
 
     def __init__(
         self,
@@ -68,61 +80,40 @@ class MppiOmniSequenceFdmV2Torch(MppiOmniTorch):
         path: torch.Tensor | None = None,
         costmap: dict | None = None,
     ) -> torch.Tensor:
+        """Compute cost using REAL dynamics rollout + V2 risk prediction.
+
+        Steps:
+        1. Run nominal dynamics rollout (accurate positions for obstacle/goal)
+        2. Compute base cost (goal, obstacle, smoothness, etc.)
+        3. Run V2 model to predict per-step risk logits
+        4. Add risk cost as an extra term
+        5. Return total cost
+        """
         controls = torch.clamp(controls, -self.max_control_t, self.max_control_t)
         num_samples = int(controls.shape[0])
         H = self.horizon_steps
 
-        # 1. Sample terrain grid centered on current state
+        # 1. Base cost from real dynamics rollout (inherited from MppiOmniTorch)
+        base_cost = super()._trajectory_cost_batch_torch(initial_state, controls, goal, obstacles)
+
+        # 2. V2 risk prediction (additional cost term only)
         profile_start = self._profile_start()
         x0 = float(initial_state[0])
         y0 = float(initial_state[1])
         terrain_grid = sample_terrain_risk_grid_torch(self.terrain, x0, y0, size=9, span=18.0)
         terrain_grid = terrain_grid.unsqueeze(0).expand(num_samples, -1)
-        self._profile_stop("terrain_grid_ms", profile_start)
 
-        # 2. Prepare state tensor
         state_t = torch.as_tensor(
             np.asarray(initial_state, dtype=np.float32).reshape(1, 6),
             dtype=torch.float32,
             device=self.torch_device,
         ).expand(num_samples, -1)
 
-        # 3. FDM forward pass (gradients retained)
-        profile_start = self._profile_start()
-        pred_states, pred_risk_logits = self.sequence_dynamics.predict_torch(state_t, controls, terrain_grid)
+        with torch.no_grad():
+            _pred_states, pred_risk_logits = self.sequence_dynamics.predict_torch(state_t, controls, terrain_grid)
+
+        pred_risk = torch.sigmoid(pred_risk_logits)
+        fdm_risk_cost = self.fdm_risk_weight * torch.sum(pred_risk, dim=1)
         self._profile_stop("fdm_inference_ms", profile_start)
 
-        # 4. Binary risk from logits
-        pred_risk = torch.sigmoid(pred_risk_logits)
-
-        # 5. Compute costs
-        profile_start = self._profile_start()
-        final_states = pred_states[:, -1, :]
-        xy_error = final_states[:, :2] - goal[:2]
-        yaw_error = self._angle_diff_torch(final_states[:, 2], goal[2])
-        goal_cost = self.goal_xy_weight * torch.sum(xy_error * xy_error, dim=1)
-        yaw_cost = self.yaw_weight * yaw_error * yaw_error
-
-        # Control smoothness
-        control_cost = self.control_weight * torch.sum(controls * controls, dim=(1, 2))
-        previous = torch.as_tensor(self.previous_control, dtype=torch.float32, device=self.torch_device).view(1, 1, 3)
-        previous = previous.expand(num_samples, 1, 3)
-        control_deltas = torch.diff(torch.cat([previous, controls], dim=1), dim=1)
-        smooth_cost = self.smooth_weight * torch.sum(control_deltas * control_deltas, dim=(1, 2))
-
-        # Obstacle cost from predicted trajectory positions
-        obstacle_cost = self._obstacle_cost_batch_torch(pred_states[:, 1:, :], obstacles)
-
-        # Risk cost from FDM prediction
-        risk_cost = self.fdm_risk_weight * torch.sum(pred_risk, dim=1)
-
-        self._profile_stop("cost_terms_ms", profile_start)
-
-        return (
-            goal_cost
-            + yaw_cost
-            + control_cost
-            + smooth_cost
-            + obstacle_cost
-            + risk_cost
-        ).to(torch.float32)
+        return (base_cost + fdm_risk_cost).to(torch.float32)
