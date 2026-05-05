@@ -96,6 +96,20 @@ def main():
         episodes = args.episodes[round_idx - 1]
         seed = args.base_seed + (round_idx - 1) * 100000
 
+        # --- Pre-eval: oracle baseline on 10 fixed test scenes ---
+        eval_seed = 999000
+        eval_dir = Path(args.checkpoint_root) / f"eval_round_{round_idx}"
+        pre_eval_dir = eval_dir / "pre"
+        pre_eval_dir.mkdir(parents=True, exist_ok=True)
+        run([
+            sys.executable, "tools/eval_sequence_fdm_v2.py",
+            "--config", base_config,
+            "--mode", "oracle",
+            "--num-episodes", "10",
+            "--base-seed", str(eval_seed),
+            "--output-dir", str(pre_eval_dir),
+        ], f"[Round {round_idx}] Pre-eval (oracle) on 10 test scenes")
+
         # --- Collect data ---
         collect_cmd = [
             sys.executable, "tools/collect_sequence_fdm_v2_data.py",
@@ -134,6 +148,20 @@ def main():
         run(train_cmd, f"[Round {round_idx}] Training")
         train_time = time.time() - t0
 
+        # --- Post-eval: trained model on same 10 test scenes ---
+        post_eval_dir = eval_dir / "post"
+        post_eval_dir.mkdir(parents=True, exist_ok=True)
+        post_eval_cmd = [
+            sys.executable, "tools/eval_sequence_fdm_v2.py",
+            "--config", base_config,
+            "--mode", "learned",
+            "--model-dir", str(ckpt_dir),
+            "--num-episodes", "10",
+            "--base-seed", str(eval_seed),
+            "--output-dir", str(post_eval_dir),
+        ]
+        run(post_eval_cmd, f"[Round {round_idx}] Post-eval (learned) on 10 test scenes")
+
         # Load metrics
         metrics_path = ckpt_dir / "training_metrics.json"
         if metrics_path.exists():
@@ -143,6 +171,18 @@ def main():
         else:
             best_loss = "N/A"
 
+        # Load eval summaries
+        pre_eval = {}
+        post_eval = {}
+        pre_eval_path = pre_eval_dir / "eval_summary.json"
+        post_eval_path = post_eval_dir / "eval_summary.json"
+        if pre_eval_path.exists():
+            with open(pre_eval_path) as f:
+                pre_eval = json.load(f)
+        if post_eval_path.exists():
+            with open(post_eval_path) as f:
+                post_eval = json.load(f)
+
         summary.append({
             "round": round_idx,
             "episodes": episodes,
@@ -150,6 +190,16 @@ def main():
             "collect_time_s": round(collect_time, 1),
             "train_time_s": round(train_time, 1),
             "best_val_loss": best_loss,
+            "pre_eval": {
+                "success_rate": pre_eval.get("success_rate", "N/A"),
+                "avg_steps": pre_eval.get("avg_steps", "N/A"),
+                "avg_final_distance": pre_eval.get("avg_final_distance", "N/A"),
+            },
+            "post_eval": {
+                "success_rate": post_eval.get("success_rate", "N/A"),
+                "avg_steps": post_eval.get("avg_steps", "N/A"),
+                "avg_final_distance": post_eval.get("avg_final_distance", "N/A"),
+            },
             "data_dir": str(data_dir),
             "checkpoint_dir": str(ckpt_dir),
         })
@@ -158,15 +208,22 @@ def main():
         print(f"    Episodes: {episodes} × {args.num_trajectories} = {episodes * args.num_trajectories} trajectories")
         print(f"    Collect: {collect_time:.0f}s, Train: {train_time:.0f}s")
         print(f"    Best val loss: {best_loss}")
+        pre_sr = pre_eval.get('success_rate', 'N/A')
+        post_sr = post_eval.get('success_rate', 'N/A')
+        print(f"    Pre-eval (oracle):  success_rate={pre_sr}")
+        print(f"    Post-eval (learned): success_rate={post_sr}")
 
     # Final summary
     print(f"\n{'=' * 60}")
     print("ITERATIVE TRAINING COMPLETE")
     print(f"{'=' * 60}")
     for s in summary:
+        pre = s.get("pre_eval", {})
+        post = s.get("post_eval", {})
         print(f"  Round {s['round']}: {s['episodes']} eps × {s['num_trajectories']} traj, "
               f"collect={s['collect_time_s']}s, train={s['train_time_s']}s, "
-              f"best_loss={s['best_val_loss']}")
+              f"best_loss={s['best_val_loss']}, "
+              f"pre_sr={pre.get('success_rate', 'N/A')} post_sr={post.get('success_rate', 'N/A')}")
     total_time = sum(s["collect_time_s"] + s["train_time_s"] for s in summary)
     print(f"  Total time: {total_time:.0f}s ({total_time/60:.1f} min)")
 
