@@ -43,8 +43,19 @@ class SequenceFdmDynamics:
     @classmethod
     def from_artifacts(cls, model_dir: Path, device: str = "cpu") -> "SequenceFdmDynamics":
         model_dir = Path(model_dir)
-        ckpt_path = model_dir / "best_model.pt"
         norm_path = model_dir / "normalization.npz"
+
+        # Prefer best_model_h{max}.pt over best_model.pt because best_model.pt
+        # may have been saved at an earlier curriculum phase (e.g. H=5).
+        h_candidates = sorted(
+            [p for p in model_dir.glob("best_model_h*.pt")],
+            key=lambda p: int(p.stem.split("h")[-1]),
+            reverse=True,
+        )
+        if h_candidates:
+            ckpt_path = h_candidates[0]
+        else:
+            ckpt_path = model_dir / "best_model.pt"
 
         if not ckpt_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
@@ -101,6 +112,9 @@ class SequenceFdmDynamics:
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Batch inference with torch tensors.
 
+        NOTE: The model was trained on raw (un-normalized) data, so inference
+        also uses raw inputs and returns raw outputs.
+
         Args:
             state: (B, 6) or (6,)
             controls: (B, H, 3) or (H, 3)
@@ -120,14 +134,10 @@ class SequenceFdmDynamics:
         controls = controls.to(self.device)
         terrain_grid = terrain_grid.to(self.device)
 
-        state_norm = self._normalize_state(state)
-        controls_norm = self._normalize_controls(controls)
-
         with torch.no_grad():
-            out = self.model(state_norm, controls_norm, terrain_grid)
+            out = self.model(state, controls, terrain_grid)
 
-        states_pred_raw, risk_logits = out
-        states_pred = self._denormalize_state_targets(states_pred_raw)
+        states_pred, risk_logits = out
 
         if squeeze:
             states_pred = states_pred.squeeze(0)
