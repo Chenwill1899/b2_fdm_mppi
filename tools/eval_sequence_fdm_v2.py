@@ -55,7 +55,8 @@ def _eval_one(
     config = dict(base_config)
     from b2_fdm_mppi.data.sequence_fdm_collector import _terrain_to_config
     config["terrain"] = _terrain_to_config(terrain)
-    config.setdefault("mppi", {})["backend"] = "torch"
+    # Oracle uses CUDA backend; learned V2 controller only has torch impl
+    config.setdefault("mppi", {})["backend"] = "torch" if mode == "learned" else "cuda"
     config["simulation"]["max_steps"] = 500
     config.setdefault("results", {})["enable_plots"] = False
     config.setdefault("results", {})["enable_animation"] = False

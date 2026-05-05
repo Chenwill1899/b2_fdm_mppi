@@ -173,7 +173,8 @@ def collect_sequence_fdm_episode(
         # Load and override base config
         config = load_config(base_config_path)
         config["terrain"] = _terrain_to_config(terrain)
-        config.setdefault("mppi", {})["backend"] = "torch"
+        # Use CUDA backend for pure oracle MPPI; learned V2 controller only has torch impl
+        config.setdefault("mppi", {})["backend"] = "torch" if use_learned else "cuda"
         config["simulation"]["max_steps"] = 500
         # Disable expensive visualization to speed up collection
         config.setdefault("results", {})["enable_plots"] = False
