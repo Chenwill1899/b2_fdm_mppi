@@ -38,6 +38,26 @@ class PipelineCommands:
         _print_json(summary)
         return 0
 
+    def mujoco_closed_loop(self, args: argparse.Namespace) -> int:
+        from b2_fdm_mppi.experiment import ExperimentConfigError
+        from b2_fdm_mppi.mujoco_closed_loop import run_mujoco_closed_loop_profile
+
+        try:
+            summary = run_mujoco_closed_loop_profile(
+                args.profile,
+                controller_name=args.controller,
+                seed=args.seed,
+                backend=args.backend,
+                results_dir=args.results_dir,
+                max_steps=args.max_steps,
+                odom_timeout=args.odom_timeout,
+            )
+        except ExperimentConfigError as exc:
+            print(f"mujoco closed-loop error: {exc}", file=sys.stderr)
+            return 2
+        _print_json(summary)
+        return 0
+
     def run(self, args: argparse.Namespace) -> int:
         from b2_fdm_mppi.simulation.run_omni_mppi import print_run_summary, run_omni_mppi
 
@@ -92,23 +112,46 @@ class PipelineCommands:
         return 0
 
     def train(self, args: argparse.Namespace) -> int:
-        from b2_fdm_mppi.training.residual_fdm import shell_join, train_residual_fdm
+        from b2_fdm_mppi.training.residual_fdm import (
+            shell_join,
+            train_residual_fdm,
+            train_sequence_fdm,
+        )
 
         argv = [sys.executable, "tools/fdm_mppi.py", *sys.argv[1:]]
-        metrics = train_residual_fdm(
-            dataset_dir=args.dataset,
-            output_dir=args.output,
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            hidden_dim=args.hidden_dim,
-            learning_rate=args.learning_rate,
-            weight_decay=args.weight_decay,
-            seed=args.seed,
-            device=args.device,
-            tensorboard_log_dir=args.tensorboard_log_dir,
-            command=shell_join(argv),
-            argv=argv,
-        )
+        if args.sequence:
+            metrics = train_sequence_fdm(
+                dataset_dir=args.dataset,
+                output_dir=args.output,
+                sequence_horizon=args.sequence_horizon,
+                include_history_controls=args.sequence_include_history,
+                history_steps=args.sequence_history_steps,
+                epochs=args.epochs,
+                batch_size=args.batch_size,
+                hidden_dim=args.hidden_dim,
+                learning_rate=args.learning_rate,
+                weight_decay=args.weight_decay,
+                seed=args.seed,
+                device=args.device,
+                tensorboard_log_dir=args.tensorboard_log_dir,
+                command=shell_join(argv),
+                argv=argv,
+            )
+        else:
+            metrics = train_residual_fdm(
+                dataset_dir=args.dataset,
+                output_dir=args.output,
+                epochs=args.epochs,
+                batch_size=args.batch_size,
+                hidden_dim=args.hidden_dim,
+                learning_rate=args.learning_rate,
+                weight_decay=args.weight_decay,
+                seed=args.seed,
+                device=args.device,
+                tensorboard_log_dir=args.tensorboard_log_dir,
+                command=shell_join(argv),
+                argv=argv,
+            )
         _print_json(metrics)
         return 0
 
@@ -211,6 +254,16 @@ def build_parser() -> argparse.ArgumentParser:
     experiment.add_argument("--animation", action=argparse.BooleanOptionalAction, default=None)
     experiment.set_defaults(handler="experiment")
 
+    mujoco = subparsers.add_parser("mujoco-closed-loop", help="Run MPPI/FDM closed loop against ausim2 MuJoCo Scout")
+    mujoco.add_argument("--profile", default="configs/mujoco_scout.yaml")
+    mujoco.add_argument("--controller", default=None)
+    mujoco.add_argument("--seed", type=int, default=None)
+    mujoco.add_argument("--backend", choices=["cuda", "numpy", "torch"], default=None)
+    mujoco.add_argument("--results-dir", default=None)
+    mujoco.add_argument("--max-steps", type=int, default=None)
+    mujoco.add_argument("--odom-timeout", type=float, default=None)
+    mujoco.set_defaults(handler="mujoco_closed_loop")
+
     run = subparsers.add_parser("run", help="Run one MPPI simulation")
     run.add_argument("--config", default="configs/smoke.yaml")
     run.add_argument("--seed", type=int, default=123)
@@ -260,6 +313,25 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--seed", type=int, default=123)
     train.add_argument("--device", default="cpu")
     train.add_argument("--tensorboard-log-dir", default=None)
+    train.add_argument("--sequence", action="store_true", help="Train sequence FDM instead of step residual FDM")
+    train.add_argument(
+        "--sequence-horizon",
+        type=int,
+        default=25,
+        help="Prediction horizon (in steps) for sequence FDM",
+    )
+    train.add_argument(
+        "--sequence-include-history",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Include previous controls in sequence FDM feature vector",
+    )
+    train.add_argument(
+        "--sequence-history-steps",
+        type=int,
+        default=1,
+        help="Number of previous control steps to include when --sequence-include-history is enabled",
+    )
     train.set_defaults(handler="train")
 
     eval_parser = subparsers.add_parser("eval", help="Evaluate trained residual FDM")

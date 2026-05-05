@@ -1,0 +1,40 @@
+{
+  "figure_dir": "figures/paper",
+  "tables_dir": "tables/paper",
+  "sources": {
+    "stage4_seed_summary": "results/fdm_baselines/stage4_seed_benchmark_summary.json",
+    "stage4_rollout_metrics": "results/fdm_rollout_eval/stage4_mlp_seed123_hardened_b2_omni_oracle_seed123/rollout_metrics.json",
+    "stage4_rollout_replay": "results/fdm_rollout_eval/stage4_mlp_seed123_hardened_b2_omni_oracle_seed123/rollout_replay.npz",
+    "ood_obstacle_metrics": "results/fdm_ood_eval/ood_obstacle_seed123/ood_residual_metrics.json",
+    "ood_terrain_metrics": "results/fdm_ood_eval/ood_terrain_seed123/ood_residual_metrics.json",
+    "stage5_summary": "results/stage5_d/s5_010_parallel/s5_010_official_50ep_summary.json",
+    "stage5_paired_deltas": "archive/tables/stage5/stage5_paired_episode_deltas.csv",
+    "stage5e_paired_stats": "archive/tables/stage5_e/table_s5e_paired_stats.csv",
+    "stage5e_main_results": "archive/tables/stage5_e/table_s5e_main_results.csv",
+    "stage5e_visual_summary": "results/stage5_e_risk_aware/s5_e5_two_obstacle_visual_seed123/stage5_e_visual_eval_summary.json"
+  },
+  "figures": [
+    "figures/paper/fig1_method_and_experiment_suite.svg",
+    "figures/paper/fig1_method_and_experiment_suite.png",
+    "figures/paper/fig1_method_and_experiment_suite.pdf",
+    "figures/paper/fig2_residual_fidelity_open_loop.svg",
+    "figures/paper/fig2_residual_fidelity_open_loop.png",
+    "figures/paper/fig2_residual_fidelity_open_loop.pdf",
+    "figures/paper/fig3_closed_loop_operating_modes.svg",
+    "figures/paper/fig3_closed_loop_operating_modes.png",
+    "figures/paper/fig3_closed_loop_operating_modes.pdf",
+    "figures/paper/fig4_risk_aware_closed_loop.svg",
+    "figures/paper/fig4_risk_aware_closed_loop.png",
+    "figures/paper/fig4_risk_aware_closed_loop.pdf"
+  ],
+  "tables": [
+    "tables/paper/paper_stage4_model_metrics.csv",
+    "tables/paper/paper_stage5_closed_loop_summary.csv",
+    "tables/paper/paper_stage5_paired_deltas.csv",
+    "tables/paper/paper_stage5e_main_results.csv",
+    "tables/paper/paper_stage5e_paired_stats.csv"
+  ],
+  "package": "results/final_result_package/b2_fdm_mppi_paper_figures_20260503.zip",
+  "style_reference": "https://github.com/Yuan1z0825/nature-skills/tree/main/nature-figure",
+  "runtime_claim": "Runtime is intentionally excluded from main figures because learned runtime is not improved."
+}

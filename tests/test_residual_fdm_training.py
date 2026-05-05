@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 
 def load_training_module():
@@ -103,6 +104,58 @@ def test_load_residual_fdm_dataset_builds_expected_features(tmp_path):
     assert arrays["train_targets"].shape == (32, 3)
     assert arrays["val_features"].shape == (12, 14)
     assert arrays["test_targets"].shape == (10, 3)
+
+
+def test_load_sequence_fdm_dataset_aligns_relative_future_states_and_interleaved_features(tmp_path):
+    module = load_training_module()
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    for split in ("train", "val", "test"):
+        states = np.zeros((5, 6), dtype=np.float32)
+        states[:, 0] = np.arange(5, dtype=np.float32)
+        states[:, 2] = 0.1
+        next_states = states.copy()
+        next_states[:, 0] = np.arange(1, 6, dtype=np.float32)
+        next_states[:, 1] = np.arange(10, 15, dtype=np.float32)
+        next_states[:, 2] = 0.2
+        cmd_controls = np.arange(15, dtype=np.float32).reshape(5, 3)
+        terrain_features = np.arange(20, dtype=np.float32).reshape(5, 4) / 10.0
+        terrain_risk = np.arange(5, dtype=np.float32) / 10.0
+        np.savez(
+            dataset_dir / f"{split}.npz",
+            states=states,
+            next_states=next_states,
+            cmd_controls=cmd_controls,
+            real_controls=cmd_controls,
+            exec_residuals=np.zeros((5, 3), dtype=np.float32),
+            oracle_residuals=np.zeros((5, 3), dtype=np.float32),
+            terrain_features=terrain_features,
+            terrain_risk=terrain_risk,
+            episode_ids=np.zeros(5, dtype=np.int64),
+            steps=np.arange(5, dtype=np.int64),
+        )
+
+    arrays = module.load_sequence_fdm_dataset(dataset_dir, sequence_horizon=3)
+
+    features = arrays["train_features"]
+    targets = arrays["train_targets"]
+    assert features.shape == (2, 6 + 3 + 3 * 8)
+    assert targets.shape == (2, 12)
+    np.testing.assert_allclose(
+        targets[0].reshape(3, 4),
+        np.asarray(
+            [
+                [1.0, 10.0, 0.1, 0.1],
+                [2.0, 11.0, 0.1, 0.2],
+                [3.0, 12.0, 0.1, 0.3],
+            ],
+            dtype=np.float32,
+        ),
+        atol=1e-6,
+    )
+    per_step = features[0, 9:].reshape(3, 8)
+    assert per_step[0] == pytest.approx([0.0, 1.0, 2.0, 0.0, 0.1, 0.2, 0.3, 0.0], abs=1e-6)
+    assert per_step[1] == pytest.approx([3.0, 4.0, 5.0, 0.0, 0.1, 0.2, 0.3, 0.0], abs=1e-6)
 
 
 def test_train_residual_fdm_writes_checkpoint_and_metrics(tmp_path):

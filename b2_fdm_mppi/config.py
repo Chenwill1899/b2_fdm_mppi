@@ -27,7 +27,11 @@ def validate_config(config: dict[str, Any]) -> None:
 
     state_dim = int(config["mppi"].get("state_dim", 0))
     control_dim = int(config["mppi"].get("control_dim", 0))
-    _require_len(config["simulation"].get("goal"), state_dim, "simulation.goal")
+    goal = config["simulation"].get("goal")
+    if goal is None and (_external_path_only(config) or _runtime_goal_required(config)):
+        pass
+    else:
+        _require_len(goal, state_dim, "simulation.goal")
     _require_len(config["simulation"].get("initial_state"), state_dim, "simulation.initial_state")
     _require_len(config["mppi"].get("weights"), state_dim, "mppi.weights")
     _require_len(config["mppi"].get("std_normal"), control_dim, "mppi.std_normal")
@@ -56,3 +60,14 @@ def _deep_update(target: dict[str, Any], source: dict[str, Any]) -> None:
 def _require_len(value: Any, expected: int, name: str) -> None:
     if not isinstance(value, list) or len(value) != expected:
         raise ValueError(f"{name} must be a list with {expected} values")
+
+
+def _external_path_only(config: dict[str, Any]) -> bool:
+    return bool(config.get("external_path", {}).get("enabled", False)) and bool(
+        config.get("simulation", {}).get("disable_goal_termination", False)
+    )
+
+
+def _runtime_goal_required(config: dict[str, Any]) -> bool:
+    goal_topic = config.get("goal_topic", {})
+    return bool(goal_topic.get("enabled", False)) and bool(goal_topic.get("required", False))

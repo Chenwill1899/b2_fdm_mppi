@@ -1,0 +1,32 @@
+# Static variant of ausim2's Scout dynamic obstacle generator scene.
+#
+# Used with:
+#   /home/mexxiie/prj/ausim2/third_party/dynamic_obs_generator/generate_scene_obstacles.py \
+#     --sim-config /home/mexxiie/prj/ausim2/ground_vehicle/cfg/sim_config.yaml \
+#     --robot-config /home/mexxiie/prj/ausim2/ground_vehicle/cfg/robot/scout_v2_config.yaml \
+#     --obstacle-config configs/ausim_scout_static_random_obstacles.yaml
+
+random_seed: 119
+dynamic: false
+collision_enabled: true
+debug: false
+mode: "2d"
+
+radius: 0.3
+box_size: 0.3
+
+range:
+  x_min: 0.5
+  x_max: 20.5
+  y_min: -5.0
+  y_max: 5.0
+  z_min: 0.0
+  z_max: 1.5
+
+obstacle_count: 20
+
+min_speed: 0.0
+max_speed: 0.0
+
+update_threads: 0
+parallel_threshold: 16

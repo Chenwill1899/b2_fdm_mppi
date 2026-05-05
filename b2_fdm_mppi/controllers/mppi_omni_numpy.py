@@ -35,6 +35,12 @@ class MppiOmniNumpy:
         yaw_rate_weight: float = 0.0,
         accel_weight: float = 0.0,
         jerk_weight: float = 0.0,
+        path_tracking_weight: float = 0.0,
+        path_tracking_tolerance: float = 0.3,
+        path_progress_weight: float = 0.0,
+        goal_progress_weight: float = 0.0,
+        heading_to_goal_weight: float = 0.0,
+        heading_to_goal_min_distance: float = 0.3,
         terrain: TerrainField | None = None,
         terrain_risk_weight: float = 0.0,
         terrain_risk_power: float = 2.0,
@@ -64,6 +70,12 @@ class MppiOmniNumpy:
         self.yaw_rate_weight = float(yaw_rate_weight)
         self.accel_weight = float(accel_weight)
         self.jerk_weight = float(jerk_weight)
+        self.path_tracking_weight = float(path_tracking_weight)
+        self.path_tracking_tolerance = float(path_tracking_tolerance)
+        self.path_progress_weight = float(path_progress_weight)
+        self.goal_progress_weight = float(goal_progress_weight)
+        self.heading_to_goal_weight = float(heading_to_goal_weight)
+        self.heading_to_goal_min_distance = float(max(heading_to_goal_min_distance, 0.0))
         self.terrain = terrain if terrain is not None else TerrainField()
         self.terrain_risk_weight = float(terrain_risk_weight)
         self.terrain_risk_power = float(terrain_risk_power)
@@ -119,6 +131,27 @@ class MppiOmniNumpy:
             yaw_rate_weight=float(overrides.get("yaw_rate_weight", mppi.get("yaw_rate_weight", 0.0))),
             accel_weight=float(overrides.get("accel_weight", mppi.get("accel_weight", 0.0))),
             jerk_weight=float(overrides.get("jerk_weight", mppi.get("jerk_weight", 0.0))),
+            path_tracking_weight=float(
+                overrides.get("path_tracking_weight", mppi.get("path_tracking_weight", 0.0))
+            ),
+            path_tracking_tolerance=float(
+                overrides.get("path_tracking_tolerance", mppi.get("path_tracking_tolerance", 0.3))
+            ),
+            path_progress_weight=float(
+                overrides.get("path_progress_weight", mppi.get("path_progress_weight", 0.0))
+            ),
+            goal_progress_weight=float(
+                overrides.get("goal_progress_weight", mppi.get("goal_progress_weight", 0.0))
+            ),
+            heading_to_goal_weight=float(
+                overrides.get("heading_to_goal_weight", mppi.get("heading_to_goal_weight", 0.0))
+            ),
+            heading_to_goal_min_distance=float(
+                overrides.get(
+                    "heading_to_goal_min_distance",
+                    mppi.get("heading_to_goal_min_distance", 0.3),
+                )
+            ),
             terrain=terrain,
             terrain_risk_weight=float(overrides.get("terrain_risk_weight", mppi.get("terrain_risk_weight", 0.0))),
             terrain_risk_power=float(overrides.get("terrain_risk_power", mppi.get("terrain_risk_power", 2.0))),
@@ -135,6 +168,8 @@ class MppiOmniNumpy:
     def compute_control(self, state: np.ndarray, cost_params):
         goal = np.asarray(cost_params[3], dtype=np.float32)
         obstacles = np.asarray(cost_params[4], dtype=np.float32).reshape(-1, 7)
+        path = self._path_from_cost_params(cost_params)
+        costmap = self._costmap_from_cost_params(cost_params)
         noise = self.rng.normal(
             loc=0.0,
             scale=self.noise_std,
@@ -145,7 +180,7 @@ class MppiOmniNumpy:
             -self.max_control,
             self.max_control,
         )
-        costs = self.trajectory_cost_batch(state, candidates, goal, obstacles)
+        costs = self.trajectory_cost_batch(state, candidates, goal, obstacles, path, costmap=costmap)
         min_cost = float(np.min(costs))
         weights = np.exp(-(costs - min_cost) / max(self.lambda_, 1e-6))
         normalizer = float(np.sum(weights))
@@ -170,6 +205,8 @@ class MppiOmniNumpy:
         controls: np.ndarray,
         goal: np.ndarray,
         obstacles: np.ndarray,
+        path: np.ndarray | None = None,
+        costmap: dict | None = None,
     ) -> float:
         states, real_controls = self._rollout_batch(
             initial_state,
@@ -194,7 +231,12 @@ class MppiOmniNumpy:
         lateral_cost = self.lateral_weight * float(np.sum(real_controls[:, 1] * real_controls[:, 1]))
         yaw_rate_cost = self.yaw_rate_weight * float(np.sum(real_controls[:, 2] * real_controls[:, 2]))
         obstacle_cost = self._obstacle_cost(states[1:], obstacles)
+        path_tracking_cost = self._path_tracking_cost(states[1:], path)
+        path_progress_cost = float(self._path_progress_cost_batch(initial_state, final_state[None, :], path)[0])
+        goal_progress_cost = float(self._goal_progress_cost_batch(initial_state, final_state[None, :], goal)[0])
+        heading_to_goal_cost = float(self._heading_to_goal_cost_batch(states[None, 1:, :], goal)[0])
         terrain_risk_cost = self._terrain_risk_cost(states[1:])
+        local_costmap_cost = float(self._local_costmap_cost_batch(initial_state, states[None, 1:, :], costmap)[0])
         return (
             goal_cost
             + yaw_cost
@@ -205,7 +247,12 @@ class MppiOmniNumpy:
             + lateral_cost
             + yaw_rate_cost
             + obstacle_cost
+            + path_tracking_cost
+            + path_progress_cost
+            + goal_progress_cost
+            + heading_to_goal_cost
             + terrain_risk_cost
+            + local_costmap_cost
         )
 
     def trajectory_cost_batch(
@@ -214,6 +261,8 @@ class MppiOmniNumpy:
         controls: np.ndarray,
         goal: np.ndarray,
         obstacles: np.ndarray,
+        path: np.ndarray | None = None,
+        costmap: dict | None = None,
     ) -> np.ndarray:
         states, real_controls = self._rollout_batch(initial_state, controls, return_controls=True)
         final_states = states[:, -1, :]
@@ -236,7 +285,12 @@ class MppiOmniNumpy:
         lateral_cost = self.lateral_weight * np.sum(real_controls[:, :, 1] * real_controls[:, :, 1], axis=1)
         yaw_rate_cost = self.yaw_rate_weight * np.sum(real_controls[:, :, 2] * real_controls[:, :, 2], axis=1)
         obstacle_cost = self._obstacle_cost_batch(states[:, 1:, :], obstacles)
+        path_tracking_cost = self._path_tracking_cost_batch(states[:, 1:, :], path)
+        path_progress_cost = self._path_progress_cost_batch(initial_state, states[:, -1, :], path)
+        goal_progress_cost = self._goal_progress_cost_batch(initial_state, states[:, -1, :], goal)
+        heading_to_goal_cost = self._heading_to_goal_cost_batch(states[:, 1:, :], goal)
         terrain_risk_cost = self._terrain_risk_cost_batch(states[:, 1:, :])
+        local_costmap_cost = self._local_costmap_cost_batch(initial_state, states[:, 1:, :], costmap)
         return (
             goal_cost
             + yaw_cost
@@ -247,7 +301,12 @@ class MppiOmniNumpy:
             + lateral_cost
             + yaw_rate_cost
             + obstacle_cost
+            + path_tracking_cost
+            + path_progress_cost
+            + goal_progress_cost
+            + heading_to_goal_cost
             + terrain_risk_cost
+            + local_costmap_cost
         ).astype(np.float32)
 
     def _rollout_batch(
@@ -327,6 +386,171 @@ class MppiOmniNumpy:
                 soft_margin = np.where(clearance > self.safety_dist, soft_margin, 0.0)
                 costs += self.obstacle_soft_weight * np.sum(soft_margin * soft_margin, axis=1)
         return costs
+
+    def _path_tracking_cost(self, states: np.ndarray, path: np.ndarray | None) -> float:
+        return float(self._path_tracking_cost_batch(np.asarray(states, dtype=np.float32)[None, :, :], path)[0])
+
+    def _path_tracking_cost_batch(self, states: np.ndarray, path: np.ndarray | None) -> np.ndarray:
+        costs = np.zeros(states.shape[0], dtype=np.float32)
+        if self.path_tracking_weight <= 0.0:
+            return costs
+        path_arr = np.asarray(path if path is not None else [], dtype=np.float32).reshape(-1, 2)
+        if len(path_arr) < 2:
+            return costs
+        points = np.asarray(states, dtype=np.float32)[:, :, :2]
+        min_sq = np.full(points.shape[:2], np.inf, dtype=np.float32)
+        for start, end in zip(path_arr[:-1], path_arr[1:]):
+            segment = end - start
+            denom = float(np.dot(segment, segment))
+            if denom <= 1e-9:
+                diff = points - start
+            else:
+                rel = points - start
+                t = np.clip(np.sum(rel * segment, axis=2) / denom, 0.0, 1.0)
+                projection = start + t[:, :, None] * segment
+                diff = points - projection
+            min_sq = np.minimum(min_sq, np.sum(diff * diff, axis=2))
+        distance = np.sqrt(np.maximum(min_sq, 0.0))
+        excess = np.maximum(distance - self.path_tracking_tolerance, 0.0)
+        return (self.path_tracking_weight * np.sum(excess * excess, axis=1)).astype(np.float32)
+
+    def _path_progress_cost_batch(
+        self,
+        initial_state: np.ndarray,
+        final_states: np.ndarray,
+        path: np.ndarray | None,
+    ) -> np.ndarray:
+        final_states = np.asarray(final_states, dtype=np.float32).reshape(-1, 6)
+        costs = np.zeros(final_states.shape[0], dtype=np.float32)
+        if self.path_progress_weight <= 0.0:
+            return costs
+        path_arr = np.asarray(path if path is not None else [], dtype=np.float32).reshape(-1, 2)
+        if len(path_arr) < 2:
+            return costs
+        start_progress = self._path_progress_values(
+            np.asarray(initial_state, dtype=np.float32).reshape(6)[None, :2],
+            path_arr,
+        )[0]
+        final_progress = self._path_progress_values(final_states[:, :2], path_arr)
+        return (-self.path_progress_weight * (final_progress - start_progress)).astype(np.float32)
+
+    @staticmethod
+    def _path_progress_values(points: np.ndarray, path: np.ndarray) -> np.ndarray:
+        points = np.asarray(points, dtype=np.float32).reshape(-1, 2)
+        path = np.asarray(path, dtype=np.float32).reshape(-1, 2)
+        if len(path) < 2:
+            return np.zeros(points.shape[0], dtype=np.float32)
+        segment_lengths = np.linalg.norm(np.diff(path, axis=0), axis=1).astype(np.float32)
+        cumulative = np.concatenate([[0.0], np.cumsum(segment_lengths)]).astype(np.float32)
+        best_sq = np.full(points.shape[0], np.inf, dtype=np.float32)
+        best_progress = np.zeros(points.shape[0], dtype=np.float32)
+        for idx, (start, end) in enumerate(zip(path[:-1], path[1:])):
+            segment = end - start
+            denom = float(np.dot(segment, segment))
+            if denom <= 1e-9:
+                projection = np.broadcast_to(start, points.shape)
+                t = np.zeros(points.shape[0], dtype=np.float32)
+            else:
+                rel = points - start
+                t = np.clip(np.sum(rel * segment, axis=1) / denom, 0.0, 1.0).astype(np.float32)
+                projection = start + t[:, None] * segment
+            sq = np.sum((points - projection) ** 2, axis=1)
+            update = sq < best_sq
+            best_sq[update] = sq[update]
+            best_progress[update] = cumulative[idx] + t[update] * segment_lengths[idx]
+        return best_progress.astype(np.float32)
+
+    def _goal_progress_cost_batch(
+        self,
+        initial_state: np.ndarray,
+        final_states: np.ndarray,
+        goal: np.ndarray,
+    ) -> np.ndarray:
+        final_states = np.asarray(final_states, dtype=np.float32).reshape(-1, 6)
+        costs = np.zeros(final_states.shape[0], dtype=np.float32)
+        if self.goal_progress_weight <= 0.0:
+            return costs
+        start_xy = np.asarray(initial_state, dtype=np.float32).reshape(6)[:2]
+        goal_xy = np.asarray(goal, dtype=np.float32).reshape(-1)[:2]
+        start_distance = float(np.linalg.norm(goal_xy - start_xy))
+        final_distance = np.linalg.norm(goal_xy[None, :] - final_states[:, :2], axis=1)
+        return (-self.goal_progress_weight * (start_distance - final_distance)).astype(np.float32)
+
+    def _heading_to_goal_cost_batch(self, states: np.ndarray, goal: np.ndarray) -> np.ndarray:
+        states = np.asarray(states, dtype=np.float32)
+        costs = np.zeros(states.shape[0], dtype=np.float32)
+        if self.heading_to_goal_weight <= 0.0:
+            return costs
+        goal_xy = np.asarray(goal, dtype=np.float32).reshape(-1)[:2]
+        vectors = goal_xy[None, None, :] - states[:, :, :2]
+        distances = np.linalg.norm(vectors, axis=2)
+        active = distances > self.heading_to_goal_min_distance
+        if not np.any(active):
+            return costs
+        target_yaw = np.arctan2(vectors[:, :, 1], vectors[:, :, 0])
+        heading_error = self._angle_diff_array(states[:, :, 2], target_yaw)
+        terms = np.where(active, heading_error * heading_error, 0.0)
+        return (self.heading_to_goal_weight * np.sum(terms, axis=1)).astype(np.float32)
+
+    @staticmethod
+    def _path_from_cost_params(cost_params) -> np.ndarray:
+        if len(cost_params) <= 6 or cost_params[6] is None:
+            return np.empty((0, 2), dtype=np.float32)
+        return np.asarray(cost_params[6], dtype=np.float32).reshape(-1, 2)
+
+    @staticmethod
+    def _costmap_from_cost_params(cost_params) -> dict | None:
+        if len(cost_params) <= 7:
+            return None
+        candidate = cost_params[7]
+        if not isinstance(candidate, dict) or not bool(candidate.get("enabled", False)):
+            return None
+        return candidate
+
+    def _local_costmap_cost_batch(
+        self,
+        initial_state: np.ndarray,
+        states: np.ndarray,
+        costmap: dict | None,
+    ) -> np.ndarray:
+        states = np.asarray(states, dtype=np.float32)
+        costs = np.zeros(states.shape[0], dtype=np.float32)
+        if not costmap or not bool(costmap.get("enabled", False)):
+            return costs
+        width = int(costmap.get("width", 0))
+        height = int(costmap.get("height", 0))
+        resolution = float(costmap.get("resolution", 0.0))
+        if width <= 0 or height <= 0 or resolution <= 0.0:
+            return costs
+        data = np.asarray(costmap.get("data", []), dtype=np.float32).reshape(-1)
+        if data.size != width * height:
+            return costs
+        origin = np.asarray(costmap.get("origin", [0.0, 0.0]), dtype=np.float32).reshape(2)
+        points = states[:, :, :2]
+        ix = np.floor((points[:, :, 0] - origin[0]) / resolution).astype(np.int64)
+        iy = np.floor((points[:, :, 1] - origin[1]) / resolution).astype(np.int64)
+        valid = (ix >= 0) & (ix < width) & (iy >= 0) & (iy < height)
+        sampled = np.full(points.shape[:2], float(costmap.get("unknown_cost", 100.0)), dtype=np.float32)
+        sampled_unknown = np.ones(points.shape[:2], dtype=bool)
+        if np.any(valid):
+            flat_idx = iy[valid] * width + ix[valid]
+            sampled[valid] = data[flat_idx]
+            unknown_mask = np.asarray(costmap.get("unknown_mask", np.zeros_like(data, dtype=bool)), dtype=bool).reshape(-1)
+            if unknown_mask.size == data.size:
+                sampled_unknown[valid] = unknown_mask[flat_idx]
+            else:
+                sampled_unknown[valid] = False
+        clear_radius = float(costmap.get("unknown_clear_radius", 0.0))
+        if clear_radius > 0.0 and np.any(sampled_unknown):
+            start_xy = np.asarray(initial_state, dtype=np.float32).reshape(6)[:2]
+            distance_from_start = np.linalg.norm(points - start_xy[None, None, :], axis=2)
+            clear_mask = sampled_unknown & (distance_from_start <= clear_radius)
+            if np.any(clear_mask):
+                sampled[clear_mask] = float(costmap.get("unknown_clear_value", 0.0))
+        max_cost = max(float(costmap.get("max_cost", 100.0)), 1e-6)
+        normalized = np.clip(sampled, 0.0, max_cost) / max_cost
+        terms = np.power(normalized, max(float(costmap.get("power", 2.0)), 0.1))
+        return (float(costmap.get("weight", 0.0)) * np.sum(terms, axis=1)).astype(np.float32)
 
     def _terrain_risk_cost(self, states: np.ndarray) -> float:
         return float(self._terrain_risk_cost_batch(np.asarray(states, dtype=np.float32)[None, :, :])[0])

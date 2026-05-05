@@ -82,6 +82,27 @@ class LearnedFdmMppiOmniNumpy(MppiOmniNumpy):
             yaw_rate_weight=float(overrides.get("yaw_rate_weight", mppi.get("yaw_rate_weight", 0.0))),
             accel_weight=float(overrides.get("accel_weight", mppi.get("accel_weight", 0.0))),
             jerk_weight=float(overrides.get("jerk_weight", mppi.get("jerk_weight", 0.0))),
+            path_tracking_weight=float(
+                overrides.get("path_tracking_weight", mppi.get("path_tracking_weight", 0.0))
+            ),
+            path_tracking_tolerance=float(
+                overrides.get("path_tracking_tolerance", mppi.get("path_tracking_tolerance", 0.3))
+            ),
+            path_progress_weight=float(
+                overrides.get("path_progress_weight", mppi.get("path_progress_weight", 0.0))
+            ),
+            goal_progress_weight=float(
+                overrides.get("goal_progress_weight", mppi.get("goal_progress_weight", 0.0))
+            ),
+            heading_to_goal_weight=float(
+                overrides.get("heading_to_goal_weight", mppi.get("heading_to_goal_weight", 0.0))
+            ),
+            heading_to_goal_min_distance=float(
+                overrides.get(
+                    "heading_to_goal_min_distance",
+                    mppi.get("heading_to_goal_min_distance", 0.3),
+                )
+            ),
             terrain=terrain,
             terrain_risk_weight=float(overrides.get("terrain_risk_weight", mppi.get("terrain_risk_weight", 0.0))),
             terrain_risk_power=float(overrides.get("terrain_risk_power", mppi.get("terrain_risk_power", 2.0))),

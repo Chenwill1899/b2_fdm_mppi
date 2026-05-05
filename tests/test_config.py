@@ -15,6 +15,16 @@ def test_default_config_loads_required_groups():
     assert config["results"]["enable_animation"] is True
 
 
+def test_external_path_base_can_omit_fixed_goal():
+    config = load_config(Path("configs/mujoco_external_path_base.yaml"))
+
+    assert "goal" not in config["simulation"]
+    assert config["simulation"]["disable_goal_termination"] is True
+    assert config["external_path"]["enabled"] is True
+    assert config["obstacles"]["virtual"] == []
+    assert config["mppi"]["obstacle_weight"] == pytest.approx(0.0)
+
+
 def test_short_goal_baseline_config_loads_stage0_parameters():
     config = load_config(Path("config/fdm_mppi_baseline_short.yaml"))
 

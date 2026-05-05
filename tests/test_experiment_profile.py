@@ -24,6 +24,7 @@ def write_profile(path: Path) -> Path:
             "world_mode": "oracle",
             "max_steps": 30,
             "minimum_distance": 0.35,
+            "goal_termination_distance": 0.2,
             "obstacles": {
                 "virtual": [[1.0, 0.2, 0.25, 0.0, 0.0, 0.0, 0.0]],
                 "static_enabled": True,
@@ -52,6 +53,13 @@ def write_profile(path: Path) -> Path:
             },
         ],
         "default_controller": "nominal_cuda",
+        "mujoco": {"drive_mode": "omni_freejoint", "odom_timeout": 2.0},
+        "global_path": {"enabled": True, "resolution": 0.25},
+        "external_path": {"enabled": True, "path_topic": "/smooth_path", "lookahead": 2.0},
+        "local_goal": {"enabled": True, "lookahead": 5.0},
+        "final_controller": {"enabled": True, "trigger_distance": 2.0},
+        "command_filter": {"enabled": True, "alpha": 0.4},
+        "rviz": {"enabled": True, "sample_count": 50, "robot_topic": "/fdm_mppi/cube_robot"},
         "visualization": {"plots": True, "animation": False, "terrain_grid_resolution": 24},
     }
     path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
@@ -76,9 +84,26 @@ def test_build_experiment_config_maps_scene_controller_model_and_visuals(tmp_pat
     assert config["simulation"]["goal"] == [2.0, 0.5, 0.0, 0.0, 0.0, 0.0]
     assert config["simulation"]["max_steps"] == 30
     assert config["simulation"]["minimum_distance"] == 0.35
+    assert config["simulation"]["goal_termination_distance"] == pytest.approx(0.2)
     assert config["obstacles"]["virtual"] == [[1.0, 0.2, 0.25, 0.0, 0.0, 0.0, 0.0]]
     assert config["terrain"]["friction_base"] == 0.65
     assert config["terrain"]["goal_relief"]["center"] == [2.0, 0.5]
+    assert config["mujoco"]["drive_mode"] == "omni_freejoint"
+    assert config["mujoco"]["odom_timeout"] == pytest.approx(2.0)
+    assert config["global_path"]["enabled"] is True
+    assert config["global_path"]["resolution"] == pytest.approx(0.25)
+    assert config["external_path"]["enabled"] is True
+    assert config["external_path"]["path_topic"] == "/smooth_path"
+    assert config["external_path"]["lookahead"] == pytest.approx(2.0)
+    assert config["local_goal"]["enabled"] is True
+    assert config["local_goal"]["lookahead"] == pytest.approx(5.0)
+    assert config["final_controller"]["enabled"] is True
+    assert config["final_controller"]["trigger_distance"] == pytest.approx(2.0)
+    assert config["command_filter"]["enabled"] is True
+    assert config["command_filter"]["alpha"] == pytest.approx(0.4)
+    assert config["rviz"]["enabled"] is True
+    assert config["rviz"]["sample_count"] == 50
+    assert config["rviz"]["robot_topic"] == "/fdm_mppi/cube_robot"
     assert config["visualization"]["terrain_grid_resolution"] == 24
     assert config["mppi"]["backend"] == "torch"
     assert config["mppi"]["num_trajectories"] == 32

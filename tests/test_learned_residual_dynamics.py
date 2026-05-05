@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from b2_fdm_mppi.core.learned_residual_dynamics import LearnedResidualDynamics
+from b2_fdm_mppi.core.learned_residual_dynamics import LearnedResidualDynamics, LearnedSequenceResidualDynamics
 from b2_fdm_mppi.core.omni_b2 import OmniB2
 from b2_fdm_mppi.core.residual_fdm_model import FEATURE_NAMES, TARGET_NAMES, ResidualFdmMlp
 from b2_fdm_mppi.core.terrain import TerrainField
@@ -94,3 +94,82 @@ def test_learned_residual_dynamics_rejects_schema_mismatch(tmp_path):
 
     with pytest.raises(ValueError, match="input_dim"):
         LearnedResidualDynamics.from_artifacts(tmp_path, robot=robot, terrain=terrain, device="cpu")
+
+
+class CaptureSequenceModel(torch.nn.Module):
+    def __init__(self, horizon: int) -> None:
+        super().__init__()
+        self.horizon = int(horizon)
+        self.captured: torch.Tensor | None = None
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        self.captured = features.detach().cpu()
+        return torch.zeros((features.shape[0], self.horizon * 4), dtype=features.dtype, device=features.device)
+
+
+def test_learned_sequence_dynamics_builds_interleaved_runtime_features(tmp_path):
+    horizon = 2
+    model = CaptureSequenceModel(horizon)
+    dynamics = LearnedSequenceResidualDynamics(
+        model=model,
+        robot=OmniB2(dt=0.1, max_vx=1.0, max_vy=0.5, max_wz=0.4),
+        terrain=TerrainField(enabled=False),
+        feature_mean=np.zeros(6 + 3 + horizon * 8, dtype=np.float32),
+        feature_std=np.ones(6 + 3 + horizon * 8, dtype=np.float32),
+        target_mean=np.zeros(horizon * 4, dtype=np.float32),
+        target_std=np.ones(horizon * 4, dtype=np.float32),
+        sequence_horizon=horizon,
+        include_history_controls=True,
+        history_steps=1,
+        device=torch.device("cpu"),
+        checkpoint_path=tmp_path / "best_model.pt",
+        normalization_path=tmp_path / "normalization.npz",
+    )
+    states = torch.tensor([[1.0, 2.0, 0.3, 0.4, 0.5, 0.6]], dtype=torch.float32)
+    commands = torch.tensor([[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]], dtype=torch.float32)
+    history = torch.tensor([[0.7, 0.8, 0.9]], dtype=torch.float32)
+    terrain_features = torch.tensor([[0.01, 0.02, 0.03, 0.04]], dtype=torch.float32)
+    terrain_risk = torch.tensor([0.25], dtype=torch.float32)
+
+    dynamics.predict_sequence_batch_torch(
+        states=states,
+        command_sequences=commands,
+        history=history,
+        terrain_features=terrain_features,
+        terrain_risk=terrain_risk,
+    )
+
+    assert model.captured is not None
+    expected = torch.tensor(
+        [
+            [
+                1.0,
+                2.0,
+                0.3,
+                0.4,
+                0.5,
+                0.6,
+                0.7,
+                0.8,
+                0.9,
+                0.1,
+                0.2,
+                0.3,
+                0.01,
+                0.02,
+                0.03,
+                0.04,
+                0.25,
+                0.4,
+                0.5,
+                0.6,
+                0.01,
+                0.02,
+                0.03,
+                0.04,
+                0.25,
+            ]
+        ],
+        dtype=torch.float32,
+    )
+    assert torch.allclose(model.captured, expected, atol=1e-6)

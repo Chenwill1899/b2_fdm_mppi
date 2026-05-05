@@ -57,8 +57,8 @@ scenario:
     # Example static obstacles:
     virtual:
       - [3.0, -0.5, 0.4, 0.0, 0.0, 0.0, 0.0]
-      - [8.0, 1.0, 0.4, 0.0, 0.0, 0.0, 0.0]
-      - [15.0, 2.0, 0.4, 0.0, 0.0, 0.0, 0.0]
+      - [8.0, 1.2, 0.4, 0.0, 0.0, 0.0, 0.0]
+      - [14.5, 0.5, 0.4, 0.0, 0.0, 0.0, 0.0]
     #
     # Example random obstacles:
     # random_enabled: true
@@ -116,6 +116,24 @@ controllers:
       normalization: normalization.npz
       device: cuda
       residual_gain: 1.0
+  - name: learned_sequence_torch
+    # Learned sequence FDM controller: MPPI cost is evaluated on predicted full trajectory
+    # and terrain-risk sequence for each sampled control sequence.
+    method: learned_fdm
+    backend: torch
+    mppi:
+      num_trajectories: 128
+      draw_num_traj: 20
+    learned_fdm:
+      model_dir: results/fdm_baselines/sequence_demo_seed123
+      checkpoint: best_model.pt
+      normalization: normalization.npz
+      device: cuda
+      residual_gain: 1.0
+      mode: sequence
+      sequence_horizon: 25
+      sequence_include_history: true
+      sequence_history_steps: 1
 
 visualization:
   # plots=true writes trajectory.png and oracle_diagnostics.png.

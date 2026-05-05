@@ -7,35 +7,37 @@ from b2_fdm_mppi.core.omni_b2 import OmniB2
 from b2_fdm_mppi.core.terrain import TerrainField
 
 
-def make_controller(seed=1, num_samples=64, horizon_steps=8):
-    return MppiOmniNumpy(
-        dt=0.1,
-        horizon_steps=horizon_steps,
-        num_samples=num_samples,
-        lambda_=0.5,
-        noise_std=np.array([0.25, 0.15, 0.25], dtype=np.float32),
-        max_vx=1.5,
-        max_vy=0.5,
-        max_wz=1.0,
-        goal_xy_weight=8.0,
-        yaw_weight=0.2,
-        control_weight=0.01,
-        smooth_weight=0.2,
-        obstacle_weight=25.0,
-        obstacle_soft_weight=0.0,
-        obstacle_influence_dist=0.0,
-        max_ax=0.8,
-        max_ay=0.5,
-        max_awz=1.2,
-        velocity_lag_beta=0.35,
-        lateral_weight=0.2,
-        yaw_rate_weight=0.05,
-        accel_weight=0.5,
-        jerk_weight=0.0,
-        robot_radius=0.6,
-        safety_dist=0.3,
-        seed=seed,
-    )
+def make_controller(seed=1, num_samples=64, horizon_steps=8, **overrides):
+    params = {
+        "dt": 0.1,
+        "horizon_steps": horizon_steps,
+        "num_samples": num_samples,
+        "lambda_": 0.5,
+        "noise_std": np.array([0.25, 0.15, 0.25], dtype=np.float32),
+        "max_vx": 1.5,
+        "max_vy": 0.5,
+        "max_wz": 1.0,
+        "goal_xy_weight": 8.0,
+        "yaw_weight": 0.2,
+        "control_weight": 0.01,
+        "smooth_weight": 0.2,
+        "obstacle_weight": 25.0,
+        "obstacle_soft_weight": 0.0,
+        "obstacle_influence_dist": 0.0,
+        "max_ax": 0.8,
+        "max_ay": 0.5,
+        "max_awz": 1.2,
+        "velocity_lag_beta": 0.35,
+        "lateral_weight": 0.2,
+        "yaw_rate_weight": 0.05,
+        "accel_weight": 0.5,
+        "jerk_weight": 0.0,
+        "robot_radius": 0.6,
+        "safety_dist": 0.3,
+        "seed": seed,
+    }
+    params.update(overrides)
+    return MppiOmniNumpy(**params)
 
 
 def test_omni_mppi_returns_three_dimensional_limited_control():
@@ -205,6 +207,246 @@ def test_omni_mppi_jerk_cost_penalizes_real_velocity_oscillation():
 
     assert controller.trajectory_cost(state, oscillating, goal, obstacles) > controller.trajectory_cost(
         state, steady, goal, obstacles
+    )
+
+
+def test_omni_mppi_path_tracking_cost_penalizes_cross_track_error():
+    controller = make_controller(seed=16, num_samples=2, horizon_steps=5)
+    controller.goal_xy_weight = 0.0
+    controller.yaw_weight = 0.0
+    controller.control_weight = 0.0
+    controller.smooth_weight = 0.0
+    controller.accel_weight = 0.0
+    controller.lateral_weight = 0.0
+    controller.yaw_rate_weight = 0.0
+    controller.jerk_weight = 0.0
+    controller.path_tracking_weight = 10.0
+    controller.path_tracking_tolerance = 0.0
+    on_path = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    on_path[:, 0] = 0.8
+    off_path = on_path.copy()
+    off_path[:, 1] = 0.5
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+    path = np.array([[0.0, 0.0], [2.0, 0.0]], dtype=np.float32)
+
+    assert controller.trajectory_cost(state, off_path, goal, obstacles, path) > controller.trajectory_cost(
+        state, on_path, goal, obstacles, path
+    )
+
+
+def test_omni_mppi_path_tracking_weight_zero_preserves_batch_cost():
+    controller = make_controller(seed=17, num_samples=2, horizon_steps=5)
+    controller.path_tracking_weight = 0.0
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([2.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+    controls = np.zeros((2, controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, 0] = 0.8
+    controls[1, :, 1] = 0.4
+    path = np.array([[0.0, 0.0], [2.0, 0.0]], dtype=np.float32)
+
+    without_path = controller.trajectory_cost_batch(state, controls, goal, obstacles)
+    with_path = controller.trajectory_cost_batch(state, controls, goal, obstacles, path)
+
+    assert with_path == pytest.approx(without_path)
+
+
+def test_omni_mppi_local_costmap_penalizes_high_cost_cells():
+    controller = make_controller(
+        seed=19,
+        num_samples=2,
+        horizon_steps=4,
+        max_ax=1000.0,
+        max_ay=1000.0,
+        velocity_lag_beta=0.0,
+    )
+    controller.goal_xy_weight = 0.0
+    controller.yaw_weight = 0.0
+    controller.control_weight = 0.0
+    controller.smooth_weight = 0.0
+    controller.accel_weight = 0.0
+    controller.lateral_weight = 0.0
+    controller.yaw_rate_weight = 0.0
+    controller.jerk_weight = 0.0
+    controller.path_tracking_weight = 0.0
+    controller.path_progress_weight = 0.0
+    data = np.zeros((3, 6), dtype=np.float32)
+    data[0, :] = 100.0
+    costmap = {
+        "enabled": True,
+        "origin": np.array([0.0, -0.05], dtype=np.float32),
+        "resolution": 0.1,
+        "width": 6,
+        "height": 3,
+        "data": data.reshape(-1),
+        "weight": 20.0,
+        "power": 2.0,
+        "unknown_cost": 100.0,
+        "max_cost": 100.0,
+    }
+    straight = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    straight[:, 0] = 1.0
+    lateral = straight.copy()
+    lateral[:, 1] = 0.5
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    straight_cost = controller.trajectory_cost(state, straight, goal, obstacles, costmap=costmap)
+    lateral_cost = controller.trajectory_cost(state, lateral, goal, obstacles, costmap=costmap)
+
+    assert straight_cost > lateral_cost
+
+
+def test_omni_mppi_local_costmap_treats_out_of_bounds_as_unknown_cost():
+    controller = make_controller(
+        seed=20,
+        num_samples=2,
+        horizon_steps=4,
+        max_ax=1000.0,
+        max_ay=1000.0,
+        velocity_lag_beta=0.0,
+    )
+    controller.goal_xy_weight = 0.0
+    controller.yaw_weight = 0.0
+    controller.control_weight = 0.0
+    controller.smooth_weight = 0.0
+    controller.accel_weight = 0.0
+    controller.lateral_weight = 0.0
+    controller.yaw_rate_weight = 0.0
+    controller.jerk_weight = 0.0
+    costmap = {
+        "enabled": True,
+        "origin": np.array([0.0, -0.1], dtype=np.float32),
+        "resolution": 0.2,
+        "width": 2,
+        "height": 2,
+        "data": np.zeros(4, dtype=np.float32),
+        "weight": 10.0,
+        "power": 1.0,
+        "unknown_cost": 100.0,
+        "max_cost": 100.0,
+    }
+    inside = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    outside = inside.copy()
+    outside[:, 0] = 2.0
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    inside_cost = controller.trajectory_cost(state, inside, goal, obstacles, costmap=costmap)
+    outside_cost = controller.trajectory_cost(state, outside, goal, obstacles, costmap=costmap)
+
+    assert outside_cost > inside_cost
+
+
+def test_omni_mppi_local_costmap_clears_only_nearby_unknown_cells():
+    controller = make_controller(seed=21, num_samples=2, horizon_steps=4)
+    states = np.zeros((2, 2, 6), dtype=np.float32)
+    states[0, :, :2] = np.array([[0.10, 0.0], [0.20, 0.0]], dtype=np.float32)
+    states[1, :, :2] = np.array([[0.10, 0.0], [0.60, 0.0]], dtype=np.float32)
+    costmap = {
+        "enabled": True,
+        "origin": np.array([0.0, -0.1], dtype=np.float32),
+        "resolution": 0.1,
+        "width": 8,
+        "height": 3,
+        "data": np.full(24, 100.0, dtype=np.float32),
+        "unknown_mask": np.ones(24, dtype=bool),
+        "unknown_clear_radius": 0.35,
+        "unknown_clear_value": 0.0,
+        "weight": 10.0,
+        "power": 1.0,
+        "unknown_cost": 100.0,
+        "max_cost": 100.0,
+    }
+    observed = {**costmap, "unknown_mask": np.zeros(24, dtype=bool)}
+    initial_state = np.zeros(6, dtype=np.float32)
+
+    unknown_cost = controller._local_costmap_cost_batch(initial_state, states, costmap)
+    observed_cost = controller._local_costmap_cost_batch(initial_state, states, observed)
+
+    assert unknown_cost[0] == pytest.approx(0.0)
+    assert unknown_cost[1] > unknown_cost[0]
+    assert observed_cost[0] > unknown_cost[0]
+
+
+def test_omni_mppi_path_progress_reward_prefers_forward_progress():
+    controller = make_controller(seed=18, num_samples=2, horizon_steps=5)
+    controller.goal_xy_weight = 0.0
+    controller.yaw_weight = 0.0
+    controller.control_weight = 0.0
+    controller.smooth_weight = 0.0
+    controller.accel_weight = 0.0
+    controller.lateral_weight = 0.0
+    controller.yaw_rate_weight = 0.0
+    controller.jerk_weight = 0.0
+    controller.path_tracking_weight = 0.0
+    controller.path_progress_weight = 2.0
+    slow = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    fast = slow.copy()
+    slow[:, 0] = 0.2
+    fast[:, 0] = 0.8
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+    path = np.array([[0.0, 0.0], [5.0, 0.0]], dtype=np.float32)
+
+    assert controller.trajectory_cost(state, fast, goal, obstacles, path) < controller.trajectory_cost(
+        state, slow, goal, obstacles, path
+    )
+
+
+def test_omni_mppi_goal_progress_reward_prefers_reducing_goal_distance():
+    controller = make_controller(seed=22, num_samples=2, horizon_steps=5)
+    controller.goal_xy_weight = 0.0
+    controller.yaw_weight = 0.0
+    controller.control_weight = 0.0
+    controller.smooth_weight = 0.0
+    controller.accel_weight = 0.0
+    controller.lateral_weight = 0.0
+    controller.yaw_rate_weight = 0.0
+    controller.jerk_weight = 0.0
+    controller.path_tracking_weight = 0.0
+    controller.path_progress_weight = 0.0
+    controller.goal_progress_weight = 6.0
+    stop = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    forward = stop.copy()
+    forward[:, 0] = 0.8
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([5.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    assert controller.trajectory_cost(state, forward, goal, obstacles) < controller.trajectory_cost(
+        state, stop, goal, obstacles
+    )
+
+
+def test_omni_mppi_heading_to_goal_cost_penalizes_sideways_body_heading():
+    controller = make_controller(seed=23, num_samples=2, horizon_steps=4)
+    controller.goal_xy_weight = 0.0
+    controller.yaw_weight = 0.0
+    controller.control_weight = 0.0
+    controller.smooth_weight = 0.0
+    controller.accel_weight = 0.0
+    controller.lateral_weight = 0.0
+    controller.yaw_rate_weight = 0.0
+    controller.jerk_weight = 0.0
+    controller.path_tracking_weight = 0.0
+    controller.path_progress_weight = 0.0
+    controller.goal_progress_weight = 0.0
+    controller.heading_to_goal_weight = 4.0
+    controls = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    goal = np.array([5.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+    aligned_state = np.zeros(6, dtype=np.float32)
+    sideways_state = aligned_state.copy()
+    sideways_state[2] = np.pi / 2.0
+
+    assert controller.trajectory_cost(sideways_state, controls, goal, obstacles) > controller.trajectory_cost(
+        aligned_state, controls, goal, obstacles
     )
 
 

@@ -1,0 +1,177 @@
+# MuJoCo Scout closed-loop profile for ausim2.
+#
+# Start the simulator first:
+#   cd /home/mexxiie/prj/ausim2 && ./em_run.sh --headless
+#
+# Then run one controller. Navigation is direct local-costmap MPPI; /smooth_path is not used.
+#   /usr/bin/python3 tools/fdm_mppi.py mujoco-closed-loop --profile configs/mujoco_scout.yaml --controller nominal_numpy
+#   /usr/bin/python3 tools/fdm_mppi.py mujoco-closed-loop --profile configs/mujoco_scout.yaml --controller learned_torch
+
+experiment:
+  name: mujoco_scout
+  base_config: configs/mujoco_external_path_base.yaml
+  seed: 123
+  output_root: results/mujoco_scout
+  run_name: "{experiment}_{controller}_seed{seed}"
+  timestamp_suffix: true
+  overwrite: false
+
+mujoco:
+  drive_mode: omni_freejoint
+  odom_topic: /scout1/odom
+  cmd_vel_topic: /scout1/cmd_vel
+  odom_timeout: 1.0
+  startup_odom_timeout: 0.0
+
+simulation:
+  disable_goal_termination: false
+  max_steps: 1200
+
+external_path:
+  enabled: false
+  path_topic: /smooth_path
+  frame_id: map
+  stale_timeout: 1.0
+  stop_on_stale: true
+  lookahead: 4.0
+  max_points: 40
+  yaw_mode: line_of_sight
+  smoothing_iterations: 2
+  smoothing_alpha: 0.25
+  temporal_alpha: 0.15
+  temporal_endpoint_tolerance: 1.0
+
+final_controller:
+  enabled: true
+  trigger_distance: 1.2
+  rotate_threshold: 0.45
+  xy_gain: 0.45
+  lateral_gain: 0.12
+  max_vy: 0.03
+  heading_gain: 0.75
+  final_yaw_gain: 0.20
+  wz_gain: 1.1
+
+local_costmap:
+  enabled: true
+  required: true
+  topic: /msg_local_reward
+  layer: reward_cost
+  stale_timeout: 1.0
+  cost_weight: 3.0
+  cost_power: 3.0
+  unknown_cost: 100.0
+  max_cost: 100.0
+  unknown_clear_radius: 1.0
+  unknown_clear_value: 0.0
+
+goal_topic:
+  enabled: true
+  required: true
+  topic: /move_base_simple/goal
+
+global_path:
+  enabled: false
+
+local_goal:
+  enabled: false
+
+command_filter:
+  enabled: true
+  alpha: 0.18
+  max_ax: 0.9
+  max_ay: 0.35
+  max_awz: 1.8
+  lateral_scale: 0.35
+
+scenario:
+  world_mode: nominal
+  initial_state: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  minimum_distance: 0.5
+  max_steps: 1200
+  obstacles:
+    static_enabled: true
+    virtual: []
+  terrain:
+    enabled: true
+    friction_base: 0.72
+    slope_scale: 0.10
+    roughness_scale: 0.25
+    friction_slope_scale: 0.18
+    friction_roughness_scale: 0.10
+    goal_relief:
+      enabled: true
+      center: auto
+      sigma: [2.0, 1.2]
+      strength: 0.75
+      floor: 0.25
+
+robot:
+  max_vx: 1.0
+  max_vy: 0.15
+  max_wz: 1.2
+  max_ax: 0.8
+  max_ay: 0.35
+  max_awz: 2.0
+  velocity_lag_beta: 0.20
+  # Scout footprint approximation for obstacle costs.
+  # The MuJoCo model has wheel centers at y=+/-0.29153 m; keep this circular
+  # planner footprint close to the real differential-drive base instead of
+  # reusing the larger B2 default.
+  radius: 0.35
+  safety_dist: 0.10
+
+mppi:
+  weights: [2.2, 2.2, 0.4, 0.0, 0.0, 0.0]
+  std_normal: [0.35, 0.05, 0.85]
+  num_trajectories: 768
+  draw_num_traj: 20
+  obstacle_weight: 0.0
+  obstacle_soft_weight: 0.0
+  obstacle_influence_dist: 0.0
+  smooth_weight: 1.2
+  lateral_weight: 1.2
+  yaw_rate_weight: 0.03
+  goal_progress_weight: 18.0
+  heading_to_goal_weight: 0.15
+  heading_to_goal_min_distance: 0.6
+  path_tracking_weight: 0.0
+  path_tracking_tolerance: 0.30
+  path_progress_weight: 0.0
+
+default_controller: nominal_numpy
+controllers:
+  - name: nominal_numpy
+    method: nominal
+    backend: numpy
+
+  - name: nominal_cuda
+    method: nominal
+    backend: cuda
+
+  - name: learned_torch
+    method: learned_fdm
+    backend: torch
+    learned_fdm:
+      model_dir: results/fdm_baselines/stage4_mlp_seed123_hardened
+      checkpoint: best_model.pt
+      normalization: normalization.npz
+      device: cuda
+      residual_gain: 1.0
+
+visualization:
+  plots: false
+  animation: false
+  terrain_grid_resolution: 48
+
+rviz:
+  enabled: true
+  frame_id: map
+  sample_count: 30
+  sample_topic: /fdm_mppi/sample_rollouts
+  sample_path_topic_prefix: /fdm_mppi/sample_rollout_
+  selected_path_topic: /fdm_mppi/selected_rollout
+  history_path_topic: /fdm_mppi/history_path
+  history_max_points: 3000
+  robot_topic: /fdm_mppi/cube_robot
+  robot_scale: [0.7, 0.7, 0.35]

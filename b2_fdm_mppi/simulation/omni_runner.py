@@ -14,6 +14,7 @@ import yaml
 
 from b2_fdm_mppi.controllers.mppi_omni_learned_numpy import LearnedFdmMppiOmniNumpy
 from b2_fdm_mppi.controllers.mppi_omni_learned_torch import LearnedFdmMppiOmniTorch
+from b2_fdm_mppi.controllers.mppi_omni_learned_torch import MppiOmniSequenceFdmTorch
 from b2_fdm_mppi.controllers.mppi_omni_numpy import MppiOmniNumpy
 from b2_fdm_mppi.controllers.mppi_omni_torch import MppiOmniTorch
 from b2_fdm_mppi.core.learned_residual_dynamics import LearnedResidualDynamics
@@ -37,10 +38,13 @@ ControllerFactory = Callable[..., object]
 def create_omni_controller(config: dict, seed: int = 123) -> object:
     backend = str(config["mppi"].get("backend", "numpy")).lower()
     fdm_cfg = config.get("fdm", {})
+    fdm_mode = str(fdm_cfg.get("mode", "residual")).lower()
     if bool(fdm_cfg.get("enabled", False)):
         if backend == "numpy":
             return LearnedFdmMppiOmniNumpy.from_config(config, seed=seed)
         if backend in {"cuda", "torch"}:
+            if fdm_mode in {"sequence", "sequence_fdm"}:
+                return MppiOmniSequenceFdmTorch.from_config(config, seed=seed)
             return LearnedFdmMppiOmniTorch.from_config(config, seed=seed)
         raise ValueError(f"Unsupported learned FDM MPPI backend: {backend}")
     if backend == "torch":

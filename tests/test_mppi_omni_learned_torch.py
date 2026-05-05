@@ -3,7 +3,7 @@ import pytest
 import torch
 
 from b2_fdm_mppi.config import load_config
-from b2_fdm_mppi.controllers.mppi_omni_learned_torch import LearnedFdmMppiOmniTorch
+from b2_fdm_mppi.controllers.mppi_omni_learned_torch import LearnedFdmMppiOmniTorch, MppiOmniSequenceFdmTorch
 from b2_fdm_mppi.core.terrain import TerrainField
 
 
@@ -18,6 +18,13 @@ class ConstantTorchResidualDynamics:
         residuals[:, 1] = -0.1
         residuals[:, 2] = 0.05
         return residuals
+
+
+class DummySequenceDynamics:
+    sequence_horizon = 3
+    include_history_controls = True
+    history_steps = 1
+    device = "cpu"
 
 
 def make_controller(*, residual_gain=1.0, profile_enabled=False):
@@ -43,6 +50,51 @@ def make_controller(*, residual_gain=1.0, profile_enabled=False):
         residual_gain=residual_gain,
         profile_enabled=profile_enabled,
     )
+
+
+def make_sequence_controller():
+    return MppiOmniSequenceFdmTorch(
+        dt=0.1,
+        horizon_steps=3,
+        num_samples=4,
+        lambda_=0.5,
+        noise_std=np.array([0.0, 0.0, 0.0], dtype=np.float32),
+        max_vx=1.0,
+        max_vy=0.5,
+        max_wz=0.4,
+        max_ax=1000.0,
+        max_ay=1000.0,
+        max_awz=1000.0,
+        velocity_lag_beta=0.0,
+        robot_radius=0.6,
+        safety_dist=0.25,
+        draw_num_traj=2,
+        seed=1,
+        learned_dynamics=DummySequenceDynamics(),
+        device="cpu",
+    )
+
+
+def test_sequence_fdm_relative_trajectory_is_not_cumulatively_integrated():
+    controller = make_sequence_controller()
+    initial_state = np.array([10.0, -2.0, 0.5, 0.0, 0.0, 0.0], dtype=np.float32)
+    rel_traj = torch.tensor(
+        [
+            [
+                [1.0, 0.1, 0.01],
+                [2.0, 0.2, 0.02],
+                [3.0, 0.3, 0.03],
+            ]
+        ],
+        dtype=torch.float32,
+    )
+
+    states = controller._sequence_to_states_torch(initial_state, rel_traj).detach().cpu().numpy()
+
+    assert states.shape == (1, 4, 6)
+    assert states[0, 1:, 0] == pytest.approx([11.0, 12.0, 13.0], abs=1e-6)
+    assert states[0, 1:, 1] == pytest.approx([-1.9, -1.8, -1.7], abs=1e-6)
+    assert states[0, 1:, 2] == pytest.approx([0.51, 0.52, 0.53], abs=1e-6)
 
 
 def test_learned_torch_rollout_applies_residual_to_response_limited_command():

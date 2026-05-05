@@ -35,6 +35,7 @@
 - `configs/dataset.yaml`: 小规模 oracle dataset 采集，默认关闭 plot/GIF 副产物。
 - `configs/benchmark.yaml`: learned-FDM closed-loop benchmark 基础配置。
 - `configs/experiment.yaml`: 推荐的仿真工作台 profile；在一份 YAML 里定义场景、controller、learned model 和可视化。
+- `configs/mujoco_test_obstacles_localmap.yaml`: **MuJoCo + Geomapping local_costmap** 闭环配置。
 
 旧 `config/*.yaml` 仍可用于复现实验和兼容测试，但主流程不再依赖这些路径。
 
@@ -218,6 +219,49 @@ scenario:
   --normalization normalization.npz \
   --device cuda
 ```
+
+## MuJoCo 闭环仿真
+
+支持通过 ROS2 与 ausim2 MuJoCo 仿真器进行闭环控制，提供两种避障方案：
+
+### 方案 A：虚拟障碍物（纯 MPPI）
+
+```bash
+/usr/bin/python3 tools/fdm_mppi.py mujoco-closed-loop \
+  --profile configs/mujoco_test_obstacles.yaml \
+  --controller nominal_numpy
+```
+
+### 方案 B：Local Costmap（Geomapping + MPPI）
+
+需要先启动 ausim2 和 Geomapping：
+
+```bash
+# Terminal 1: 启动 ausim2
+cd /home/mexxiie/prj/ausim2
+./em_run.sh --headless
+
+# Terminal 2: 启动 Geomapping
+cd /home/mexxiie/prj/Geomapping_ros2
+source install/setup.bash
+ros2 launch traversability_mapping ausim_cube_mppi.launch.py launch_rviz:=false use_medirl:=true
+
+# Terminal 3: 启动 MPPI
+cd /home/mexxiie/prj/py-mppi
+export LD_LIBRARY_PATH="/home/mexxiie/prj/Geomapping_ros2/install/elevation_msgs/lib:$LD_LIBRARY_PATH"
+export PYTHONPATH="/home/mexxiie/prj/Geomapping_ros2/install/elevation_msgs/local/lib/python3.10/dist-packages:$PYTHONPATH"
+/usr/bin/python3 tools/fdm_mppi.py mujoco-closed-loop \
+  --profile configs/mujoco_test_obstacles_localmap.yaml \
+  --controller nominal_numpy
+```
+
+### 一键启动脚本
+
+```bash
+./launch_mppi_sim.sh
+```
+
+该脚本自动启动 ausim2 + Geomapping + MPPI，按 `Ctrl+C` 自动清理所有进程。
 
 低层仿真命令仍然保留：
 

@@ -113,6 +113,166 @@ def test_nominal_torch_batch_cost_matches_numpy_with_terrain_risk():
     assert torch_costs[0] > torch_costs[1]
 
 
+def test_nominal_torch_batch_cost_matches_numpy_with_path_tracking():
+    shared = {
+        "path_tracking_weight": 10.0,
+        "path_tracking_tolerance": 0.1,
+    }
+    torch_controller = make_torch_controller(**shared)
+    numpy_controller = make_numpy_controller(**shared)
+    controls = np.zeros((2, torch_controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, 0] = 0.8
+    controls[1, :, 1] = 0.5
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+    path = np.array([[0.0, 0.0], [2.0, 0.0]], dtype=np.float32)
+
+    torch_costs = torch_controller.trajectory_cost_batch(state, controls, goal, obstacles, path)
+    numpy_costs = numpy_controller.trajectory_cost_batch(state, controls, goal, obstacles, path)
+
+    assert torch_costs == pytest.approx(numpy_costs, abs=1e-5)
+    assert torch_costs[1] > torch_costs[0]
+
+
+def test_nominal_torch_batch_cost_matches_numpy_with_path_progress_reward():
+    shared = {
+        "path_progress_weight": 2.0,
+        "goal_xy_weight": 0.0,
+        "yaw_weight": 0.0,
+        "control_weight": 0.0,
+        "smooth_weight": 0.0,
+        "accel_weight": 0.0,
+        "lateral_weight": 0.0,
+        "yaw_rate_weight": 0.0,
+        "jerk_weight": 0.0,
+    }
+    torch_controller = make_torch_controller(**shared)
+    numpy_controller = make_numpy_controller(**shared)
+    controls = np.zeros((2, torch_controller.horizon_steps, 3), dtype=np.float32)
+    controls[0, :, 0] = 0.2
+    controls[1, :, 0] = 0.8
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+    path = np.array([[0.0, 0.0], [5.0, 0.0]], dtype=np.float32)
+
+    torch_costs = torch_controller.trajectory_cost_batch(state, controls, goal, obstacles, path)
+    numpy_costs = numpy_controller.trajectory_cost_batch(state, controls, goal, obstacles, path)
+
+    assert torch_costs == pytest.approx(numpy_costs, abs=1e-5)
+    assert torch_costs[1] < torch_costs[0]
+
+
+def test_nominal_torch_batch_cost_matches_numpy_with_goal_progress_and_heading():
+    shared = {
+        "goal_progress_weight": 6.0,
+        "heading_to_goal_weight": 4.0,
+        "goal_xy_weight": 0.0,
+        "yaw_weight": 0.0,
+        "control_weight": 0.0,
+        "smooth_weight": 0.0,
+        "accel_weight": 0.0,
+        "lateral_weight": 0.0,
+        "yaw_rate_weight": 0.0,
+        "jerk_weight": 0.0,
+    }
+    torch_controller = make_torch_controller(**shared)
+    numpy_controller = make_numpy_controller(**shared)
+    controls = np.zeros((2, torch_controller.horizon_steps, 3), dtype=np.float32)
+    controls[1, :, 0] = 0.8
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([5.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    torch_costs = torch_controller.trajectory_cost_batch(state, controls, goal, obstacles)
+    numpy_costs = numpy_controller.trajectory_cost_batch(state, controls, goal, obstacles)
+
+    assert torch_costs == pytest.approx(numpy_costs, abs=1e-5)
+    assert torch_costs[1] < torch_costs[0]
+
+
+def test_nominal_torch_batch_cost_matches_numpy_with_local_costmap():
+    shared = {
+        "goal_xy_weight": 0.0,
+        "yaw_weight": 0.0,
+        "control_weight": 0.0,
+        "smooth_weight": 0.0,
+        "accel_weight": 0.0,
+        "lateral_weight": 0.0,
+        "yaw_rate_weight": 0.0,
+        "jerk_weight": 0.0,
+        "max_ax": 1000.0,
+        "max_ay": 1000.0,
+        "velocity_lag_beta": 0.0,
+    }
+    torch_controller = make_torch_controller(**shared)
+    numpy_controller = make_numpy_controller(**shared)
+    controls = np.zeros((2, torch_controller.horizon_steps, 3), dtype=np.float32)
+    controls[0, :, 0] = 1.0
+    controls[1, :, 0] = 1.0
+    controls[1, :, 1] = 0.5
+    data = np.zeros((3, 6), dtype=np.float32)
+    data[0, :] = 100.0
+    costmap = {
+        "enabled": True,
+        "origin": np.array([0.0, -0.05], dtype=np.float32),
+        "resolution": 0.1,
+        "width": 6,
+        "height": 3,
+        "data": data.reshape(-1),
+        "weight": 20.0,
+        "power": 2.0,
+        "unknown_cost": 100.0,
+        "max_cost": 100.0,
+    }
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    torch_costs = torch_controller.trajectory_cost_batch(state, controls, goal, obstacles, costmap=costmap)
+    numpy_costs = numpy_controller.trajectory_cost_batch(state, controls, goal, obstacles, costmap=costmap)
+
+    assert torch_costs == pytest.approx(numpy_costs, abs=1e-5)
+    assert torch_costs[0] > torch_costs[1]
+
+
+def test_nominal_torch_batch_cost_matches_numpy_with_unknown_clear_radius():
+    torch_controller = make_torch_controller()
+    numpy_controller = make_numpy_controller()
+    states = np.zeros((2, 2, 6), dtype=np.float32)
+    states[0, :, :2] = np.array([[0.10, 0.0], [0.20, 0.0]], dtype=np.float32)
+    states[1, :, :2] = np.array([[0.10, 0.0], [0.60, 0.0]], dtype=np.float32)
+    costmap = {
+        "enabled": True,
+        "origin": np.array([0.0, -0.1], dtype=np.float32),
+        "resolution": 0.1,
+        "width": 8,
+        "height": 3,
+        "data": np.full(24, 100.0, dtype=np.float32),
+        "unknown_mask": np.ones(24, dtype=bool),
+        "unknown_clear_radius": 0.35,
+        "unknown_clear_value": 0.0,
+        "weight": 10.0,
+        "power": 1.0,
+        "unknown_cost": 100.0,
+        "max_cost": 100.0,
+    }
+    initial_state = np.zeros(6, dtype=np.float32)
+
+    torch_costmap = torch_controller._costmap_to_torch(costmap)
+    torch_cost = torch_controller._local_costmap_cost_batch_torch(
+        torch.as_tensor(states),
+        torch.as_tensor(initial_state),
+        torch_costmap,
+    )
+    numpy_cost = numpy_controller._local_costmap_cost_batch(initial_state, states, costmap)
+
+    assert torch_cost.detach().cpu().numpy() == pytest.approx(numpy_cost, abs=1e-6)
+    assert numpy_cost[0] == pytest.approx(0.0)
+    assert numpy_cost[1] > 0.0
+
+
 def test_nominal_torch_compute_control_returns_numpy_controller_outputs():
     controller = make_torch_controller()
     state = np.zeros(6, dtype=np.float32)
@@ -168,9 +328,9 @@ def test_nominal_torch_compute_control_disables_grad_tracking():
             super().__init__(*args, **kwargs)
             self.grad_modes = []
 
-        def _trajectory_cost_batch_torch(self, initial_state, controls, goal, obstacles):
+        def _trajectory_cost_batch_torch(self, initial_state, controls, goal, obstacles, path=None, costmap=None):
             self.grad_modes.append(torch.is_grad_enabled())
-            return super()._trajectory_cost_batch_torch(initial_state, controls, goal, obstacles)
+            return super()._trajectory_cost_batch_torch(initial_state, controls, goal, obstacles, path, costmap)
 
     controller = make_torch_controller(controller_cls=GradModeProbeController)
     state = np.zeros(6, dtype=np.float32)

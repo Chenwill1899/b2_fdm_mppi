@@ -81,6 +81,27 @@ class MppiOmniTorch(MppiOmniNumpy):
             yaw_rate_weight=float(overrides.get("yaw_rate_weight", mppi.get("yaw_rate_weight", 0.0))),
             accel_weight=float(overrides.get("accel_weight", mppi.get("accel_weight", 0.0))),
             jerk_weight=float(overrides.get("jerk_weight", mppi.get("jerk_weight", 0.0))),
+            path_tracking_weight=float(
+                overrides.get("path_tracking_weight", mppi.get("path_tracking_weight", 0.0))
+            ),
+            path_tracking_tolerance=float(
+                overrides.get("path_tracking_tolerance", mppi.get("path_tracking_tolerance", 0.3))
+            ),
+            path_progress_weight=float(
+                overrides.get("path_progress_weight", mppi.get("path_progress_weight", 0.0))
+            ),
+            goal_progress_weight=float(
+                overrides.get("goal_progress_weight", mppi.get("goal_progress_weight", 0.0))
+            ),
+            heading_to_goal_weight=float(
+                overrides.get("heading_to_goal_weight", mppi.get("heading_to_goal_weight", 0.0))
+            ),
+            heading_to_goal_min_distance=float(
+                overrides.get(
+                    "heading_to_goal_min_distance",
+                    mppi.get("heading_to_goal_min_distance", 0.3),
+                )
+            ),
             terrain=terrain,
             terrain_risk_weight=float(overrides.get("terrain_risk_weight", mppi.get("terrain_risk_weight", 0.0))),
             terrain_risk_power=float(overrides.get("terrain_risk_power", mppi.get("terrain_risk_power", 2.0))),
@@ -108,6 +129,8 @@ class MppiOmniTorch(MppiOmniNumpy):
             np.asarray(cost_params[4], dtype=np.float32).reshape(-1, 7),
             device=self.torch_device,
         )
+        path = torch.as_tensor(self._path_from_cost_params(cost_params), dtype=torch.float32, device=self.torch_device)
+        costmap = self._costmap_to_torch(self._costmap_from_cost_params(cost_params))
         profile_start = self._profile_start()
         nominal = torch.as_tensor(self.nominal_u, dtype=torch.float32, device=self.torch_device)
         noise = torch.randn(
@@ -118,7 +141,7 @@ class MppiOmniTorch(MppiOmniNumpy):
         ) * self.noise_std_t
         candidates = torch.clamp(nominal.unsqueeze(0) + noise, -self.max_control_t, self.max_control_t)
         self._profile_stop("sample_candidates_ms", profile_start)
-        costs = self._trajectory_cost_batch_torch(state, candidates, goal, obstacles)
+        costs = self._trajectory_cost_batch_torch(state, candidates, goal, obstacles, path, costmap)
         profile_start = self._profile_start()
         min_cost_t = torch.min(costs)
         weights = torch.exp(-(costs - min_cost_t) / max(self.lambda_, 1e-6))
@@ -151,12 +174,16 @@ class MppiOmniTorch(MppiOmniNumpy):
         controls: np.ndarray,
         goal: np.ndarray,
         obstacles: np.ndarray,
+        path: np.ndarray | None = None,
+        costmap: dict | None = None,
     ) -> np.ndarray:
         controls_t = torch.as_tensor(np.asarray(controls, dtype=np.float32), device=self.torch_device)
         controls_t = torch.clamp(controls_t, -self.max_control_t, self.max_control_t)
         goal_t = torch.as_tensor(np.asarray(goal, dtype=np.float32), device=self.torch_device)
         obstacles_t = torch.as_tensor(np.asarray(obstacles, dtype=np.float32).reshape(-1, 7), device=self.torch_device)
-        costs = self._trajectory_cost_batch_torch(initial_state, controls_t, goal_t, obstacles_t)
+        path_t = torch.as_tensor(np.asarray(path if path is not None else [], dtype=np.float32).reshape(-1, 2), device=self.torch_device)
+        costmap_t = self._costmap_to_torch(costmap)
+        costs = self._trajectory_cost_batch_torch(initial_state, controls_t, goal_t, obstacles_t, path_t, costmap_t)
         return costs.detach().cpu().numpy().astype(np.float32)
 
     def _rollout_batch(
@@ -179,6 +206,8 @@ class MppiOmniTorch(MppiOmniNumpy):
         controls: torch.Tensor,
         goal: torch.Tensor,
         obstacles: torch.Tensor,
+        path: torch.Tensor | None = None,
+        costmap: dict | None = None,
     ) -> torch.Tensor:
         controls = torch.clamp(controls, -self.max_control_t, self.max_control_t)
         profile_start = self._profile_start()
@@ -214,6 +243,11 @@ class MppiOmniTorch(MppiOmniNumpy):
         profile_start = self._profile_start()
         terrain_risk_cost = self._terrain_risk_cost_batch_torch(states[:, 1:, :])
         self._profile_stop("terrain_risk_cost_ms", profile_start)
+        path_tracking_cost = self._path_tracking_cost_batch_torch(states[:, 1:, :], path)
+        path_progress_cost = self._path_progress_cost_batch_torch(initial_state, states[:, -1, :], path)
+        goal_progress_cost = self._goal_progress_cost_batch_torch(initial_state, states[:, -1, :], goal)
+        heading_to_goal_cost = self._heading_to_goal_cost_batch_torch(states[:, 1:, :], goal)
+        local_costmap_cost = self._local_costmap_cost_batch_torch(states[:, 1:, :], initial_state, costmap)
         return (
             goal_cost
             + yaw_cost
@@ -224,7 +258,12 @@ class MppiOmniTorch(MppiOmniNumpy):
             + lateral_cost
             + yaw_rate_cost
             + obstacle_cost
+            + path_tracking_cost
+            + path_progress_cost
+            + goal_progress_cost
+            + heading_to_goal_cost
             + terrain_risk_cost
+            + local_costmap_cost
         ).to(torch.float32)
 
     def _rollout_batch_torch(
@@ -286,6 +325,187 @@ class MppiOmniTorch(MppiOmniNumpy):
             soft_margin = torch.where(clearance > self.safety_dist, soft_margin, torch.zeros_like(soft_margin))
             costs += self.obstacle_soft_weight * torch.sum(soft_margin * soft_margin, dim=(1, 2))
         return costs
+
+    def _costmap_to_torch(self, costmap: dict | None) -> dict | None:
+        if not costmap or not bool(costmap.get("enabled", False)):
+            return None
+        return {
+            "enabled": True,
+            "origin": torch.as_tensor(
+                np.asarray(costmap.get("origin", [0.0, 0.0]), dtype=np.float32).reshape(2),
+                dtype=torch.float32,
+                device=self.torch_device,
+            ),
+            "resolution": float(costmap.get("resolution", 0.0)),
+            "width": int(costmap.get("width", 0)),
+            "height": int(costmap.get("height", 0)),
+            "data": torch.as_tensor(
+                np.asarray(costmap.get("data", []), dtype=np.float32).reshape(-1),
+                dtype=torch.float32,
+                device=self.torch_device,
+            ),
+            "unknown_mask": torch.as_tensor(
+                np.asarray(costmap.get("unknown_mask", []), dtype=bool).reshape(-1),
+                dtype=torch.bool,
+                device=self.torch_device,
+            ),
+            "weight": float(costmap.get("weight", 0.0)),
+            "power": float(costmap.get("power", 2.0)),
+            "unknown_cost": float(costmap.get("unknown_cost", 100.0)),
+            "max_cost": float(costmap.get("max_cost", 100.0)),
+            "unknown_clear_radius": float(costmap.get("unknown_clear_radius", 0.0)),
+            "unknown_clear_value": float(costmap.get("unknown_clear_value", 0.0)),
+        }
+
+    def _local_costmap_cost_batch_torch(
+        self,
+        states: torch.Tensor,
+        initial_state: torch.Tensor | np.ndarray,
+        costmap: dict | None,
+    ) -> torch.Tensor:
+        costs = torch.zeros(states.shape[0], dtype=torch.float32, device=self.torch_device)
+        if not costmap or not bool(costmap.get("enabled", False)):
+            return costs
+        width = int(costmap.get("width", 0))
+        height = int(costmap.get("height", 0))
+        resolution = float(costmap.get("resolution", 0.0))
+        data = costmap.get("data")
+        if width <= 0 or height <= 0 or resolution <= 0.0 or data is None or int(data.numel()) != width * height:
+            return costs
+        origin = costmap["origin"]
+        points = states[:, :, :2]
+        ix = torch.floor((points[:, :, 0] - origin[0]) / resolution).to(torch.long)
+        iy = torch.floor((points[:, :, 1] - origin[1]) / resolution).to(torch.long)
+        valid = (ix >= 0) & (ix < width) & (iy >= 0) & (iy < height)
+        sampled = torch.full(
+            points.shape[:2],
+            float(costmap.get("unknown_cost", 100.0)),
+            dtype=torch.float32,
+            device=self.torch_device,
+        )
+        sampled_unknown = torch.ones(points.shape[:2], dtype=torch.bool, device=self.torch_device)
+        if bool(torch.any(valid).item()):
+            flat_idx = iy[valid] * width + ix[valid]
+            sampled[valid] = data[flat_idx]
+            unknown_mask = costmap.get("unknown_mask")
+            if unknown_mask is not None and int(unknown_mask.numel()) == int(data.numel()):
+                sampled_unknown[valid] = unknown_mask[flat_idx]
+            else:
+                sampled_unknown[valid] = False
+        clear_radius = float(costmap.get("unknown_clear_radius", 0.0))
+        if clear_radius > 0.0 and bool(torch.any(sampled_unknown).item()):
+            start_xy = torch.as_tensor(initial_state, dtype=torch.float32, device=self.torch_device).reshape(6)[:2]
+            distance_from_start = torch.linalg.norm(points - start_xy.view(1, 1, 2), dim=2)
+            clear_mask = sampled_unknown & (distance_from_start <= clear_radius)
+            if bool(torch.any(clear_mask).item()):
+                sampled[clear_mask] = float(costmap.get("unknown_clear_value", 0.0))
+        max_cost = max(float(costmap.get("max_cost", 100.0)), 1e-6)
+        normalized = torch.clamp(sampled, min=0.0, max=max_cost) / max_cost
+        terms = torch.pow(normalized, max(float(costmap.get("power", 2.0)), 0.1))
+        return float(costmap.get("weight", 0.0)) * torch.sum(terms, dim=1)
+
+    def _path_tracking_cost_batch_torch(self, states: torch.Tensor, path: torch.Tensor | None) -> torch.Tensor:
+        costs = torch.zeros(states.shape[0], dtype=torch.float32, device=self.torch_device)
+        if self.path_tracking_weight <= 0.0 or path is None or path.numel() < 4:
+            return costs
+        path = path.reshape(-1, 2).to(dtype=torch.float32, device=self.torch_device)
+        if path.shape[0] < 2:
+            return costs
+        points = states[:, :, :2]
+        min_sq = torch.full(points.shape[:2], float("inf"), dtype=torch.float32, device=self.torch_device)
+        for idx in range(path.shape[0] - 1):
+            start = path[idx]
+            end = path[idx + 1]
+            segment = end - start
+            denom = torch.dot(segment, segment)
+            rel = points - start
+            if float(denom.detach().cpu()) <= 1e-9:
+                diff = rel
+            else:
+                t = torch.clamp(torch.sum(rel * segment, dim=2) / denom, 0.0, 1.0)
+                projection = start + t[:, :, None] * segment
+                diff = points - projection
+            min_sq = torch.minimum(min_sq, torch.sum(diff * diff, dim=2))
+        distance = torch.sqrt(torch.clamp(min_sq, min=0.0))
+        excess = torch.clamp(distance - self.path_tracking_tolerance, min=0.0)
+        return self.path_tracking_weight * torch.sum(excess * excess, dim=1)
+
+    def _path_progress_cost_batch_torch(
+        self,
+        initial_state: torch.Tensor,
+        final_states: torch.Tensor,
+        path: torch.Tensor | None,
+    ) -> torch.Tensor:
+        costs = torch.zeros(final_states.shape[0], dtype=torch.float32, device=self.torch_device)
+        if self.path_progress_weight <= 0.0 or path is None or path.numel() < 4:
+            return costs
+        path = path.reshape(-1, 2).to(dtype=torch.float32, device=self.torch_device)
+        if path.shape[0] < 2:
+            return costs
+        initial_state_t = torch.as_tensor(initial_state, dtype=torch.float32, device=self.torch_device).reshape(1, -1)
+        start_progress = self._path_progress_values_torch(initial_state_t[:, :2], path)[0]
+        final_progress = self._path_progress_values_torch(final_states[:, :2], path)
+        return -self.path_progress_weight * (final_progress - start_progress)
+
+    def _path_progress_values_torch(self, points: torch.Tensor, path: torch.Tensor) -> torch.Tensor:
+        points = points.reshape(-1, 2).to(dtype=torch.float32, device=self.torch_device)
+        segment_lengths = torch.linalg.norm(path[1:] - path[:-1], dim=1)
+        cumulative = torch.cat(
+            [
+                torch.zeros(1, dtype=torch.float32, device=self.torch_device),
+                torch.cumsum(segment_lengths, dim=0),
+            ]
+        )
+        best_sq = torch.full((points.shape[0],), float("inf"), dtype=torch.float32, device=self.torch_device)
+        best_progress = torch.zeros(points.shape[0], dtype=torch.float32, device=self.torch_device)
+        for idx in range(path.shape[0] - 1):
+            start = path[idx]
+            end = path[idx + 1]
+            segment = end - start
+            denom = torch.dot(segment, segment)
+            rel = points - start
+            if float(denom.detach().cpu()) <= 1e-9:
+                projection = start.expand_as(points)
+                t = torch.zeros(points.shape[0], dtype=torch.float32, device=self.torch_device)
+            else:
+                t = torch.clamp(torch.sum(rel * segment, dim=1) / denom, 0.0, 1.0)
+                projection = start + t[:, None] * segment
+            sq = torch.sum((points - projection) ** 2, dim=1)
+            update = sq < best_sq
+            best_sq = torch.where(update, sq, best_sq)
+            best_progress = torch.where(update, cumulative[idx] + t * segment_lengths[idx], best_progress)
+        return best_progress
+
+    def _goal_progress_cost_batch_torch(
+        self,
+        initial_state: torch.Tensor | np.ndarray,
+        final_states: torch.Tensor,
+        goal: torch.Tensor,
+    ) -> torch.Tensor:
+        costs = torch.zeros(final_states.shape[0], dtype=torch.float32, device=self.torch_device)
+        if self.goal_progress_weight <= 0.0:
+            return costs
+        initial_state_t = torch.as_tensor(initial_state, dtype=torch.float32, device=self.torch_device).reshape(1, -1)
+        start_xy = initial_state_t[:, :2]
+        goal_xy = goal[:2].reshape(1, 2).to(dtype=torch.float32, device=self.torch_device)
+        start_distance = torch.linalg.norm(goal_xy - start_xy, dim=1)[0]
+        final_distance = torch.linalg.norm(goal_xy - final_states[:, :2], dim=1)
+        return -self.goal_progress_weight * (start_distance - final_distance)
+
+    def _heading_to_goal_cost_batch_torch(self, states: torch.Tensor, goal: torch.Tensor) -> torch.Tensor:
+        costs = torch.zeros(states.shape[0], dtype=torch.float32, device=self.torch_device)
+        if self.heading_to_goal_weight <= 0.0:
+            return costs
+        goal_xy = goal[:2].reshape(1, 1, 2).to(dtype=torch.float32, device=self.torch_device)
+        vectors = goal_xy - states[:, :, :2]
+        distances = torch.linalg.norm(vectors, dim=2)
+        active = distances > self.heading_to_goal_min_distance
+        if not bool(torch.any(active).item()):
+            return costs
+        target_yaw = torch.atan2(vectors[:, :, 1], vectors[:, :, 0])
+        heading_error = self._angle_diff_torch(states[:, :, 2], target_yaw)
+        terms = torch.where(active, heading_error * heading_error, torch.zeros_like(heading_error))
+        return self.heading_to_goal_weight * torch.sum(terms, dim=1)
 
     def _terrain_risk_cost_batch_torch(self, states: torch.Tensor) -> torch.Tensor:
         costs = torch.zeros(states.shape[0], dtype=torch.float32, device=self.torch_device)

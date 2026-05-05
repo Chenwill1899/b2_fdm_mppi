@@ -1,0 +1,80 @@
+# MuJoCo cube omni closed-loop profile.
+# Navigation target, obstacle reasoning, and path planning come from Geomapping
+# via /smooth_path. MPPI only tracks that path.
+
+experiment:
+  name: mujoco_cube_omni
+  base_config: configs/mujoco_external_path_base.yaml
+  seed: 123
+  output_root: results/mujoco_cube_omni
+  run_name: "{experiment}_{controller}_seed{seed}"
+  timestamp_suffix: true
+  overwrite: false
+
+mujoco:
+  drive_mode: omni_freejoint
+  odom_topic: /scout1/odom
+  cmd_vel_topic: /scout1/cmd_vel
+  odom_timeout: 1.0
+
+external_path:
+  enabled: true
+  path_topic: /smooth_path
+  frame_id: map
+  stale_timeout: 1.0
+  stop_on_stale: true
+  lookahead: 2.0
+  max_points: 48
+  yaw_mode: line_of_sight
+  smoothing_iterations: 1
+  smoothing_alpha: 0.20
+  temporal_alpha: 0.0
+  temporal_endpoint_tolerance: 1.0
+
+global_path:
+  enabled: false
+
+local_goal:
+  enabled: false
+
+final_controller:
+  enabled: false
+
+command_filter:
+  enabled: true
+  alpha: 0.3
+  max_ax: 0.75
+  max_ay: 0.22
+  max_awz: 0.8
+  lateral_scale: 0.45
+  min_turn_vx: 0.16
+  turn_wz_threshold: 0.12
+  min_turn_vx_goal_distance: 1.6
+
+default_controller: nominal_numpy
+controllers:
+  - name: nominal_numpy
+    method: nominal
+    backend: numpy
+
+  - name: learned_torch
+    method: learned_fdm
+    backend: torch
+    learned_fdm:
+      model_dir: results/fdm_baselines/stage4_mlp_seed123_hardened
+      checkpoint: best_model.pt
+      normalization: normalization.npz
+      device: cuda
+      residual_gain: 1.0
+
+rviz:
+  enabled: true
+  frame_id: map
+  sample_count: 50
+  sample_topic: /fdm_mppi/sample_rollouts
+  sample_path_topic_prefix: /fdm_mppi/sample_rollout_
+  selected_path_topic: /fdm_mppi/selected_rollout
+  history_path_topic: /fdm_mppi/history_path
+  history_max_points: 3000
+  robot_topic: /fdm_mppi/cube_robot
+  robot_scale: [0.7, 0.7, 0.35]

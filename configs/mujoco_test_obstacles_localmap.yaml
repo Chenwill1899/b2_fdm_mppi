@@ -1,0 +1,119 @@
+# MuJoCo closed-loop with Geomapping local_costmap.
+
+experiment:
+  name: mujoco_test_obstacles_localmap
+  base_config: configs/mujoco_external_path_base.yaml
+  seed: 123
+  output_root: results/mujoco_test_obstacles_localmap
+  run_name: "{experiment}_{controller}_seed{seed}"
+  timestamp_suffix: false
+  overwrite: true
+
+mujoco:
+  drive_mode: omni_freejoint
+  odom_topic: /scout1/odom
+  cmd_vel_topic: /scout1/cmd_vel
+  odom_timeout: 5.0
+  startup_odom_timeout: 30.0
+
+simulation:
+  disable_goal_termination: false
+  max_steps: 900
+  goal: [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  minimum_distance: 0.5
+
+external_path:
+  enabled: false
+
+goal_topic:
+  enabled: false
+  required: false
+
+global_path:
+  enabled: false
+
+local_goal:
+  enabled: false
+
+final_controller:
+  enabled: true
+  trigger_distance: 1.5
+  xy_gain: 0.45
+  lateral_gain: 0.12
+  max_vy: 0.03
+  heading_gain: 0.75
+  final_yaw_gain: 0.20
+  wz_gain: 1.1
+
+local_costmap:
+  enabled: true
+  required: true
+  topic: /msg_local_reward
+  layer: reward_cost
+  stale_timeout: 1.0
+  cost_weight: 3.0
+  cost_power: 3.0
+  unknown_cost: 100.0
+  max_cost: 100.0
+  unknown_clear_radius: 1.0
+  unknown_clear_value: 0.0
+
+command_filter:
+  enabled: true
+  alpha: 0.08
+  max_ax: 2.0
+  max_ay: 0.50
+  max_awz: 3.0
+  lateral_scale: 0.35
+
+scenario:
+  world_mode: nominal
+  initial_state: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  minimum_distance: 0.5
+  max_steps: 400
+  obstacles:
+    static_enabled: false
+    virtual: []
+  terrain:
+    enabled: false
+
+robot:
+  max_vx: 1.5
+  max_vy: 0.15
+  max_wz: 1.2
+  max_ax: 0.8
+  max_ay: 0.35
+  max_awz: 2.0
+  velocity_lag_beta: 0.0
+  radius: 0.35
+  safety_dist: 0.10
+
+mppi:
+  weights: [2.2, 2.2, 0.4, 0.0, 0.0, 0.0]
+  std_normal: [0.50, 0.03, 0.12]
+  num_trajectories: 1024
+  draw_num_traj: 20
+  obstacle_weight: 0.0
+  obstacle_soft_weight: 0.0
+  obstacle_influence_dist: 0.0
+  smooth_weight: 2.5
+  lateral_weight: 1.2
+  yaw_rate_weight: 0.20
+  goal_progress_weight: 28.0
+  heading_to_goal_weight: 0.03
+  heading_to_goal_min_distance: 0.6
+  path_tracking_weight: 0.0
+  path_progress_weight: 0.0
+
+default_controller: nominal_numpy
+controllers:
+  - name: nominal_numpy
+    method: nominal
+    backend: numpy
+
+visualization:
+  plots: false
+  animation: false
+
+rviz:
+  enabled: true

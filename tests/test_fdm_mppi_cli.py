@@ -25,6 +25,10 @@ class Recorder:
         self.calls.append(("experiment", args))
         return 0
 
+    def mujoco_closed_loop(self, args: Namespace) -> int:
+        self.calls.append(("mujoco_closed_loop", args))
+        return 0
+
 
 def test_main_dispatches_run_subcommand_to_pipeline_command():
     recorder = Recorder()
@@ -124,3 +128,36 @@ def test_experiment_subcommand_dispatches_profile_runner():
     assert args.model_dir == "results/fdm_baselines/demo"
     assert args.output == "results/experiments/demo"
     assert args.results_dir == "results/experiments/demo/direct"
+
+
+def test_mujoco_closed_loop_subcommand_dispatches_runner():
+    recorder = Recorder()
+
+    status = cli.main(
+        [
+            "mujoco-closed-loop",
+            "--profile",
+            "configs/mujoco_scout.yaml",
+            "--controller",
+            "learned_torch",
+            "--seed",
+            "123",
+            "--results-dir",
+            "results/mujoco_scout/direct",
+            "--max-steps",
+            "30",
+            "--odom-timeout",
+            "1.5",
+        ],
+        commands=recorder,
+    )
+
+    assert status == 0
+    name, args = recorder.calls[0]
+    assert name == "mujoco_closed_loop"
+    assert args.profile == "configs/mujoco_scout.yaml"
+    assert args.controller == "learned_torch"
+    assert args.seed == 123
+    assert args.results_dir == "results/mujoco_scout/direct"
+    assert args.max_steps == 30
+    assert args.odom_timeout == 1.5

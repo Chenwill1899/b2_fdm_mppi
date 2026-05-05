@@ -17,7 +17,15 @@ import torch
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 
-from b2_fdm_mppi.core.residual_fdm_model import FEATURE_NAMES, TARGET_AXES, TARGET_NAMES, ResidualFdmMlp
+from b2_fdm_mppi.core.residual_fdm_model import (
+    FEATURE_NAMES,
+    TARGET_AXES,
+    TARGET_NAMES,
+    ResidualFdmMlp,
+    SequenceFdmMlp,
+    sequence_fdm_feature_names,
+    sequence_fdm_target_names,
+)
 
 SPLITS = ("train", "val", "test")
 
@@ -226,6 +234,248 @@ def train_residual_fdm(
     return metrics
 
 
+def train_sequence_fdm(
+    *,
+    dataset_dir: str | Path,
+    output_dir: str | Path,
+    sequence_horizon: int = 25,
+    include_history_controls: bool = True,
+    history_steps: int = 1,
+    epochs: int = 50,
+    batch_size: int = 256,
+    hidden_dim: int = 64,
+    learning_rate: float = 1e-3,
+    weight_decay: float = 1e-5,
+    seed: int = 123,
+    device: str = "cpu",
+    tensorboard_log_dir: str | Path | None = None,
+    command: str | None = None,
+    argv: Sequence[str] | None = None,
+) -> dict:
+    _set_seed(seed)
+    dataset_dir = Path(dataset_dir)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    tensorboard_log_dir = Path(tensorboard_log_dir) if tensorboard_log_dir is not None else output_dir / "tensorboard"
+    feature_names = sequence_fdm_feature_names(
+        int(sequence_horizon),
+        include_history_controls=bool(include_history_controls),
+        include_history_steps=int(history_steps),
+    )
+    target_names = sequence_fdm_target_names(int(sequence_horizon))
+    arrays = load_sequence_fdm_dataset(
+        dataset_dir,
+        sequence_horizon=int(sequence_horizon),
+        include_history_controls=bool(include_history_controls),
+        history_steps=int(history_steps),
+    )
+
+    x_mean, x_std = _normalization(arrays["train_features"])
+    y_mean, y_std = _normalization(arrays["train_targets"])
+    np.savez(
+        output_dir / "normalization.npz",
+        feature_mean=x_mean,
+        feature_std=x_std,
+        target_mean=y_mean,
+        target_std=y_std,
+        feature_names=np.asarray(feature_names),
+        target_names=np.asarray(target_names),
+        sequence_horizon=int(sequence_horizon),
+        include_history_controls=bool(include_history_controls),
+        history_steps=int(history_steps),
+    )
+
+    train_x = _standardize(arrays["train_features"], x_mean, x_std)
+    train_y = _standardize(arrays["train_targets"], y_mean, y_std)
+    val_x = _standardize(arrays["val_features"], x_mean, x_std)
+    val_y = _standardize(arrays["val_targets"], y_mean, y_std)
+    test_x = _standardize(arrays["test_features"], x_mean, x_std)
+    test_y = _standardize(arrays["test_targets"], y_mean, y_std)
+
+    torch_device = torch.device(device)
+    model = SequenceFdmMlp(
+        input_dim=train_x.shape[1],
+        output_horizon=int(sequence_horizon),
+        hidden_dim=int(hidden_dim),
+    ).to(torch_device)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=float(learning_rate),
+        weight_decay=float(weight_decay),
+    )
+    loss_fn = nn.MSELoss()
+
+    train_tensor_x = torch.as_tensor(train_x, dtype=torch.float32, device=torch_device)
+    train_tensor_y = torch.as_tensor(train_y, dtype=torch.float32, device=torch_device)
+    val_tensor_x = torch.as_tensor(val_x, dtype=torch.float32, device=torch_device)
+    val_tensor_y = torch.as_tensor(val_y, dtype=torch.float32, device=torch_device)
+    test_tensor_x = torch.as_tensor(test_x, dtype=torch.float32, device=torch_device)
+    test_tensor_y = torch.as_tensor(test_y, dtype=torch.float32, device=torch_device)
+
+    history_train = []
+    history_val = []
+    best_epoch = 0
+    best_val_loss = float("inf")
+    n_train = int(train_tensor_x.shape[0])
+    writer = SummaryWriter(log_dir=str(tensorboard_log_dir))
+    try:
+        for epoch in range(int(epochs)):
+            model.train()
+            order = torch.randperm(n_train, device=torch_device)
+            batch_losses = []
+            for start in range(0, n_train, int(batch_size)):
+                idx = order[start : start + int(batch_size)]
+                pred = model(train_tensor_x[idx])
+                loss = loss_fn(pred, train_tensor_y[idx])
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                batch_losses.append(float(loss.detach().cpu()))
+            train_loss = float(np.mean(batch_losses)) if batch_losses else 0.0
+            val_loss = _eval_loss(model, loss_fn, val_tensor_x, val_tensor_y)
+            history_train.append(train_loss)
+            history_val.append(val_loss)
+            step = epoch + 1
+            if best_epoch == 0 or val_loss < best_val_loss:
+                best_epoch = step
+                best_val_loss = val_loss
+                _save_checkpoint(
+                    output_dir / "best_model.pt",
+                    model=model,
+                    input_dim=train_x.shape[1],
+                    hidden_dim=hidden_dim,
+                    epoch=best_epoch,
+                    val_loss=best_val_loss,
+                    checkpoint_type="best",
+                    sequence_horizon=int(sequence_horizon),
+                    feature_names=feature_names,
+                    target_names=target_names,
+                )
+            writer.add_scalar("loss/train_standardized", train_loss, step)
+            writer.add_scalar("loss/val_standardized", val_loss, step)
+            writer.add_scalar("loss/best_val_standardized", best_val_loss, step)
+            writer.add_scalar("checkpoint/best_epoch", best_epoch, step)
+            writer.add_scalar("lr", float(optimizer.param_groups[0]["lr"]), step)
+    finally:
+        writer.flush()
+
+    val_mse_axis = _eval_raw_mse_axis(
+        model,
+        val_tensor_x,
+        arrays["val_targets"],
+        y_mean,
+        y_std,
+    )
+    test_mse_axis = _eval_raw_mse_axis(
+        model,
+        test_tensor_x,
+        arrays["test_targets"],
+        y_mean,
+        y_std,
+    )
+    zero_val_mse_axis = _zero_residual_mse_axis(arrays["val_targets"])
+    zero_test_mse_axis = _zero_residual_mse_axis(arrays["test_targets"])
+    val_mse = float(np.mean(val_mse_axis))
+    test_mse = float(np.mean(test_mse_axis))
+    zero_val_mse = float(np.mean(zero_val_mse_axis))
+    zero_test_mse = float(np.mean(zero_test_mse_axis))
+    final_epoch = int(epochs)
+    final_val_loss = float(history_val[-1]) if history_val else 0.0
+    if best_epoch == 0:
+        best_val_loss = final_val_loss
+    metrics = {
+        "command": command,
+        "argv": [str(item) for item in argv] if argv is not None else None,
+        "sys_argv": [str(item) for item in argv] if argv is not None else None,
+        **current_git_metadata(),
+        "dataset_dir": str(dataset_dir),
+        "split_manifest_path": _artifact_path(dataset_dir / "split_manifest.json"),
+        "dataset_summary_path": _artifact_path(dataset_dir / "dataset_summary.json"),
+        "dataset_quality_path": _artifact_path(dataset_dir / "dataset_quality.json"),
+        "output_dir": str(output_dir),
+        "sequence_horizon": int(sequence_horizon),
+        "include_history_controls": bool(include_history_controls),
+        "history_steps": int(history_steps),
+        "epochs": int(epochs),
+        "batch_size": int(batch_size),
+        "hidden_dim": int(hidden_dim),
+        "learning_rate": float(learning_rate),
+        "weight_decay": float(weight_decay),
+        "seed": int(seed),
+        "device": str(device),
+        "feature_names": feature_names,
+        "target_names": target_names,
+        "train_samples": int(arrays["train_features"].shape[0]),
+        "val_samples": int(arrays["val_features"].shape[0]),
+        "test_samples": int(arrays["test_features"].shape[0]),
+        "train_loss": history_train,
+        "val_loss": history_val,
+        "test_loss": _eval_loss(model, loss_fn, test_tensor_x, test_tensor_y),
+        "val_mse": val_mse,
+        "test_mse": test_mse,
+        "zero_residual_val_mse": zero_val_mse,
+        "zero_residual_test_mse": zero_test_mse,
+        "tensorboard_enabled": True,
+        "tensorboard_log_dir": str(tensorboard_log_dir),
+        "best_epoch": int(best_epoch),
+        "best_val_loss": float(best_val_loss),
+        "final_epoch": int(final_epoch),
+        "final_val_loss": float(final_val_loss),
+        "checkpoint_policy": "best_model.pt tracks minimum validation standardized loss; model.pt stores final epoch",
+        "best_checkpoint_path": str(output_dir / "best_model.pt"),
+        "final_checkpoint_path": str(output_dir / "model.pt"),
+    }
+    _write_tensorboard_final_diagnostics(
+        writer=writer,
+        model=model,
+        val_features=val_tensor_x,
+        val_targets=arrays["val_targets"],
+        target_mean=y_mean,
+        target_std=y_std,
+        metrics=metrics,
+        seed=seed,
+        step=int(epochs),
+    )
+    writer.close()
+    _save_checkpoint(
+        output_dir / "model.pt",
+        model=model,
+        input_dim=train_x.shape[1],
+        hidden_dim=hidden_dim,
+        epoch=final_epoch,
+        val_loss=final_val_loss,
+        checkpoint_type="final",
+        metrics=metrics,
+        sequence_horizon=int(sequence_horizon),
+        feature_names=feature_names,
+        target_names=target_names,
+    )
+    (output_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    return metrics
+
+
+def load_sequence_fdm_dataset(
+    dataset_dir: str | Path,
+    *,
+    sequence_horizon: int,
+    include_history_controls: bool = True,
+    history_steps: int = 1,
+) -> dict[str, np.ndarray]:
+    dataset_dir = Path(dataset_dir)
+    arrays = {}
+    for split in SPLITS:
+        with np.load(dataset_dir / f"{split}.npz") as data:
+            features, targets = _sequence_features_targets_from_split(
+                data,
+                sequence_horizon=int(sequence_horizon),
+                include_history_controls=bool(include_history_controls),
+                history_steps=int(history_steps),
+            )
+        arrays[f"{split}_features"] = features
+        arrays[f"{split}_targets"] = targets
+    return arrays
+
+
 def _features_from_split(data) -> np.ndarray:
     terrain_risk = np.asarray(data["terrain_risk"], dtype=np.float32).reshape(-1, 1)
     return np.concatenate(
@@ -237,6 +487,104 @@ def _features_from_split(data) -> np.ndarray:
         ],
         axis=1,
     ).astype(np.float32, copy=False)
+
+
+def _angle_diff(base: float, target: np.ndarray) -> np.ndarray:
+    target = np.asarray(target, dtype=np.float32)
+    return np.arctan2(np.sin(target - float(base)), np.cos(target - float(base))).astype(np.float32, copy=False)
+
+
+def _sequence_features_targets_from_split(
+    data,
+    *,
+    sequence_horizon: int,
+    include_history_controls: bool,
+    history_steps: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    states = np.asarray(data["states"], dtype=np.float32)
+    next_states = np.asarray(data["next_states"], dtype=np.float32)
+    cmd_controls = np.asarray(data["cmd_controls"], dtype=np.float32)
+    terrain_features = np.asarray(data["terrain_features"], dtype=np.float32)
+    terrain_risk = np.asarray(data["terrain_risk"], dtype=np.float32).reshape(-1)
+
+    sample_count = int(states.shape[0])
+    horizon = int(sequence_horizon)
+    max_start = sample_count - horizon
+    if max_start <= 0 or states.shape[1] != 6:
+        feature_dim = len(
+            sequence_fdm_feature_names(
+                horizon,
+                include_history_controls=include_history_controls,
+                include_history_steps=history_steps,
+            )
+        )
+        target_dim = horizon * 4
+        empty_features = np.empty((0, feature_dim), dtype=np.float32)
+        empty_targets = np.empty((0, target_dim), dtype=np.float32)
+        return empty_features, empty_targets
+
+    feature_rows: list[np.ndarray] = []
+    target_rows: list[np.ndarray] = []
+    feature_names = sequence_fdm_feature_names(
+        horizon,
+        include_history_controls=include_history_controls,
+        include_history_steps=history_steps,
+    )
+    for start in range(max_start):
+        state = states[start]
+        future_commands = cmd_controls[start : start + horizon]
+        if future_commands.shape[0] != horizon:
+            break
+        future_next_states = next_states[start : start + horizon]
+        if future_next_states.shape[0] != horizon:
+            break
+        future_risk = terrain_risk[start + 1 : start + horizon + 1]
+        if future_risk.shape[0] != horizon:
+            break
+
+        rel_xy = future_next_states[:, :2] - state[:2]
+        rel_yaw = _angle_diff(state[2], future_next_states[:, 2])
+        rel_targets = np.stack(
+            [rel_xy[:, 0], rel_xy[:, 1], rel_yaw, future_risk],
+            axis=1,
+        ).astype(np.float32, copy=False)
+
+        history = np.zeros((history_steps * 3,), dtype=np.float32)
+        if include_history_controls and history_steps > 0:
+            for index in range(history_steps):
+                previous_step = start - index - 1
+                if previous_step < 0:
+                    break
+                history[index * 3 : (index + 1) * 3] = cmd_controls[previous_step]
+
+        per_step_features = []
+        for step in range(horizon):
+            per_step_features.append(
+                np.concatenate(
+                    [
+                        future_commands[step],
+                        terrain_features[start],
+                        np.asarray([terrain_risk[start]], dtype=np.float32),
+                    ],
+                    dtype=np.float32,
+                ).astype(np.float32, copy=False)
+            )
+        feature = np.concatenate(
+            [
+                state,
+                history,
+                np.concatenate(per_step_features, axis=0),
+            ],
+            dtype=np.float32,
+            axis=None,
+        )
+        target = rel_targets.reshape(-1).astype(np.float32, copy=False)
+        feature_rows.append(feature)
+        target_rows.append(target)
+    assert len(feature_rows) == len(target_rows)
+    features = np.asarray(feature_rows, dtype=np.float32)
+    targets = np.asarray(target_rows, dtype=np.float32)
+    return features, targets
 
 
 def _normalization(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -437,17 +785,25 @@ def _save_checkpoint(
     val_loss: float,
     checkpoint_type: str,
     metrics: dict | None = None,
+    sequence_horizon: int | None = None,
+    feature_names: list[str] | tuple[str, ...] | None = None,
+    target_names: list[str] | tuple[str, ...] | None = None,
 ) -> None:
+    resolved_target_names = target_names if target_names is not None else TARGET_NAMES
+    resolved_feature_names = feature_names if feature_names is not None else FEATURE_NAMES
     payload = {
         "model_state_dict": model.state_dict(),
         "input_dim": int(input_dim),
         "hidden_dim": int(hidden_dim),
-        "feature_names": FEATURE_NAMES,
-        "target_names": TARGET_NAMES,
+        "feature_names": np.asarray(resolved_feature_names),
+        "target_names": np.asarray(resolved_target_names),
+        "target_dim": int(len(resolved_target_names)),
         "epoch": int(epoch),
         "val_loss": float(val_loss),
         "checkpoint_type": str(checkpoint_type),
     }
+    if sequence_horizon is not None:
+        payload["sequence_horizon"] = int(sequence_horizon)
     if metrics is not None:
         payload["metrics"] = metrics
     torch.save(payload, path)

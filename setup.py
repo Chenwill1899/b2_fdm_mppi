@@ -43,6 +43,7 @@ setup(
         "console_scripts": [
             "fdm_mppi = b2_fdm_mppi.cli:main",
             "fdm_mppi_sim_node = b2_fdm_mppi.fdm_mppi_sim_node:main",
+            "fdm_mppi_mujoco_closed_loop = b2_fdm_mppi.mujoco_closed_loop:main",
         ],
     },
 )
