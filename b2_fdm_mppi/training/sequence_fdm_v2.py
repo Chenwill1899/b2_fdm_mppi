@@ -8,27 +8,53 @@ from typing import Any
 import numpy as np
 import torch
 from torch import nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
 
 class SequenceFdmDataset(Dataset):
-    """PyTorch dataset for sequence FDM V2 training windows."""
+    """Sequence FDM V2 training windows pre-stacked into contiguous tensors.
+
+    Pre-stacks at construction so __getitem__ is a tensor slice. Call .to(device)
+    to move everything to GPU once and avoid per-batch host→device transfer.
+    """
 
     def __init__(self, windows: list[dict], horizon_steps: int) -> None:
-        self.windows = windows
         self.horizon_steps = horizon_steps
+        self.states = torch.from_numpy(
+            np.stack([w["state"] for w in windows]).astype(np.float32)
+        )
+        self.controls = torch.from_numpy(
+            np.stack([w["controls"] for w in windows]).astype(np.float32)
+        )
+        self.terrain_grids = torch.from_numpy(
+            np.stack([w["terrain_grid"] for w in windows]).astype(np.float32)
+        )
+        self.target_states = torch.from_numpy(
+            np.stack([w["target_states"] for w in windows]).astype(np.float32)
+        )
+        self.target_risk = torch.from_numpy(
+            np.stack([w["target_risk"] for w in windows]).astype(np.float32)
+        )
+
+    def to(self, device: torch.device) -> "SequenceFdmDataset":
+        self.states = self.states.to(device)
+        self.controls = self.controls.to(device)
+        self.terrain_grids = self.terrain_grids.to(device)
+        self.target_states = self.target_states.to(device)
+        self.target_risk = self.target_risk.to(device)
+        return self
 
     def __len__(self) -> int:
-        return len(self.windows)
+        return self.states.shape[0]
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, ...]:
-        w = self.windows[idx]
-        state = torch.as_tensor(w["state"], dtype=torch.float32)
-        controls = torch.as_tensor(w["controls"], dtype=torch.float32)
-        terrain_grid = torch.as_tensor(w["terrain_grid"], dtype=torch.float32)
-        target_states = torch.as_tensor(w["target_states"], dtype=torch.float32)
-        target_risk = torch.as_tensor(w["target_risk"], dtype=torch.float32)
-        return state, controls, terrain_grid, target_states, target_risk
+        return (
+            self.states[idx],
+            self.controls[idx],
+            self.terrain_grids[idx],
+            self.target_states[idx],
+            self.target_risk[idx],
+        )
 
 
 def compute_normalization(windows: list[dict], horizon_steps: int) -> dict[str, np.ndarray]:
@@ -143,10 +169,10 @@ def train_sequence_fdm_v2(
         phase_train = [truncate(w) for w in phase_train]
         phase_val = [truncate(w) for w in phase_val]
 
-        train_dataset = SequenceFdmDataset(phase_train, horizon_steps=horizon)
-        val_dataset = SequenceFdmDataset(phase_val, horizon_steps=horizon)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        train_dataset = SequenceFdmDataset(phase_train, horizon_steps=horizon).to(torch_device)
+        val_dataset = SequenceFdmDataset(phase_val, horizon_steps=horizon).to(torch_device)
+        n_train = len(train_dataset)
+        n_val = len(val_dataset)
 
         # Create or load model
         model = SequenceFdmMlpV2(horizon_steps=horizon, hidden_dims=hidden_dims).to(torch_device)
@@ -185,15 +211,18 @@ def train_sequence_fdm_v2(
 
         for epoch in range(epochs):
             model.train()
-            train_losses = []
-            train_traj_losses = []
-            train_risk_losses = []
-            for state, controls, grid, target_states, target_risk in train_loader:
-                state = state.to(torch_device)
-                controls = controls.to(torch_device)
-                grid = grid.to(torch_device)
-                target_states = target_states.to(torch_device)
-                target_risk = target_risk.to(torch_device)
+            train_loss_sum = torch.zeros((), device=torch_device)
+            train_traj_sum = torch.zeros((), device=torch_device)
+            train_risk_sum = torch.zeros((), device=torch_device)
+            n_train_batches = 0
+            perm = torch.randperm(n_train, device=torch_device)
+            for i in range(0, n_train, batch_size):
+                idx = perm[i : i + batch_size]
+                state = train_dataset.states[idx].contiguous()
+                controls = train_dataset.controls[idx].contiguous()
+                grid = train_dataset.terrain_grids[idx].contiguous()
+                target_states = train_dataset.target_states[idx].contiguous()
+                target_risk = train_dataset.target_risk[idx].contiguous()
 
                 pred_states, pred_risk_logits = model(state, controls, grid)
 
@@ -204,38 +233,41 @@ def train_sequence_fdm_v2(
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-                train_losses.append(float(loss.item()))
-                train_traj_losses.append(float(loss_traj.item()))
-                train_risk_losses.append(float(loss_risk.item()))
+                train_loss_sum += loss.detach()
+                train_traj_sum += loss_traj.detach()
+                train_risk_sum += loss_risk.detach()
+                n_train_batches += 1
                 global_step += 1
 
             # Validation
             model.eval()
-            val_losses = []
-            val_traj_losses = []
-            val_risk_losses = []
+            val_loss_sum = torch.zeros((), device=torch_device)
+            val_traj_sum = torch.zeros((), device=torch_device)
+            val_risk_sum = torch.zeros((), device=torch_device)
+            n_val_batches = 0
             with torch.no_grad():
-                for state, controls, grid, target_states, target_risk in val_loader:
-                    state = state.to(torch_device)
-                    controls = controls.to(torch_device)
-                    grid = grid.to(torch_device)
-                    target_states = target_states.to(torch_device)
-                    target_risk = target_risk.to(torch_device)
+                for i in range(0, n_val, batch_size):
+                    state = val_dataset.states[i : i + batch_size].contiguous()
+                    controls = val_dataset.controls[i : i + batch_size].contiguous()
+                    grid = val_dataset.terrain_grids[i : i + batch_size].contiguous()
+                    target_states = val_dataset.target_states[i : i + batch_size].contiguous()
+                    target_risk = val_dataset.target_risk[i : i + batch_size].contiguous()
 
                     pred_states, pred_risk_logits = model(state, controls, grid)
                     loss_traj = mse_loss(pred_states, target_states)
                     loss_risk = bce_loss(pred_risk_logits, target_risk)
                     loss = w_traj * loss_traj + w_risk * loss_risk
-                    val_losses.append(float(loss.item()))
-                    val_traj_losses.append(float(loss_traj.item()))
-                    val_risk_losses.append(float(loss_risk.item()))
+                    val_loss_sum += loss
+                    val_traj_sum += loss_traj
+                    val_risk_sum += loss_risk
+                    n_val_batches += 1
 
-            avg_train = float(np.mean(train_losses))
-            avg_val = float(np.mean(val_losses))
-            avg_train_traj = float(np.mean(train_traj_losses))
-            avg_train_risk = float(np.mean(train_risk_losses))
-            avg_val_traj = float(np.mean(val_traj_losses))
-            avg_val_risk = float(np.mean(val_risk_losses))
+            avg_train = float(train_loss_sum.item() / max(n_train_batches, 1))
+            avg_val = float(val_loss_sum.item() / max(n_val_batches, 1))
+            avg_train_traj = float(train_traj_sum.item() / max(n_train_batches, 1))
+            avg_train_risk = float(train_risk_sum.item() / max(n_train_batches, 1))
+            avg_val_traj = float(val_traj_sum.item() / max(n_val_batches, 1))
+            avg_val_risk = float(val_risk_sum.item() / max(n_val_batches, 1))
 
             print(f"  Epoch {epoch + 1}/{epochs}: train={avg_train:.6f}, val={avg_val:.6f}")
 
