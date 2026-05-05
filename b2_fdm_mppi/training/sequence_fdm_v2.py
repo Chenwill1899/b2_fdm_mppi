@@ -166,8 +166,11 @@ def train_sequence_fdm_v2(
                     print(f"  Warning: checkpoint horizon {ckpt.get('horizon_steps')} != current {horizon}, starting fresh")
             if resume_opt_path.exists():
                 opt_ckpt = torch.load(resume_opt_path, map_location=device, weights_only=False)
-                optimizer.load_state_dict(opt_ckpt["optimizer_state_dict"])
-                print(f"  Resumed optimizer state from {resume_opt_path}")
+                if opt_ckpt.get("horizon_steps") == horizon:
+                    optimizer.load_state_dict(opt_ckpt["optimizer_state_dict"])
+                    print(f"  Resumed optimizer state from {resume_opt_path}")
+                else:
+                    print(f"  Warning: optimizer horizon {opt_ckpt.get('horizon_steps')} != current {horizon}, skipping optimizer resume")
             resume_from = None  # only resume on first phase
         elif best_ckpt_path is not None and best_ckpt_path.exists():
             ckpt = torch.load(best_ckpt_path, map_location=device, weights_only=False)
