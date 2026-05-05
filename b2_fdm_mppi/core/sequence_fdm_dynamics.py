@@ -20,8 +20,8 @@ class SequenceFdmDynamics:
         state_std: np.ndarray,
         control_mean: np.ndarray,
         control_std: np.ndarray,
-        target_mean: np.ndarray,
-        target_std: np.ndarray,
+        state_target_mean: np.ndarray,
+        state_target_std: np.ndarray,
         device: str = "cpu",
     ) -> None:
         self.model = model.to(device)
@@ -33,12 +33,8 @@ class SequenceFdmDynamics:
         self.state_std = torch.from_numpy(state_std).to(device)
         self.control_mean = torch.from_numpy(control_mean).to(device)
         self.control_std = torch.from_numpy(control_std).to(device)
-        target_mean = torch.from_numpy(target_mean).to(device)
-        target_std = torch.from_numpy(target_std).to(device)
-        # target = [state_x, state_y, ..., state_wz for each step, then risk logits]
-        state_target_len = self.horizon_steps * 6
-        self.state_target_mean = target_mean[:state_target_len].view(self.horizon_steps, 6)
-        self.state_target_std = target_std[:state_target_len].view(self.horizon_steps, 6)
+        self.state_target_mean = torch.from_numpy(state_target_mean).to(device).view(self.horizon_steps, 6)
+        self.state_target_std = torch.from_numpy(state_target_std).to(device).view(self.horizon_steps, 6)
 
     @classmethod
     def from_artifacts(cls, model_dir: Path, device: str = "cpu") -> "SequenceFdmDynamics":
@@ -90,8 +86,8 @@ class SequenceFdmDynamics:
             state_std=norm["state_std"].astype(np.float32),
             control_mean=norm["control_mean"].astype(np.float32),
             control_std=norm["control_std"].astype(np.float32),
-            target_mean=norm["target_mean"].astype(np.float32),
-            target_std=norm["target_std"].astype(np.float32),
+            state_target_mean=norm["state_target_mean"].astype(np.float32),
+            state_target_std=norm["state_target_std"].astype(np.float32),
             device=device,
         )
 
@@ -112,8 +108,8 @@ class SequenceFdmDynamics:
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Batch inference with torch tensors.
 
-        NOTE: The model was trained on raw (un-normalized) data, so inference
-        also uses raw inputs and returns raw outputs.
+        Normalizes inputs, runs the model, and denormalizes state predictions.
+        Risk logits are returned as-is (sigmoid is applied by the caller).
 
         Args:
             state: (B, 6) or (6,)
@@ -134,10 +130,14 @@ class SequenceFdmDynamics:
         controls = controls.to(self.device)
         terrain_grid = terrain_grid.to(self.device)
 
-        with torch.no_grad():
-            out = self.model(state, controls, terrain_grid)
+        state_norm = self._normalize_state(state)
+        controls_norm = self._normalize_controls(controls)
 
-        states_pred, risk_logits = out
+        with torch.no_grad():
+            out = self.model(state_norm, controls_norm, terrain_grid)
+
+        states_pred_norm, risk_logits = out
+        states_pred = self._denormalize_state_targets(states_pred_norm)
 
         if squeeze:
             states_pred = states_pred.squeeze(0)

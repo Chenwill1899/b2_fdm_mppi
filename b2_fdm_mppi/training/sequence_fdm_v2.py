@@ -16,25 +16,34 @@ class SequenceFdmDataset(Dataset):
 
     Pre-stacks at construction so __getitem__ is a tensor slice. Call .to(device)
     to move everything to GPU once and avoid per-batch host→device transfer.
+    If norm dict is provided, inputs and state targets are normalized in-place
+    so the model learns on zero-mean unit-variance data.
     """
 
-    def __init__(self, windows: list[dict], horizon_steps: int) -> None:
+    def __init__(
+        self,
+        windows: list[dict],
+        horizon_steps: int,
+        norm: dict[str, np.ndarray] | None = None,
+    ) -> None:
         self.horizon_steps = horizon_steps
-        self.states = torch.from_numpy(
-            np.stack([w["state"] for w in windows]).astype(np.float32)
-        )
-        self.controls = torch.from_numpy(
-            np.stack([w["controls"] for w in windows]).astype(np.float32)
-        )
-        self.terrain_grids = torch.from_numpy(
-            np.stack([w["terrain_grid"] for w in windows]).astype(np.float32)
-        )
-        self.target_states = torch.from_numpy(
-            np.stack([w["target_states"] for w in windows]).astype(np.float32)
-        )
-        self.target_risk = torch.from_numpy(
-            np.stack([w["target_risk"] for w in windows]).astype(np.float32)
-        )
+        states = np.stack([w["state"] for w in windows]).astype(np.float32)
+        controls = np.stack([w["controls"] for w in windows]).astype(np.float32)
+        terrain_grids = np.stack([w["terrain_grid"] for w in windows]).astype(np.float32)
+        target_states = np.stack([w["target_states"] for w in windows]).astype(np.float32)
+        target_risk = np.stack([w["target_risk"] for w in windows]).astype(np.float32)
+
+        if norm is not None:
+            states = (states - norm["state_mean"]) / norm["state_std"]
+            controls = (controls - norm["control_mean"]) / norm["control_std"]
+            target_states = (target_states - norm["state_target_mean"]) / norm["state_target_std"]
+            # target_risk stays in [0,1] for BCEWithLogitsLoss
+
+        self.states = torch.from_numpy(states)
+        self.controls = torch.from_numpy(controls)
+        self.terrain_grids = torch.from_numpy(terrain_grids)
+        self.target_states = torch.from_numpy(target_states)
+        self.target_risk = torch.from_numpy(target_risk)
 
     def to(self, device: torch.device) -> "SequenceFdmDataset":
         self.states = self.states.to(device)
@@ -58,21 +67,21 @@ class SequenceFdmDataset(Dataset):
 
 
 def compute_normalization(windows: list[dict], horizon_steps: int) -> dict[str, np.ndarray]:
-    """Compute mean/std for states, controls, and targets from training windows."""
+    """Compute mean/std for states, controls, and state targets from training windows.
+
+    Risk targets are kept in [0,1] for BCEWithLogitsLoss and are NOT normalized.
+    """
     states = np.stack([w["state"] for w in windows])
     controls = np.stack([w["controls"] for w in windows])
-    target_states = np.stack([w["target_states"].reshape(-1) for w in windows])
-    target_risk = np.stack([w["target_risk"] for w in windows])
-
-    target = np.concatenate([target_states, target_risk], axis=1)
+    target_states = np.stack([w["target_states"] for w in windows])
 
     return {
         "state_mean": np.mean(states, axis=0).astype(np.float32),
         "state_std": np.std(states, axis=0).astype(np.float32) + 1e-8,
         "control_mean": np.mean(controls, axis=(0, 1)).astype(np.float32),
         "control_std": np.std(controls, axis=(0, 1)).astype(np.float32) + 1e-8,
-        "target_mean": np.mean(target, axis=0).astype(np.float32),
-        "target_std": np.std(target, axis=0).astype(np.float32) + 1e-8,
+        "state_target_mean": np.mean(target_states, axis=(0, 1)).astype(np.float32),
+        "state_target_std": np.std(target_states, axis=(0, 1)).astype(np.float32) + 1e-8,
         "horizon_steps": np.array([horizon_steps], dtype=np.int32),
     }
 
@@ -169,8 +178,8 @@ def train_sequence_fdm_v2(
         phase_train = [truncate(w) for w in phase_train]
         phase_val = [truncate(w) for w in phase_val]
 
-        train_dataset = SequenceFdmDataset(phase_train, horizon_steps=horizon).to(torch_device)
-        val_dataset = SequenceFdmDataset(phase_val, horizon_steps=horizon).to(torch_device)
+        train_dataset = SequenceFdmDataset(phase_train, horizon_steps=horizon, norm=norm).to(torch_device)
+        val_dataset = SequenceFdmDataset(phase_val, horizon_steps=horizon, norm=norm).to(torch_device)
         n_train = len(train_dataset)
         n_val = len(val_dataset)
 
