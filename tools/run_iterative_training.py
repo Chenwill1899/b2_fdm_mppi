@@ -11,7 +11,6 @@ import sys
 import time
 from pathlib import Path
 
-# Add package to path
 import torch
 
 
@@ -29,9 +28,30 @@ def run(cmd: list[str], desc: str) -> None:
     print(f"Done in {elapsed:.0f}s")
 
 
+def _detect_round_state(data_root: Path, checkpoint_root: Path) -> dict[int, dict]:
+    """Detect what each round has completed."""
+    state = {}
+    for r in [1, 2, 3]:
+        data_dir = data_root / f"round_{r}"
+        ckpt_dir = checkpoint_root / f"round_{r}"
+        npz_files = list(data_dir.glob("episode_*_traj_00.npz")) if data_dir.exists() else []
+        ckpt_exists = (ckpt_dir / "best_model.pt").exists()
+        training_done = (ckpt_dir / "training_metrics.json").exists()
+        state[r] = {
+            "data_count": len(npz_files),
+            "has_checkpoint": ckpt_exists,
+            "training_done": training_done,
+        }
+    return state
+
+
 def main():
     parser = argparse.ArgumentParser(description="3-round iterative training")
     parser.add_argument("--base-config", default="configs/smoke.yaml")
+    parser.add_argument("--resume-from-seed", type=int, default=None,
+                        help="Episode seed to resume from (detects and resumes partial rounds)")
+    parser.add_argument("--resume-round", type=int, choices=[1, 2, 3], default=None,
+                        help="Resume from a specific round (skips completed rounds)")
     parser.add_argument("--episodes", type=int, nargs="+", default=[100, 100, 200],
                         help="Episodes per round (3 values for 3 rounds)")
     parser.add_argument("--num-trajectories", type=int, default=3)
@@ -48,15 +68,22 @@ def main():
     num_rounds = 3
     device = args.device
 
-    # Horizon/epochs/lr per phase
-    horizons = [5, 10, 20]
-    epochs = [50, 50, 100]
-    lrs = [1e-3, 5e-4, 1e-4]
-    curriculum = list(zip(horizons, epochs, lrs))
+    # Determine starting round
+    start_round = args.resume_round if args.resume_round else 1
+
+    # Print current state
+    state = _detect_round_state(Path(args.data_root), Path(args.checkpoint_root))
+    print("Current round state:")
+    for r in [1, 2, 3]:
+        s = state[r]
+        print(f"  Round {r}: {s['data_count']} episodes collected, "
+              f"checkpoint={'✓' if s['has_checkpoint'] else '✗'}, "
+              f"training={'✓' if s['training_done'] else '✗'}")
+    print(f"  Starting from round {start_round}\n")
 
     summary = []
 
-    for round_idx in range(1, num_rounds + 1):
+    for round_idx in range(start_round, num_rounds + 1):
         print(f"\n{'#' * 60}")
         print(f"# ROUND {round_idx}/{num_rounds}")
         print(f"{'#' * 60}")
