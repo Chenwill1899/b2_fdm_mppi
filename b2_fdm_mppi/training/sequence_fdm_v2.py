@@ -93,7 +93,7 @@ def train_sequence_fdm_v2(
     curriculum_phases: list[tuple[int, int, float]] | None = None,
     batch_size: int = 64,
     w_traj: float = 1.0,
-    w_risk: float = 0.5,
+    w_risk: float = 2.0,
     val_ratio: float = 0.15,
     patience: int = 10,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
@@ -215,6 +215,10 @@ def train_sequence_fdm_v2(
         mse_loss = nn.MSELoss()
         bce_loss = nn.BCEWithLogitsLoss()
 
+        # Denormalization tensors for physical-space trajectory loss
+        state_target_mean_t = torch.from_numpy(norm["state_target_mean"]).to(torch_device).view(1, 1, 6)
+        state_target_std_t = torch.from_numpy(norm["state_target_std"]).to(torch_device).view(1, 1, 6)
+
         phase_best_loss = float("inf")
         no_improve = 0
 
@@ -235,7 +239,10 @@ def train_sequence_fdm_v2(
 
                 pred_states, pred_risk_logits = model(state, controls, grid)
 
-                loss_traj = mse_loss(pred_states, target_states)
+                # Denormalize to physical space for trajectory loss
+                pred_states_phys = pred_states * state_target_std_t + state_target_mean_t
+                target_states_phys = target_states * state_target_std_t + state_target_mean_t
+                loss_traj = mse_loss(pred_states_phys, target_states_phys)
                 loss_risk = bce_loss(pred_risk_logits, target_risk)
                 loss = w_traj * loss_traj + w_risk * loss_risk
 
@@ -263,7 +270,9 @@ def train_sequence_fdm_v2(
                     target_risk = val_dataset.target_risk[i : i + batch_size].contiguous()
 
                     pred_states, pred_risk_logits = model(state, controls, grid)
-                    loss_traj = mse_loss(pred_states, target_states)
+                    pred_states_phys = pred_states * state_target_std_t + state_target_mean_t
+                    target_states_phys = target_states * state_target_std_t + state_target_mean_t
+                    loss_traj = mse_loss(pred_states_phys, target_states_phys)
                     loss_risk = bce_loss(pred_risk_logits, target_risk)
                     loss = w_traj * loss_traj + w_risk * loss_risk
                     val_loss_sum += loss
