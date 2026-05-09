@@ -6,7 +6,7 @@ import json
 import math
 import time
 import heapq
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -63,14 +63,33 @@ def odom_message_to_state(message: Any) -> np.ndarray:
 def project_scout_state(state: np.ndarray) -> np.ndarray:
     """Project an odometry state onto the differential-drive Scout model."""
     projected = np.asarray(state, dtype=np.float32).reshape(6).copy()
+    projected[3:5] = _world_xy_velocity_to_body(projected)
     projected[4] = 0.0
     return projected
 
 
 def project_mujoco_state(state: np.ndarray, drive_mode: str = "differential") -> np.ndarray:
     if str(drive_mode).lower() in {"omni", "omni_freejoint", "holonomic"}:
-        return np.asarray(state, dtype=np.float32).reshape(6).copy()
+        projected = np.asarray(state, dtype=np.float32).reshape(6).copy()
+        projected[3:5] = _world_xy_velocity_to_body(projected)
+        return projected
     return project_scout_state(state)
+
+
+def _world_xy_velocity_to_body(state: np.ndarray) -> np.ndarray:
+    state = np.asarray(state, dtype=np.float32).reshape(6)
+    yaw = float(state[2])
+    cos_yaw = math.cos(yaw)
+    sin_yaw = math.sin(yaw)
+    world_vx = float(state[3])
+    world_vy = float(state[4])
+    return np.asarray(
+        [
+            cos_yaw * world_vx + sin_yaw * world_vy,
+            -sin_yaw * world_vx + cos_yaw * world_vy,
+        ],
+        dtype=np.float32,
+    )
 
 
 def initial_odom_timeout_expired(start_time: float, now: float, startup_timeout: float) -> bool:
@@ -142,8 +161,11 @@ def final_approach_control(state: np.ndarray, goal: np.ndarray, config: dict[str
         wz_gain = float(cfg.get("wz_gain", 1.6))
         heading_gain = float(cfg.get("heading_gain", 0.0))
         final_yaw_gain = float(cfg.get("final_yaw_gain", 1.0))
-        target_yaw = math.atan2(float(delta[1]), float(delta[0]))
-        heading_error = angle_diff(target_yaw, float(state[2]))
+        if distance <= 1e-4:
+            heading_error = 0.0
+        else:
+            target_yaw = math.atan2(float(delta[1]), float(delta[0]))
+            heading_error = angle_diff(target_yaw, float(state[2]))
         yaw_error = angle_diff(float(goal[2]), float(state[2]))
         cos_yaw = math.cos(float(state[2]))
         sin_yaw = math.sin(float(state[2]))
@@ -178,6 +200,8 @@ class CommandFilterConfig:
     max_awz: float = 1.2
     drive_mode: str = "differential"
     lateral_scale: float = 1.0
+    lateral_deadband: float = 0.0
+    yaw_deadband: float = 0.0
     min_turn_vx: float = 0.0
     turn_wz_threshold: float = 0.0
     min_turn_vx_goal_distance: float = 0.0
@@ -195,6 +219,8 @@ class CommandFilterConfig:
             max_awz=float(cfg.get("max_awz", robot.get("max_awz", 1.2))),
             drive_mode=str(config.get("mujoco", {}).get("drive_mode", cfg.get("drive_mode", "differential"))).lower(),
             lateral_scale=float(np.clip(cfg.get("lateral_scale", 1.0), 0.0, 1.0)),
+            lateral_deadband=max(float(cfg.get("lateral_deadband", 0.0)), 0.0),
+            yaw_deadband=max(float(cfg.get("yaw_deadband", 0.0)), 0.0),
             min_turn_vx=max(float(cfg.get("min_turn_vx", 0.0)), 0.0),
             turn_wz_threshold=max(float(cfg.get("turn_wz_threshold", 0.0)), 0.0),
             min_turn_vx_goal_distance=max(
@@ -218,6 +244,10 @@ def filter_mujoco_command(
         target[1] = 0.0
     else:
         target[1] *= cfg.lateral_scale
+        if abs(float(target[1])) < cfg.lateral_deadband:
+            target[1] = 0.0
+    if abs(float(target[2])) < cfg.yaw_deadband:
+        target[2] = 0.0
     if (
         cfg.min_turn_vx > 0.0
         and target[0] > 0.0
@@ -239,6 +269,10 @@ def filter_mujoco_command(
     filtered = previous + delta
     if cfg.drive_mode not in {"omni", "omni_freejoint", "holonomic"}:
         filtered[1] = 0.0
+    elif abs(float(filtered[1])) < cfg.lateral_deadband:
+        filtered[1] = 0.0
+    if abs(float(filtered[2])) < cfg.yaw_deadband:
+        filtered[2] = 0.0
     return filtered.astype(np.float32, copy=False)
 
 
@@ -249,6 +283,57 @@ def filter_diff_drive_command(
     dt: float,
 ) -> np.ndarray:
     return filter_mujoco_command(target, previous, cfg, dt)
+
+
+@dataclass(frozen=True)
+class MotionPolicyConfig:
+    rotate_then_translate_enabled: bool = False
+    enter_angle_rad: float = math.radians(120.0)
+    exit_angle_rad: float = math.radians(60.0)
+    allow_reverse: bool = False
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "MotionPolicyConfig":
+        policy = config.get("motion_policy", {})
+        rotate = policy.get("rotate_then_translate", {})
+        return cls(
+            rotate_then_translate_enabled=bool(rotate.get("enabled", False)),
+            enter_angle_rad=math.radians(float(rotate.get("enter_angle_deg", 120.0))),
+            exit_angle_rad=math.radians(float(rotate.get("exit_angle_deg", 60.0))),
+            allow_reverse=bool(policy.get("allow_reverse", False)),
+        )
+
+
+def rotate_then_translate_goal(
+    state: np.ndarray,
+    goal: np.ndarray | None,
+    cfg: MotionPolicyConfig,
+    *,
+    current_phase: str = "translate_to_goal",
+) -> tuple[np.ndarray | None, str]:
+    if goal is None:
+        return None, "wait_goal"
+    goal_arr = np.asarray(goal, dtype=np.float32).reshape(6)
+    if cfg.allow_reverse or not cfg.rotate_then_translate_enabled:
+        return goal_arr.copy(), "translate_to_goal"
+    state_arr = np.asarray(state, dtype=np.float32).reshape(6)
+    delta = goal_arr[:2] - state_arr[:2]
+    if float(np.linalg.norm(delta)) <= 1e-4:
+        return goal_arr.copy(), "translate_to_goal"
+    target_yaw = math.atan2(float(delta[1]), float(delta[0]))
+    heading_error = abs(angle_diff(target_yaw, float(state_arr[2])))
+    rotating = current_phase == "rotate_to_goal"
+    if rotating:
+        rotating = heading_error > cfg.exit_angle_rad
+    else:
+        rotating = heading_error > cfg.enter_angle_rad
+    if not rotating:
+        return goal_arr.copy(), "translate_to_goal"
+    planning_goal = state_arr.copy()
+    planning_goal[0:2] = state_arr[0:2]
+    planning_goal[2] = target_yaw
+    planning_goal[3:6] = 0.0
+    return planning_goal.astype(np.float32, copy=False), "rotate_to_goal"
 
 
 def predict_omni_rollout(initial_state: np.ndarray, controls: np.ndarray, dt: float, max_control: np.ndarray) -> np.ndarray:
@@ -707,6 +792,48 @@ class ElevationMapObstacleAdapter:
 
 
 @dataclass(frozen=True)
+class GroundArtifactFilterConfig:
+    enabled: bool = False
+    min_cost: float = 20.0
+    max_height_abs: float = 0.08
+    max_roughness: float = 0.05
+    max_slope: float = 0.05
+    occupied_threshold: int = 50
+    clear_value: float = 0.0
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "GroundArtifactFilterConfig":
+        cfg = config.get("ground_artifact_filter", {})
+        return cls(
+            enabled=bool(cfg.get("enabled", False)),
+            min_cost=max(float(cfg.get("min_cost", 20.0)), 0.0),
+            max_height_abs=max(float(cfg.get("max_height_abs", 0.08)), 0.0),
+            max_roughness=max(float(cfg.get("max_roughness", 0.05)), 0.0),
+            max_slope=max(float(cfg.get("max_slope", 0.05)), 0.0),
+            occupied_threshold=int(cfg.get("occupied_threshold", 50)),
+            clear_value=max(float(cfg.get("clear_value", 0.0)), 0.0),
+        )
+
+
+@dataclass(frozen=True)
+class LocalCostmapFootprintConfig:
+    enabled: bool = False
+    radius: float = 0.35
+    safety_margin: float = 0.05
+    sample_count: int = 8
+
+    @classmethod
+    def from_config(cls, config: dict[str, Any]) -> "LocalCostmapFootprintConfig":
+        cfg = config.get("footprint", {})
+        return cls(
+            enabled=bool(cfg.get("enabled", False)),
+            radius=max(float(cfg.get("radius", 0.35)), 0.0),
+            safety_margin=max(float(cfg.get("safety_margin", 0.05)), 0.0),
+            sample_count=max(int(cfg.get("sample_count", 8)), 4),
+        )
+
+
+@dataclass(frozen=True)
 class LocalCostmapConfig:
     enabled: bool = False
     required: bool = False
@@ -719,6 +846,8 @@ class LocalCostmapConfig:
     max_cost: float = 100.0
     unknown_clear_radius: float = 1.0
     unknown_clear_value: float = 0.0
+    ground_artifact_filter: GroundArtifactFilterConfig = field(default_factory=GroundArtifactFilterConfig)
+    footprint: LocalCostmapFootprintConfig = field(default_factory=LocalCostmapFootprintConfig)
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "LocalCostmapConfig":
@@ -735,6 +864,8 @@ class LocalCostmapConfig:
             max_cost=max(float(cfg.get("max_cost", 100.0)), 1e-6),
             unknown_clear_radius=max(float(cfg.get("unknown_clear_radius", 1.0)), 0.0),
             unknown_clear_value=max(float(cfg.get("unknown_clear_value", 0.0)), 0.0),
+            ground_artifact_filter=GroundArtifactFilterConfig.from_config(cfg),
+            footprint=LocalCostmapFootprintConfig.from_config(cfg),
         )
 
 
@@ -771,6 +902,8 @@ class LocalCostmapAdapter:
         invalid_values = ~np.isfinite(data)
         unknown_mask |= invalid_values
         data[invalid_values] = float(self.cfg.unknown_cost)
+        raw_data = data.copy()
+        data, artifact_cells = self._filter_ground_artifacts(msg, data, unknown_mask, cell_count)
         return {
             "enabled": True,
             "origin": np.asarray(
@@ -781,6 +914,7 @@ class LocalCostmapAdapter:
             "width": width,
             "height": height,
             "data": data,
+            "raw_data": raw_data,
             "unknown_mask": unknown_mask,
             "weight": float(self.cfg.cost_weight),
             "power": float(self.cfg.cost_power),
@@ -788,6 +922,17 @@ class LocalCostmapAdapter:
             "max_cost": float(self.cfg.max_cost),
             "unknown_clear_radius": float(self.cfg.unknown_clear_radius),
             "unknown_clear_value": float(self.cfg.unknown_clear_value),
+            "ground_artifact_cells": int(artifact_cells),
+            "raw_mean_cost": float(np.mean(raw_data)) if raw_data.size else 0.0,
+            "raw_max_cost": float(np.max(raw_data)) if raw_data.size else 0.0,
+            "raw_high_cost_ratio": float(np.mean(raw_data >= self.cfg.ground_artifact_filter.min_cost)) if raw_data.size else 0.0,
+            "filtered_mean_cost": float(np.mean(data)) if data.size else 0.0,
+            "filtered_max_cost": float(np.max(data)) if data.size else 0.0,
+            "filtered_high_cost_ratio": float(np.mean(data >= self.cfg.ground_artifact_filter.min_cost)) if data.size else 0.0,
+            "footprint_enabled": bool(self.cfg.footprint.enabled),
+            "footprint_radius": float(self.cfg.footprint.radius),
+            "footprint_safety_margin": float(self.cfg.footprint.safety_margin),
+            "footprint_sample_count": int(self.cfg.footprint.sample_count),
         }
 
     def _layer_values(self, msg: Any) -> np.ndarray:
@@ -807,6 +952,45 @@ class LocalCostmapAdapter:
             value_arr = np.asarray(values, dtype=np.float32).reshape(-1)
             mask |= value_arr < 0.0
         return mask
+
+    def _filter_ground_artifacts(
+        self,
+        msg: Any,
+        data: np.ndarray,
+        unknown_mask: np.ndarray,
+        cell_count: int,
+    ) -> tuple[np.ndarray, int]:
+        cfg = self.cfg.ground_artifact_filter
+        if not cfg.enabled or data.size != cell_count:
+            return data, 0
+        height = self._message_float_layer(msg, "height", cell_count)
+        roughness = self._message_float_layer(msg, "roughness", cell_count)
+        slope = self._message_float_layer(msg, "cost_map", cell_count)
+        occupancy = np.asarray(getattr(msg.occupancy, "data", []), dtype=np.int16).reshape(-1)
+        if height is None or roughness is None or slope is None or occupancy.size != cell_count:
+            return data, 0
+        observed = (~unknown_mask) & (occupancy >= 0) & (occupancy < int(cfg.occupied_threshold))
+        flat_ground = (
+            observed
+            & (data >= float(cfg.min_cost))
+            & (np.abs(height) <= float(cfg.max_height_abs))
+            & (roughness <= float(cfg.max_roughness))
+            & (slope <= float(cfg.max_slope))
+        )
+        if not np.any(flat_ground):
+            return data, 0
+        filtered = data.copy()
+        filtered[flat_ground] = float(cfg.clear_value)
+        return filtered, int(np.count_nonzero(flat_ground))
+
+    @staticmethod
+    def _message_float_layer(msg: Any, name: str, cell_count: int) -> np.ndarray | None:
+        if not hasattr(msg, name):
+            return None
+        values = np.asarray(getattr(msg, name), dtype=np.float32).reshape(-1)
+        if values.size != cell_count:
+            return None
+        return values
 
 
 @dataclass(frozen=True)
@@ -1297,6 +1481,8 @@ class MujocoClosedLoopRecorder:
         min_cost: float,
         planning_goal: np.ndarray | None = None,
         active_path_plan_id: int | None = None,
+        motion_phase: str | None = None,
+        local_costmap_snapshot: dict[str, Any] | None = None,
     ) -> None:
         state = np.asarray(state, dtype=np.float32).reshape(6)
         raw = np.asarray(raw_control, dtype=np.float32).reshape(3)
@@ -1318,6 +1504,8 @@ class MujocoClosedLoopRecorder:
                 "terrain_risk": float(terrain_risk),
                 "mppi_time_ms": float(mppi_time_ms),
                 "min_cost": float(min_cost),
+                "motion_phase": motion_phase,
+                "local_costmap_stats": _local_costmap_stats(local_costmap_snapshot),
             }
         )
 
@@ -1584,7 +1772,32 @@ class MujocoClosedLoopRecorder:
             "control_smoothness": _smoothness(controls),
             "control_jerk": _jerk(controls),
             "lateral_usage": float(np.mean(controls[:, 1] * controls[:, 1])) if controls.size else 0.0,
+            **self._local_costmap_metrics(),
+            **self._motion_phase_metrics(),
             **self._path_tracking_metrics(),
+        }
+
+    def _local_costmap_metrics(self) -> dict[str, float | int | None]:
+        stats = [row.get("local_costmap_stats") for row in self.rows if row.get("local_costmap_stats")]
+        if not stats:
+            return {
+                "local_costmap_ground_artifact_cells_mean": None,
+                "local_costmap_raw_high_cost_ratio_mean": None,
+                "local_costmap_filtered_high_cost_ratio_mean": None,
+            }
+        return {
+            "local_costmap_ground_artifact_cells_mean": _mean([row["ground_artifact_cells"] for row in stats]),
+            "local_costmap_raw_high_cost_ratio_mean": _mean([row["raw_high_cost_ratio"] for row in stats]),
+            "local_costmap_filtered_high_cost_ratio_mean": _mean([row["filtered_high_cost_ratio"] for row in stats]),
+            "local_costmap_raw_mean_cost_mean": _mean([row["raw_mean_cost"] for row in stats]),
+            "local_costmap_filtered_mean_cost_mean": _mean([row["filtered_mean_cost"] for row in stats]),
+        }
+
+    def _motion_phase_metrics(self) -> dict[str, int]:
+        phases = [str(row.get("motion_phase")) for row in self.rows if row.get("motion_phase")]
+        return {
+            "motion_phase_rotate_steps": sum(phase == "rotate_to_goal" for phase in phases),
+            "motion_phase_translate_steps": sum(phase == "translate_to_goal" for phase in phases),
         }
 
     def _path_tracking_metrics(self) -> dict[str, float | None]:
@@ -1721,6 +1934,8 @@ class MujocoClosedLoopNode:
         self.local_goal = LocalGoalConfig.from_config(config)
         self.global_path = GlobalPathConfig.from_config(config)
         self.command_filter = CommandFilterConfig.from_config(config)
+        self.motion_policy = MotionPolicyConfig.from_config(config)
+        self.motion_phase = "translate_to_goal"
         goal_topic_cfg = config.get("goal_topic", {})
         self.goal_topic_enabled = bool(goal_topic_cfg.get("enabled", False))
         self.goal_topic = str(goal_topic_cfg.get("topic", "/move_base_simple/goal"))
@@ -1849,6 +2064,7 @@ class MujocoClosedLoopNode:
             follow_goal=self.goal_relief_center_follows_goal,
         )
         self.recorder.goal = self.goal.copy()
+        self.motion_phase = "translate_to_goal"
         self.path_waypoints = np.empty((0, 2), dtype=np.float32)
         self.path_plan_id = None
         self._node.get_logger().info(
@@ -1894,6 +2110,12 @@ class MujocoClosedLoopNode:
             return
 
         state = self.last_state.copy()
+        motion_goal, self.motion_phase = rotate_then_translate_goal(
+            state,
+            self.goal,
+            self.motion_policy,
+            current_phase=self.motion_phase,
+        )
         if self.elevation_map.enabled and self.elevation_map.required and not self.elevation_map.has_fresh_map():
             self.previous_command[:] = 0.0
             self.publisher.publish(self._twist_type())
@@ -1925,15 +2147,20 @@ class MujocoClosedLoopNode:
             else obstacles
         )
         start = time.time()
-        planning_goal = self.goal if self.goal is not None else path_terminal_goal(self.external_path.path(), state)
+        planning_goal = motion_goal if motion_goal is not None else path_terminal_goal(self.external_path.path(), state)
         active_path = np.empty((0, 2), dtype=np.float32)
         active_path_plan_id = None
-        final_u = None if self.goal is None else final_approach_control(state, self.goal, self.config)
+        final_cfg = self.config.get("final_controller", {})
+        disable_final_with_local_costmap = bool(final_cfg.get("disable_when_local_costmap", True))
+        use_final_controller = not (using_local_costmap and disable_final_with_local_costmap)
+        final_u = None if motion_goal is None or not use_final_controller else final_approach_control(state, motion_goal, self.config)
         optimal_u = None
         sample_u = None
         if final_u is None:
             if self.local_costmap.cfg.enabled:
-                planning_goal = self.goal if self.goal is not None else np.asarray(state, dtype=np.float32).reshape(6).copy()
+                planning_goal = motion_goal if motion_goal is not None else np.asarray(state, dtype=np.float32).reshape(6).copy()
+            elif motion_goal is not None and self.motion_phase == "rotate_to_goal":
+                planning_goal = motion_goal
             else:
                 planning_goal, active_path, active_path_plan_id = self._planning_goal(state, obstacles)
             raw_u, optimal_u, sample_u, _normalizer, min_cost = self.controller.compute_control(
@@ -1977,6 +2204,8 @@ class MujocoClosedLoopNode:
             min_cost=min_cost,
             planning_goal=planning_goal,
             active_path_plan_id=active_path_plan_id,
+            motion_phase=self.motion_phase,
+            local_costmap_snapshot=local_costmap_snapshot,
         )
         self.steps += 1
         if not np.isfinite(state).all() or not np.isfinite(command).all():
@@ -2127,7 +2356,11 @@ class MujocoClosedLoopNode:
         self.previous_command[:] = 0.0
         self.publisher.publish(self._twist_type())
         final_state = self.last_state if self.last_state is not None else np.asarray(self.config["simulation"]["initial_state"], dtype=np.float32)
-        reached = False if self.goal is None else goal_reached_xy(final_state, self.goal, self.minimum_distance)
+        reached = False if self.goal is None else goal_reached_xy(
+            final_state,
+            self.goal,
+            self.goal_termination_distance + 0.1,
+        )
         summary = self.recorder.write(
             final_state=final_state,
             reached_goal=reached,
@@ -2245,6 +2478,21 @@ def _mean(values: list[float]) -> float:
 
 def _max(values: list[float]) -> float:
     return float(np.max(values)) if values else 0.0
+
+
+def _local_costmap_stats(snapshot: dict[str, Any] | None) -> dict[str, float] | None:
+    if not snapshot or not bool(snapshot.get("enabled", False)):
+        return None
+    keys = (
+        "ground_artifact_cells",
+        "raw_mean_cost",
+        "raw_max_cost",
+        "raw_high_cost_ratio",
+        "filtered_mean_cost",
+        "filtered_max_cost",
+        "filtered_high_cost_ratio",
+    )
+    return {key: float(snapshot.get(key, 0.0)) for key in keys}
 
 
 def _mean_norm(values: np.ndarray) -> float:

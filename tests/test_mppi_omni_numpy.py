@@ -283,7 +283,7 @@ def test_omni_mppi_local_costmap_penalizes_high_cost_cells():
         "data": data.reshape(-1),
         "weight": 20.0,
         "power": 2.0,
-        "unknown_cost": 100.0,
+        "unknown_cost": 0.0,
         "max_cost": 100.0,
     }
     straight = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
@@ -298,6 +298,55 @@ def test_omni_mppi_local_costmap_penalizes_high_cost_cells():
     lateral_cost = controller.trajectory_cost(state, lateral, goal, obstacles, costmap=costmap)
 
     assert straight_cost > lateral_cost
+
+
+def test_omni_mppi_local_costmap_footprint_penalizes_grazing_path():
+    controller = make_controller(
+        seed=24,
+        num_samples=2,
+        horizon_steps=4,
+        max_ax=1000.0,
+        max_ay=1000.0,
+        velocity_lag_beta=0.0,
+    )
+    controller.goal_xy_weight = 0.0
+    controller.yaw_weight = 0.0
+    controller.control_weight = 0.0
+    controller.smooth_weight = 0.0
+    controller.accel_weight = 0.0
+    controller.lateral_weight = 0.0
+    controller.yaw_rate_weight = 0.0
+    controller.jerk_weight = 0.0
+    data = np.zeros((7, 8), dtype=np.float32)
+    data[5, :] = 100.0
+    costmap = {
+        "enabled": True,
+        "origin": np.array([0.0, -0.3], dtype=np.float32),
+        "resolution": 0.1,
+        "width": 8,
+        "height": 7,
+        "data": data.reshape(-1),
+        "weight": 10.0,
+        "power": 1.0,
+        "unknown_cost": 0.0,
+        "max_cost": 100.0,
+        "footprint_enabled": True,
+        "footprint_radius": 0.25,
+        "footprint_safety_margin": 0.0,
+        "footprint_sample_count": 16,
+    }
+    centerline = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    centerline[:, 0] = 1.0
+    shifted = centerline.copy()
+    shifted[:, 1] = -0.5
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    center_cost = controller.trajectory_cost(state, centerline, goal, obstacles, costmap=costmap)
+    shifted_cost = controller.trajectory_cost(state, shifted, goal, obstacles, costmap=costmap)
+
+    assert center_cost > shifted_cost
 
 
 def test_omni_mppi_local_costmap_treats_out_of_bounds_as_unknown_cost():
@@ -448,6 +497,31 @@ def test_omni_mppi_heading_to_goal_cost_penalizes_sideways_body_heading():
     assert controller.trajectory_cost(sideways_state, controls, goal, obstacles) > controller.trajectory_cost(
         aligned_state, controls, goal, obstacles
     )
+
+
+def test_omni_mppi_update_smoothing_blends_nominal_sequence():
+    controller = make_controller(seed=25, num_samples=2, horizon_steps=4, update_smoothing_alpha=0.75)
+    previous = np.zeros((controller.horizon_steps, 3), dtype=np.float32)
+    previous[:, 0] = 1.0
+    updated = np.zeros_like(previous)
+    updated[:, 0] = -1.0
+    controller._has_nominal_update = True
+
+    smoothed = controller._smooth_nominal_update(updated, previous)
+
+    assert smoothed[:, 0] == pytest.approx(np.full(controller.horizon_steps, 0.5))
+
+
+def test_omni_mppi_goal_change_resets_smoothed_nominal_sequence():
+    controller = make_controller(seed=26, num_samples=2, horizon_steps=4, update_smoothing_alpha=0.75)
+    controller.nominal_u[:, 0] = 1.0
+    controller._has_nominal_update = True
+
+    controller._reset_nominal_on_goal_change(np.array([1.0, 0.0, 0.0], dtype=np.float32))
+    controller._reset_nominal_on_goal_change(np.array([2.0, 0.0, 0.0], dtype=np.float32))
+
+    assert controller._has_nominal_update is False
+    assert controller.nominal_u == pytest.approx(np.zeros_like(controller.nominal_u))
 
 
 def test_omni_mppi_batch_cost_matches_scalar_costs():

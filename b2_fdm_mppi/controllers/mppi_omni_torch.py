@@ -124,7 +124,9 @@ class MppiOmniTorch(MppiOmniNumpy):
     def _compute_control_impl(self, state: np.ndarray, cost_params):
         if self.profile_enabled:
             self._profile_total_calls += 1
-        goal = torch.as_tensor(np.asarray(cost_params[3], dtype=np.float32), device=self.torch_device)
+        goal_np = np.asarray(cost_params[3], dtype=np.float32)
+        self._reset_nominal_on_goal_change(goal_np)
+        goal = torch.as_tensor(goal_np, device=self.torch_device)
         obstacles = torch.as_tensor(
             np.asarray(cost_params[4], dtype=np.float32).reshape(-1, 7),
             device=self.torch_device,
@@ -133,6 +135,7 @@ class MppiOmniTorch(MppiOmniNumpy):
         costmap = self._costmap_to_torch(self._costmap_from_cost_params(cost_params))
         profile_start = self._profile_start()
         nominal = torch.as_tensor(self.nominal_u, dtype=torch.float32, device=self.torch_device)
+        previous_nominal = nominal.clone()
         noise = torch.randn(
             (self.num_samples, self.horizon_steps, 3),
             dtype=torch.float32,
@@ -152,6 +155,14 @@ class MppiOmniTorch(MppiOmniNumpy):
         else:
             weights = weights / normalizer_t
         nominal = torch.sum(weights[:, None, None] * candidates, dim=0)
+        if self._has_nominal_update and bool(np.any(self.update_smoothing_alpha > 0.0)):
+            alpha = torch.as_tensor(
+                self.update_smoothing_alpha.reshape(1, 3),
+                dtype=torch.float32,
+                device=self.torch_device,
+            )
+            nominal = alpha * previous_nominal + (1.0 - alpha) * nominal
+        self._has_nominal_update = True
         nominal = torch.clamp(nominal, -self.max_control_t, self.max_control_t)
         self._profile_stop("update_distribution_ms", profile_start)
         profile_start = self._profile_start()
@@ -355,6 +366,10 @@ class MppiOmniTorch(MppiOmniNumpy):
             "max_cost": float(costmap.get("max_cost", 100.0)),
             "unknown_clear_radius": float(costmap.get("unknown_clear_radius", 0.0)),
             "unknown_clear_value": float(costmap.get("unknown_clear_value", 0.0)),
+            "footprint_enabled": bool(costmap.get("footprint_enabled", False)),
+            "footprint_radius": float(costmap.get("footprint_radius", 0.0)),
+            "footprint_safety_margin": float(costmap.get("footprint_safety_margin", 0.0)),
+            "footprint_sample_count": int(costmap.get("footprint_sample_count", 8)),
         }
 
     def _local_costmap_cost_batch_torch(
@@ -373,17 +388,17 @@ class MppiOmniTorch(MppiOmniNumpy):
         if width <= 0 or height <= 0 or resolution <= 0.0 or data is None or int(data.numel()) != width * height:
             return costs
         origin = costmap["origin"]
-        points = states[:, :, :2]
-        ix = torch.floor((points[:, :, 0] - origin[0]) / resolution).to(torch.long)
-        iy = torch.floor((points[:, :, 1] - origin[1]) / resolution).to(torch.long)
+        points = self._local_costmap_sample_points_torch(states, costmap)
+        ix = torch.floor((points[..., 0] - origin[0]) / resolution).to(torch.long)
+        iy = torch.floor((points[..., 1] - origin[1]) / resolution).to(torch.long)
         valid = (ix >= 0) & (ix < width) & (iy >= 0) & (iy < height)
         sampled = torch.full(
-            points.shape[:2],
+            points.shape[:-1],
             float(costmap.get("unknown_cost", 100.0)),
             dtype=torch.float32,
             device=self.torch_device,
         )
-        sampled_unknown = torch.ones(points.shape[:2], dtype=torch.bool, device=self.torch_device)
+        sampled_unknown = torch.ones(points.shape[:-1], dtype=torch.bool, device=self.torch_device)
         if bool(torch.any(valid).item()):
             flat_idx = iy[valid] * width + ix[valid]
             sampled[valid] = data[flat_idx]
@@ -395,14 +410,48 @@ class MppiOmniTorch(MppiOmniNumpy):
         clear_radius = float(costmap.get("unknown_clear_radius", 0.0))
         if clear_radius > 0.0 and bool(torch.any(sampled_unknown).item()):
             start_xy = torch.as_tensor(initial_state, dtype=torch.float32, device=self.torch_device).reshape(6)[:2]
-            distance_from_start = torch.linalg.norm(points - start_xy.view(1, 1, 2), dim=2)
+            distance_from_start = torch.linalg.norm(points - start_xy, dim=-1)
             clear_mask = sampled_unknown & (distance_from_start <= clear_radius)
             if bool(torch.any(clear_mask).item()):
                 sampled[clear_mask] = float(costmap.get("unknown_clear_value", 0.0))
         max_cost = max(float(costmap.get("max_cost", 100.0)), 1e-6)
         normalized = torch.clamp(sampled, min=0.0, max=max_cost) / max_cost
         terms = torch.pow(normalized, max(float(costmap.get("power", 2.0)), 0.1))
+        if terms.ndim == 3:
+            terms = torch.max(terms, dim=2).values
         return float(costmap.get("weight", 0.0)) * torch.sum(terms, dim=1)
+
+    def _local_costmap_sample_points_torch(self, states: torch.Tensor, costmap: dict) -> torch.Tensor:
+        points = states[:, :, :2]
+        if not bool(costmap.get("footprint_enabled", False)):
+            return points
+        radius = float(costmap.get("footprint_radius", 0.0)) + float(costmap.get("footprint_safety_margin", 0.0))
+        if radius <= 0.0:
+            return points
+        sample_count = max(int(costmap.get("footprint_sample_count", 8)), 4)
+        angles = torch.linspace(
+            0.0,
+            2.0 * torch.pi,
+            sample_count + 1,
+            dtype=torch.float32,
+            device=self.torch_device,
+        )[:-1]
+        unit_offsets = torch.cat(
+            [
+                torch.zeros((1, 2), dtype=torch.float32, device=self.torch_device),
+                torch.stack([torch.cos(angles), torch.sin(angles)], dim=1),
+            ],
+            dim=0,
+        )
+        offsets = unit_offsets * radius
+        theta = states[:, :, 2]
+        cos_t = torch.cos(theta)
+        sin_t = torch.sin(theta)
+        ox = offsets[:, 0]
+        oy = offsets[:, 1]
+        world_x = points[:, :, 0, None] + cos_t[:, :, None] * ox - sin_t[:, :, None] * oy
+        world_y = points[:, :, 1, None] + sin_t[:, :, None] * ox + cos_t[:, :, None] * oy
+        return torch.stack([world_x, world_y], dim=-1)
 
     def _path_tracking_cost_batch_torch(self, states: torch.Tensor, path: torch.Tensor | None) -> torch.Tensor:
         costs = torch.zeros(states.shape[0], dtype=torch.float32, device=self.torch_device)

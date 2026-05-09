@@ -13,10 +13,12 @@ from b2_fdm_mppi.mujoco_closed_loop import (
     ExternalPathAdapter,
     ExternalPathConfig,
     GlobalPathConfig,
+    GroundArtifactFilterConfig,
     LocalCostmapAdapter,
     LocalCostmapConfig,
     LocalGoalConfig,
     CommandFilterConfig,
+    MotionPolicyConfig,
     MujocoClosedLoopRecorder,
     append_history_state,
     body_yaw_from_quaternion,
@@ -34,6 +36,7 @@ from b2_fdm_mppi.mujoco_closed_loop import (
     path_terminal_goal,
     plan_global_path_astar,
     predict_omni_rollout,
+    rotate_then_translate_goal,
     project_point_to_path,
     project_mujoco_state,
     point_segment_distance,
@@ -181,13 +184,26 @@ def test_odom_message_to_state_maps_nav_odometry_to_fdm_state():
 def test_project_scout_state_zeroes_lateral_velocity_for_differential_drive():
     state = project_scout_state(np.array([1.0, -0.2, 0.3, 0.8, 0.12, -0.4], dtype=np.float32))
 
-    assert state.tolist() == pytest.approx([1.0, -0.2, 0.3, 0.8, 0.0, -0.4])
+    expected_vx = np.cos(0.3) * 0.8 + np.sin(0.3) * 0.12
+    assert state.tolist() == pytest.approx([1.0, -0.2, 0.3, expected_vx, 0.0, -0.4])
 
 
-def test_project_mujoco_state_preserves_lateral_velocity_for_omni_drive():
+def test_project_mujoco_state_converts_ausim_world_velocity_to_body_velocity_for_omni_drive():
     state = project_mujoco_state(np.array([1.0, -0.2, 0.3, 0.8, 0.12, -0.4], dtype=np.float32), "omni_freejoint")
 
-    assert state.tolist() == pytest.approx([1.0, -0.2, 0.3, 0.8, 0.12, -0.4])
+    expected_vx = np.cos(0.3) * 0.8 + np.sin(0.3) * 0.12
+    expected_vy = -np.sin(0.3) * 0.8 + np.cos(0.3) * 0.12
+    assert state.tolist() == pytest.approx([1.0, -0.2, 0.3, expected_vx, expected_vy, -0.4])
+
+
+def test_project_mujoco_state_yaw_pi_negative_world_x_is_forward_body_velocity():
+    state = project_mujoco_state(
+        np.array([0.0, 0.0, np.pi, -0.6, 0.0, 0.0], dtype=np.float32),
+        "omni_freejoint",
+    )
+
+    assert state[3] == pytest.approx(0.6)
+    assert state[4] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_scout_twist_command_forces_differential_drive_lateral_velocity_to_zero():
@@ -328,6 +344,73 @@ def test_final_approach_control_limits_lateral_velocity_for_smooth_omni_finish()
     assert control[2] > 0.0
 
 
+def test_final_approach_control_turns_in_place_without_heading_fight_for_omni():
+    config = {
+        "mujoco": {"drive_mode": "omni_freejoint"},
+        "robot": {"max_vx": 1.0, "max_vy": 0.3, "max_wz": 1.2},
+        "final_controller": {
+            "enabled": True,
+            "trigger_distance": 1.2,
+            "heading_gain": 0.75,
+            "final_yaw_gain": 0.55,
+            "wz_gain": 1.4,
+        },
+    }
+    state = np.array([1.0, 0.0, 2.1, 0.0, 0.0, 0.0], dtype=np.float32)
+    goal = np.array([1.0, 0.0, np.pi, 0.0, 0.0, 0.0], dtype=np.float32)
+
+    control = final_approach_control(state, goal, config)
+
+    assert control is not None
+    assert control[0] == pytest.approx(0.0)
+    assert control[1] == pytest.approx(0.0)
+    assert control[2] > 0.0
+
+
+def test_rotate_then_translate_goal_enters_rotate_phase_for_goal_behind():
+    cfg = MotionPolicyConfig(
+        rotate_then_translate_enabled=True,
+        enter_angle_rad=np.deg2rad(120.0),
+        exit_angle_rad=np.deg2rad(60.0),
+        allow_reverse=False,
+    )
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.array([-2.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+
+    planning_goal, phase = rotate_then_translate_goal(state, goal, cfg, current_phase="translate_to_goal")
+
+    assert phase == "rotate_to_goal"
+    assert planning_goal[:2].tolist() == pytest.approx([0.0, 0.0])
+    assert abs(float(planning_goal[2])) == pytest.approx(np.pi)
+
+
+def test_rotate_then_translate_goal_exits_rotate_phase_with_hysteresis():
+    cfg = MotionPolicyConfig(
+        rotate_then_translate_enabled=True,
+        enter_angle_rad=np.deg2rad(120.0),
+        exit_angle_rad=np.deg2rad(60.0),
+        allow_reverse=False,
+    )
+    state = np.array([0.0, 0.0, np.deg2rad(150.0), 0.0, 0.0, 0.0], dtype=np.float32)
+    goal = np.array([-2.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+
+    planning_goal, phase = rotate_then_translate_goal(state, goal, cfg, current_phase="rotate_to_goal")
+
+    assert phase == "translate_to_goal"
+    assert planning_goal.tolist() == pytest.approx(goal.tolist())
+
+
+def test_omni_freejoint_after_turn_progresses_toward_negative_x_goal():
+    state = np.array([0.0, 0.0, np.pi, 0.0, 0.0, 0.0], dtype=np.float32)
+    controls = np.zeros((5, 3), dtype=np.float32)
+    controls[:, 0] = 0.5
+
+    states = predict_omni_rollout(state, controls, dt=0.1, max_control=np.array([1.0, 0.2, 1.2], dtype=np.float32))
+
+    assert states[-1, 0] < state[0]
+    assert abs(float(states[-1, 1])) < 1e-6
+
+
 def test_filter_diff_drive_command_low_passes_and_rate_limits():
     cfg = CommandFilterConfig(enabled=True, alpha=0.5, max_ax=0.4, max_awz=1.0)
     target = np.array([1.0, 0.5, 1.0], dtype=np.float32)
@@ -383,6 +466,29 @@ def test_filter_mujoco_command_scales_omni_lateral_target_before_rate_limit():
     )
 
     assert filtered.tolist() == pytest.approx([0.3, 0.2, -0.2])
+
+
+def test_filter_mujoco_command_suppresses_small_lateral_and_yaw_jitter():
+    cfg = CommandFilterConfig(
+        enabled=True,
+        alpha=0.0,
+        max_ax=10.0,
+        max_ay=10.0,
+        max_awz=10.0,
+        drive_mode="omni_freejoint",
+        lateral_scale=0.25,
+        lateral_deadband=0.03,
+        yaw_deadband=0.015,
+    )
+
+    filtered = filter_mujoco_command(
+        np.array([0.3, 0.08, 0.01], dtype=np.float32),
+        np.zeros(3, dtype=np.float32),
+        cfg,
+        dt=0.1,
+    )
+
+    assert filtered.tolist() == pytest.approx([0.3, 0.0, 0.0])
 
 
 def test_filter_mujoco_command_applies_turn_forward_floor_before_rate_limit():
@@ -664,9 +770,9 @@ def test_path_terminal_goal_uses_external_path_endpoint_without_fixed_goal():
     assert goal[2] == pytest.approx(0.0)
 
 
-def test_runtime_goal_required_ignores_yaml_goal_until_rviz_goal_arrives():
+def test_runtime_goal_required_waits_until_rviz_goal_arrives():
     config = {
-        "simulation": {"goal": [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]},
+        "simulation": {},
         "goal_topic": {"enabled": True, "required": True},
     }
 
@@ -874,6 +980,38 @@ def test_local_costmap_adapter_marks_occupancy_unknown_cells():
     assert snapshot["unknown_clear_value"] == pytest.approx(0.0)
 
 
+def test_local_costmap_adapter_filters_flat_ground_reward_rings():
+    adapter = LocalCostmapAdapter(
+        LocalCostmapConfig(
+            enabled=True,
+            layer="reward_cost",
+            ground_artifact_filter=GroundArtifactFilterConfig(
+                enabled=True,
+                min_cost=20.0,
+                max_height_abs=0.08,
+                max_roughness=0.05,
+                max_slope=0.05,
+                clear_value=0.0,
+            ),
+        )
+    )
+    msg = make_occupancy_elevation(
+        np.array([[80.0, 80.0], [5.0, 80.0]], dtype=np.float32),
+        occupancy_data=[0, 0, 0, 100],
+    )
+    msg.height = [0.0, 0.0, 0.0, 0.20]
+    msg.roughness = [0.01, 0.01, 0.01, 0.30]
+    msg.cost_map = [0.01, 0.01, 0.01, 0.50]
+
+    adapter.update(msg, now=1.0)
+    snapshot = adapter.snapshot(now=1.0)
+
+    assert snapshot["data"].tolist() == pytest.approx([0.0, 0.0, 5.0, 80.0])
+    assert snapshot["ground_artifact_cells"] == 2
+    assert snapshot["raw_high_cost_ratio"] == pytest.approx(0.75)
+    assert snapshot["filtered_high_cost_ratio"] == pytest.approx(0.25)
+
+
 def test_mujoco_scout_profile_uses_direct_local_costmap_not_smooth_path():
     config, _metadata = build_experiment_config("configs/mujoco_scout.yaml", controller_name="nominal_numpy")
 
@@ -884,25 +1022,52 @@ def test_mujoco_scout_profile_uses_direct_local_costmap_not_smooth_path():
     assert config["global_path"]["enabled"] is False
     assert config["local_goal"]["enabled"] is False
     assert config["final_controller"]["enabled"] is True
-    assert config["final_controller"]["max_vy"] <= 0.03
+    assert config["final_controller"]["disable_when_local_costmap"] is True
+    assert config["final_controller"]["max_vy"] <= 0.10
     assert config["local_costmap"]["enabled"] is True
     assert config["local_costmap"]["required"] is True
     assert config["local_costmap"]["topic"] == "/msg_local_reward"
     assert config["local_costmap"]["layer"] == "reward_cost"
-    assert config["local_costmap"]["cost_weight"] <= 6.0
-    assert config["local_costmap"]["cost_power"] >= 3.0
+    assert config["local_costmap"]["cost_weight"] >= 12.0
+    assert config["local_costmap"]["cost_power"] <= 2.0
     assert config["local_costmap"]["unknown_clear_radius"] == pytest.approx(1.0)
+    assert config["local_costmap"]["ground_artifact_filter"]["enabled"] is True
+    assert config["local_costmap"]["footprint"]["enabled"] is True
+    assert config["local_costmap"]["footprint"]["radius"] == pytest.approx(0.55)
+    assert config["local_costmap"]["footprint"]["safety_margin"] == pytest.approx(0.30)
+    assert config["local_costmap"]["footprint"]["sample_count"] == 32
     assert config["goal_topic"]["enabled"] is True
     assert config["goal_topic"]["required"] is True
     assert config["goal_topic"]["topic"] == "/move_base_simple/goal"
-    assert config["robot"]["max_vy"] <= 0.2
-    assert config["command_filter"]["lateral_scale"] <= 0.4
-    assert config["mppi"]["std_normal"][1] <= 0.08
-    assert config["mppi"]["lateral_weight"] >= 1.0
+    assert config["motion_policy"]["rotate_then_translate"]["enabled"] is True
+    assert config["motion_policy"]["allow_reverse"] is False
+    assert config["robot"]["radius"] == pytest.approx(0.55)
+    assert config["robot"]["safety_dist"] == pytest.approx(0.30)
+    assert config["robot"]["max_vy"] == pytest.approx(0.30)
+    assert config["robot"]["max_ax"] == pytest.approx(1.0)
+    assert config["robot"]["max_ay"] == pytest.approx(0.35)
+    assert config["robot"]["max_awz"] == pytest.approx(1.2)
+    assert 0.30 <= config["command_filter"]["alpha"] <= 0.40
+    assert config["command_filter"]["max_ax"] == pytest.approx(1.0)
+    assert config["command_filter"]["max_ay"] == pytest.approx(0.30)
+    assert config["command_filter"]["max_awz"] == pytest.approx(0.9)
+    assert config["command_filter"]["lateral_scale"] == pytest.approx(1.0)
+    assert config["command_filter"]["lateral_deadband"] >= 0.03
+    assert config["command_filter"]["yaw_deadband"] >= 0.03
+    assert config["mppi"]["std_normal"] == pytest.approx([0.42, 0.10, 0.30])
+    assert config["mppi"]["lateral_weight"] == pytest.approx(1.2)
+    assert config["mppi"]["smooth_weight"] >= 2.0
+    assert config["mppi"]["accel_weight"] >= 0.45
+    assert config["mppi"]["yaw_rate_weight"] >= 0.30
+    assert config["mppi"]["jerk_weight"] >= 0.60
+    assert config["mppi"]["update_smoothing_alpha"] == pytest.approx([0.30, 0.78, 0.78])
+    assert config["mppi"]["goal_change_reset_distance"] == pytest.approx(0.75)
+    assert config["mppi"]["goal_progress_weight"] >= 30.0
     assert config["mppi"]["goal_progress_weight"] > 0.0
     assert config["mppi"]["heading_to_goal_weight"] > 0.0
     assert config["mppi"]["path_tracking_weight"] == pytest.approx(0.0)
     assert config["mppi"]["path_progress_weight"] == pytest.approx(0.0)
+    assert config["rviz"]["robot_scale"] == pytest.approx([0.93, 0.70, 0.35])
 
 
 def test_closed_loop_recorder_writes_experiment_compatible_outputs(tmp_path):

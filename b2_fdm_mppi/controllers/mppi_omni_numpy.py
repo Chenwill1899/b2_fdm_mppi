@@ -41,6 +41,9 @@ class MppiOmniNumpy:
         goal_progress_weight: float = 0.0,
         heading_to_goal_weight: float = 0.0,
         heading_to_goal_min_distance: float = 0.3,
+        update_smoothing_alpha: float = 0.0,
+        goal_change_reset_distance: float = 0.75,
+        goal_change_reset_yaw: float = 1.0,
         terrain: TerrainField | None = None,
         terrain_risk_weight: float = 0.0,
         terrain_risk_power: float = 2.0,
@@ -76,6 +79,9 @@ class MppiOmniNumpy:
         self.goal_progress_weight = float(goal_progress_weight)
         self.heading_to_goal_weight = float(heading_to_goal_weight)
         self.heading_to_goal_min_distance = float(max(heading_to_goal_min_distance, 0.0))
+        self.update_smoothing_alpha = self._control_axis_alpha(update_smoothing_alpha)
+        self.goal_change_reset_distance = float(max(goal_change_reset_distance, 0.0))
+        self.goal_change_reset_yaw = float(max(goal_change_reset_yaw, 0.0))
         self.terrain = terrain if terrain is not None else TerrainField()
         self.terrain_risk_weight = float(terrain_risk_weight)
         self.terrain_risk_power = float(terrain_risk_power)
@@ -87,6 +93,8 @@ class MppiOmniNumpy:
         self.rng = np.random.default_rng(seed)
         self.nominal_u = np.zeros((self.horizon_steps, 3), dtype=np.float32)
         self.previous_control = np.zeros(3, dtype=np.float32)
+        self._has_nominal_update = False
+        self._last_goal_for_nominal_reset: np.ndarray | None = None
         self.model = OmniB2(self.dt, max_vx, max_vy, max_wz)
 
     @classmethod
@@ -152,6 +160,13 @@ class MppiOmniNumpy:
                     mppi.get("heading_to_goal_min_distance", 0.3),
                 )
             ),
+            update_smoothing_alpha=overrides.get("update_smoothing_alpha", mppi.get("update_smoothing_alpha", 0.0)),
+            goal_change_reset_distance=float(
+                overrides.get("goal_change_reset_distance", mppi.get("goal_change_reset_distance", 0.75))
+            ),
+            goal_change_reset_yaw=float(
+                overrides.get("goal_change_reset_yaw", mppi.get("goal_change_reset_yaw", 1.0))
+            ),
             terrain=terrain,
             terrain_risk_weight=float(overrides.get("terrain_risk_weight", mppi.get("terrain_risk_weight", 0.0))),
             terrain_risk_power=float(overrides.get("terrain_risk_power", mppi.get("terrain_risk_power", 2.0))),
@@ -167,9 +182,11 @@ class MppiOmniNumpy:
 
     def compute_control(self, state: np.ndarray, cost_params):
         goal = np.asarray(cost_params[3], dtype=np.float32)
+        self._reset_nominal_on_goal_change(goal)
         obstacles = np.asarray(cost_params[4], dtype=np.float32).reshape(-1, 7)
         path = self._path_from_cost_params(cost_params)
         costmap = self._costmap_from_cost_params(cost_params)
+        previous_nominal = self.nominal_u.copy()
         noise = self.rng.normal(
             loc=0.0,
             scale=self.noise_std,
@@ -189,7 +206,8 @@ class MppiOmniNumpy:
             normalizer = 1.0
         else:
             weights = weights / normalizer
-        self.nominal_u = np.tensordot(weights, candidates, axes=(0, 0)).astype(np.float32)
+        updated_nominal = np.tensordot(weights, candidates, axes=(0, 0)).astype(np.float32)
+        self.nominal_u = self._smooth_nominal_update(updated_nominal, previous_nominal)
         self.nominal_u = np.clip(self.nominal_u, -self.max_control, self.max_control)
         command = self.nominal_u[0].copy()
         control = self._apply_velocity_response(state, command).astype(np.float32)
@@ -198,6 +216,45 @@ class MppiOmniNumpy:
         self.previous_control = command.copy()
         self._shift_nominal_controls()
         return control, optimal_u, sample_u, normalizer, min_cost
+
+    def _reset_nominal_on_goal_change(self, goal: np.ndarray) -> None:
+        goal_pose = np.asarray(goal, dtype=np.float32).reshape(-1)[:3].copy()
+        if goal_pose.shape[0] < 3:
+            return
+        previous_goal = self._last_goal_for_nominal_reset
+        self._last_goal_for_nominal_reset = goal_pose
+        if previous_goal is None:
+            return
+        xy_delta = float(np.linalg.norm(goal_pose[:2] - previous_goal[:2]))
+        yaw_delta = abs(self._angle_diff(float(goal_pose[2]), float(previous_goal[2])))
+        should_reset = (
+            self.goal_change_reset_distance > 0.0
+            and xy_delta > self.goal_change_reset_distance
+        ) or (
+            self.goal_change_reset_yaw > 0.0
+            and yaw_delta > self.goal_change_reset_yaw
+        )
+        if should_reset:
+            self.nominal_u.fill(0.0)
+            self._has_nominal_update = False
+
+    def _smooth_nominal_update(self, updated_nominal: np.ndarray, previous_nominal: np.ndarray) -> np.ndarray:
+        updated = np.asarray(updated_nominal, dtype=np.float32)
+        if not self._has_nominal_update or not np.any(self.update_smoothing_alpha > 0.0):
+            self._has_nominal_update = True
+            return updated
+        alpha = self.update_smoothing_alpha.reshape(1, 3)
+        self._has_nominal_update = True
+        return (alpha * np.asarray(previous_nominal, dtype=np.float32) + (1.0 - alpha) * updated).astype(np.float32)
+
+    @staticmethod
+    def _control_axis_alpha(value: float | list[float] | tuple[float, ...] | np.ndarray) -> np.ndarray:
+        alpha = np.asarray(value, dtype=np.float32).reshape(-1)
+        if alpha.size == 1:
+            alpha = np.full(3, float(alpha[0]), dtype=np.float32)
+        elif alpha.size != 3:
+            raise ValueError("update_smoothing_alpha must be a scalar or a three-element control-axis list")
+        return np.clip(alpha, 0.0, 0.95).astype(np.float32)
 
     def trajectory_cost(
         self,
@@ -526,12 +583,12 @@ class MppiOmniNumpy:
         if data.size != width * height:
             return costs
         origin = np.asarray(costmap.get("origin", [0.0, 0.0]), dtype=np.float32).reshape(2)
-        points = states[:, :, :2]
-        ix = np.floor((points[:, :, 0] - origin[0]) / resolution).astype(np.int64)
-        iy = np.floor((points[:, :, 1] - origin[1]) / resolution).astype(np.int64)
+        points = self._local_costmap_sample_points(states, costmap)
+        ix = np.floor((points[..., 0] - origin[0]) / resolution).astype(np.int64)
+        iy = np.floor((points[..., 1] - origin[1]) / resolution).astype(np.int64)
         valid = (ix >= 0) & (ix < width) & (iy >= 0) & (iy < height)
-        sampled = np.full(points.shape[:2], float(costmap.get("unknown_cost", 100.0)), dtype=np.float32)
-        sampled_unknown = np.ones(points.shape[:2], dtype=bool)
+        sampled = np.full(points.shape[:-1], float(costmap.get("unknown_cost", 100.0)), dtype=np.float32)
+        sampled_unknown = np.ones(points.shape[:-1], dtype=bool)
         if np.any(valid):
             flat_idx = iy[valid] * width + ix[valid]
             sampled[valid] = data[flat_idx]
@@ -543,14 +600,42 @@ class MppiOmniNumpy:
         clear_radius = float(costmap.get("unknown_clear_radius", 0.0))
         if clear_radius > 0.0 and np.any(sampled_unknown):
             start_xy = np.asarray(initial_state, dtype=np.float32).reshape(6)[:2]
-            distance_from_start = np.linalg.norm(points - start_xy[None, None, :], axis=2)
+            distance_from_start = np.linalg.norm(points - start_xy, axis=-1)
             clear_mask = sampled_unknown & (distance_from_start <= clear_radius)
             if np.any(clear_mask):
                 sampled[clear_mask] = float(costmap.get("unknown_clear_value", 0.0))
         max_cost = max(float(costmap.get("max_cost", 100.0)), 1e-6)
         normalized = np.clip(sampled, 0.0, max_cost) / max_cost
         terms = np.power(normalized, max(float(costmap.get("power", 2.0)), 0.1))
+        if terms.ndim == 3:
+            terms = np.max(terms, axis=2)
         return (float(costmap.get("weight", 0.0)) * np.sum(terms, axis=1)).astype(np.float32)
+
+    @staticmethod
+    def _local_costmap_sample_points(states: np.ndarray, costmap: dict) -> np.ndarray:
+        points = states[:, :, :2]
+        if not bool(costmap.get("footprint_enabled", False)):
+            return points
+        radius = float(costmap.get("footprint_radius", 0.0)) + float(costmap.get("footprint_safety_margin", 0.0))
+        if radius <= 0.0:
+            return points
+        sample_count = max(int(costmap.get("footprint_sample_count", 8)), 4)
+        angles = np.linspace(0.0, 2.0 * np.pi, sample_count, endpoint=False, dtype=np.float32)
+        unit_offsets = np.vstack(
+            [
+                np.zeros((1, 2), dtype=np.float32),
+                np.stack([np.cos(angles), np.sin(angles)], axis=1).astype(np.float32),
+            ]
+        )
+        offsets = unit_offsets * np.float32(radius)
+        theta = states[:, :, 2]
+        cos_t = np.cos(theta)
+        sin_t = np.sin(theta)
+        ox = offsets[:, 0]
+        oy = offsets[:, 1]
+        world_x = points[:, :, 0, None] + cos_t[:, :, None] * ox - sin_t[:, :, None] * oy
+        world_y = points[:, :, 1, None] + sin_t[:, :, None] * ox + cos_t[:, :, None] * oy
+        return np.stack([world_x, world_y], axis=-1).astype(np.float32)
 
     def _terrain_risk_cost(self, states: np.ndarray) -> float:
         return float(self._terrain_risk_cost_batch(np.asarray(states, dtype=np.float32)[None, :, :])[0])

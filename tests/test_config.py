@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from b2_fdm_mppi.config import load_config, validate_config
+from b2_fdm_mppi.experiment import build_experiment_config
 
 
 def test_default_config_loads_required_groups():
@@ -23,6 +24,26 @@ def test_external_path_base_can_omit_fixed_goal():
     assert config["external_path"]["enabled"] is True
     assert config["obstacles"]["virtual"] == []
     assert config["mppi"]["obstacle_weight"] == pytest.approx(0.0)
+
+
+def test_mujoco_profiles_use_rviz_goal_not_yaml_goal():
+    scout, _ = build_experiment_config("configs/mujoco_scout.yaml", controller_name="nominal_numpy")
+    obstacle, _ = build_experiment_config("configs/mujoco_test_obstacles.yaml", controller_name="nominal_numpy")
+    localmap, _ = build_experiment_config("configs/mujoco_test_obstacles_localmap.yaml", controller_name="nominal_numpy")
+
+    for config in (scout, obstacle, localmap):
+        assert "goal" not in config["simulation"]
+        assert config["goal_topic"]["enabled"] is True
+        assert config["goal_topic"]["required"] is True
+        assert config["goal_topic"]["topic"] == "/move_base_simple/goal"
+
+
+def test_mujoco_profiles_reject_yaml_fixed_goal():
+    config, _ = build_experiment_config("configs/mujoco_scout.yaml", controller_name="nominal_numpy")
+    config["simulation"]["goal"] = [16.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    with pytest.raises(ValueError, match="RViz /move_base_simple/goal"):
+        validate_config(config)
 
 
 def test_short_goal_baseline_config_loads_stage0_parameters():

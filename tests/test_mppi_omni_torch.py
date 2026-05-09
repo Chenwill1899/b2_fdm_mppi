@@ -223,8 +223,56 @@ def test_nominal_torch_batch_cost_matches_numpy_with_local_costmap():
         "data": data.reshape(-1),
         "weight": 20.0,
         "power": 2.0,
-        "unknown_cost": 100.0,
+        "unknown_cost": 0.0,
         "max_cost": 100.0,
+    }
+    state = np.zeros(6, dtype=np.float32)
+    goal = np.zeros(6, dtype=np.float32)
+    obstacles = np.empty((0, 7), dtype=np.float32)
+
+    torch_costs = torch_controller.trajectory_cost_batch(state, controls, goal, obstacles, costmap=costmap)
+    numpy_costs = numpy_controller.trajectory_cost_batch(state, controls, goal, obstacles, costmap=costmap)
+
+    assert torch_costs == pytest.approx(numpy_costs, abs=1e-5)
+    assert torch_costs[0] > torch_costs[1]
+
+
+def test_nominal_torch_batch_cost_matches_numpy_with_footprint_costmap():
+    shared = {
+        "goal_xy_weight": 0.0,
+        "yaw_weight": 0.0,
+        "control_weight": 0.0,
+        "smooth_weight": 0.0,
+        "accel_weight": 0.0,
+        "lateral_weight": 0.0,
+        "yaw_rate_weight": 0.0,
+        "jerk_weight": 0.0,
+        "max_ax": 1000.0,
+        "max_ay": 1000.0,
+        "velocity_lag_beta": 0.0,
+    }
+    torch_controller = make_torch_controller(**shared)
+    numpy_controller = make_numpy_controller(**shared)
+    controls = np.zeros((2, torch_controller.horizon_steps, 3), dtype=np.float32)
+    controls[:, :, 0] = 1.0
+    controls[1, :, 1] = -0.5
+    data = np.zeros((7, 8), dtype=np.float32)
+    data[5, :] = 100.0
+    costmap = {
+        "enabled": True,
+        "origin": np.array([0.0, -0.3], dtype=np.float32),
+        "resolution": 0.1,
+        "width": 8,
+        "height": 7,
+        "data": data.reshape(-1),
+        "weight": 10.0,
+        "power": 1.0,
+        "unknown_cost": 0.0,
+        "max_cost": 100.0,
+        "footprint_enabled": True,
+        "footprint_radius": 0.25,
+        "footprint_safety_margin": 0.0,
+        "footprint_sample_count": 16,
     }
     state = np.zeros(6, dtype=np.float32)
     goal = np.zeros(6, dtype=np.float32)

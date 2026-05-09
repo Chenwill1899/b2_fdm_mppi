@@ -28,6 +28,8 @@ def validate_config(config: dict[str, Any]) -> None:
     state_dim = int(config["mppi"].get("state_dim", 0))
     control_dim = int(config["mppi"].get("control_dim", 0))
     goal = config["simulation"].get("goal")
+    if goal is not None and _mujoco_closed_loop_profile(config):
+        raise ValueError("MuJoCo closed-loop profiles must use RViz /move_base_simple/goal, not simulation.goal")
     if goal is None and (_external_path_only(config) or _runtime_goal_required(config)):
         pass
     else:
@@ -71,3 +73,7 @@ def _external_path_only(config: dict[str, Any]) -> bool:
 def _runtime_goal_required(config: dict[str, Any]) -> bool:
     goal_topic = config.get("goal_topic", {})
     return bool(goal_topic.get("enabled", False)) and bool(goal_topic.get("required", False))
+
+
+def _mujoco_closed_loop_profile(config: dict[str, Any]) -> bool:
+    return "mujoco" in config

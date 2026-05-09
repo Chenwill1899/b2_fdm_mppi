@@ -1,4 +1,5 @@
 # MuJoCo closed-loop with Geomapping local_costmap.
+# Goal is set via RViz "2D Goal Pose" (/move_base_simple/goal).
 
 experiment:
   name: mujoco_test_obstacles_localmap
@@ -19,15 +20,15 @@ mujoco:
 simulation:
   disable_goal_termination: false
   max_steps: 900
-  goal: [18.0, 0.0, 0.0, 0.0, 0.0, 0.0]
   minimum_distance: 0.5
 
 external_path:
   enabled: false
 
 goal_topic:
-  enabled: false
-  required: false
+  enabled: true
+  required: true
+  topic: /move_base_simple/goal
 
 global_path:
   enabled: false

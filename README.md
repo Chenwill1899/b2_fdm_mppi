@@ -35,7 +35,8 @@
 - `configs/dataset.yaml`: 小规模 oracle dataset 采集，默认关闭 plot/GIF 副产物。
 - `configs/benchmark.yaml`: learned-FDM closed-loop benchmark 基础配置。
 - `configs/experiment.yaml`: 推荐的仿真工作台 profile；在一份 YAML 里定义场景、controller、learned model 和可视化。
-- `configs/mujoco_test_obstacles_localmap.yaml`: **MuJoCo + Geomapping local_costmap** 闭环配置。
+- `configs/mujoco_scout.yaml`: **MuJoCo + Geomapping local_costmap** 闭环主配置，默认 nominal MPPI + RViz goal + Scout 速度/footprint 调参。
+- `configs/mujoco_test_obstacles_localmap.yaml`: MuJoCo + Geomapping local_costmap smoke/test 配置。
 
 旧 `config/*.yaml` 仍可用于复现实验和兼容测试，但主流程不再依赖这些路径。
 
@@ -251,7 +252,7 @@ cd /home/mexxiie/prj/py-mppi
 export LD_LIBRARY_PATH="/home/mexxiie/prj/Geomapping_ros2/install/elevation_msgs/lib:$LD_LIBRARY_PATH"
 export PYTHONPATH="/home/mexxiie/prj/Geomapping_ros2/install/elevation_msgs/local/lib/python3.10/dist-packages:$PYTHONPATH"
 /usr/bin/python3 tools/fdm_mppi.py mujoco-closed-loop \
-  --profile configs/mujoco_test_obstacles_localmap.yaml \
+  --profile configs/mujoco_scout.yaml \
   --controller nominal_numpy
 ```
 

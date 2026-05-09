@@ -55,6 +55,7 @@ TOP_LEVEL_CONFIG_GROUPS = {
     "local_goal",
     "final_controller",
     "command_filter",
+    "motion_policy",
     "rviz",
     "scenario",
 }

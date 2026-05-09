@@ -43,11 +43,12 @@ external_path:
 
 final_controller:
   enabled: true
+  disable_when_local_costmap: true
   trigger_distance: 1.2
   rotate_threshold: 0.45
   xy_gain: 0.45
-  lateral_gain: 0.12
-  max_vy: 0.03
+  lateral_gain: 0.10
+  max_vy: 0.10
   heading_gain: 0.75
   final_yaw_gain: 0.20
   wz_gain: 1.1
@@ -58,12 +59,32 @@ local_costmap:
   topic: /msg_local_reward
   layer: reward_cost
   stale_timeout: 1.0
-  cost_weight: 3.0
-  cost_power: 3.0
+  cost_weight: 12.0
+  cost_power: 2.0
   unknown_cost: 100.0
   max_cost: 100.0
   unknown_clear_radius: 1.0
   unknown_clear_value: 0.0
+  ground_artifact_filter:
+    enabled: true
+    min_cost: 20.0
+    max_height_abs: 0.08
+    max_roughness: 0.08
+    max_slope: 0.08
+    occupied_threshold: 50
+    clear_value: 0.0
+  footprint:
+    enabled: true
+    radius: 0.55
+    safety_margin: 0.30
+    sample_count: 32
+
+motion_policy:
+  allow_reverse: false
+  rotate_then_translate:
+    enabled: true
+    enter_angle_deg: 120.0
+    exit_angle_deg: 60.0
 
 goal_topic:
   enabled: true
@@ -78,11 +99,13 @@ local_goal:
 
 command_filter:
   enabled: true
-  alpha: 0.18
-  max_ax: 0.9
-  max_ay: 0.35
-  max_awz: 1.8
-  lateral_scale: 0.35
+  alpha: 0.34
+  max_ax: 1.0
+  max_ay: 0.30
+  max_awz: 0.9
+  lateral_scale: 1.0
+  lateral_deadband: 0.03
+  yaw_deadband: 0.03
 
 scenario:
   world_mode: nominal
@@ -108,32 +131,35 @@ scenario:
 
 robot:
   max_vx: 1.0
-  max_vy: 0.15
+  max_vy: 0.30
   max_wz: 1.2
-  max_ax: 0.8
+  max_ax: 1.0
   max_ay: 0.35
-  max_awz: 2.0
-  velocity_lag_beta: 0.20
-  # Scout footprint approximation for obstacle costs.
-  # The MuJoCo model has wheel centers at y=+/-0.29153 m; keep this circular
-  # planner footprint close to the real differential-drive base instead of
-  # reusing the larger B2 default.
-  radius: 0.35
-  safety_dist: 0.10
+  max_awz: 1.2
+  velocity_lag_beta: 0.30
+  # Conservative circular footprint for the Scout mesh envelope.
+  radius: 0.55
+  safety_dist: 0.30
 
 mppi:
-  weights: [2.2, 2.2, 0.4, 0.0, 0.0, 0.0]
-  std_normal: [0.35, 0.05, 0.85]
-  num_trajectories: 768
+  weights: [2.4, 2.4, 0.35, 0.0, 0.0, 0.0]
+  std_normal: [0.42, 0.10, 0.30]
+  num_trajectories: 896
   draw_num_traj: 20
   obstacle_weight: 0.0
   obstacle_soft_weight: 0.0
   obstacle_influence_dist: 0.0
-  smooth_weight: 1.2
+  control_weight: 0.015
+  smooth_weight: 2.0
+  accel_weight: 0.45
   lateral_weight: 1.2
-  yaw_rate_weight: 0.03
-  goal_progress_weight: 18.0
-  heading_to_goal_weight: 0.15
+  yaw_rate_weight: 0.32
+  jerk_weight: 0.65
+  update_smoothing_alpha: [0.30, 0.78, 0.78]
+  goal_change_reset_distance: 0.75
+  goal_change_reset_yaw: 1.0
+  goal_progress_weight: 32.0
+  heading_to_goal_weight: 0.12
   heading_to_goal_min_distance: 0.6
   path_tracking_weight: 0.0
   path_tracking_tolerance: 0.30
@@ -174,4 +200,4 @@ rviz:
   history_path_topic: /fdm_mppi/history_path
   history_max_points: 3000
   robot_topic: /fdm_mppi/cube_robot
-  robot_scale: [0.7, 0.7, 0.35]
+  robot_scale: [0.93, 0.70, 0.35]

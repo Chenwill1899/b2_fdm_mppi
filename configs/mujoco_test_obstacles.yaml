@@ -1,5 +1,5 @@
 # Simple test profile for MuJoCo closed-loop with virtual obstacles.
-# No external dependencies (no local_costmap, no external_path, no goal_topic).
+# Goal is set via RViz "2D Goal Pose" (/move_base_simple/goal).
 
 experiment:
   name: mujoco_test_obstacles
@@ -20,15 +20,15 @@ mujoco:
 simulation:
   disable_goal_termination: false
   max_steps: 400
-  goal: [8.0, 0.0, 0.0, 0.0, 0.0, 0.0]
   minimum_distance: 0.5
 
 external_path:
   enabled: false
 
 goal_topic:
-  enabled: false
-  required: false
+  enabled: true
+  required: true
+  topic: /move_base_simple/goal
 
 global_path:
   enabled: false

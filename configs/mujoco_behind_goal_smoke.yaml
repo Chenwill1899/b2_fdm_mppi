@@ -1,0 +1,118 @@
+# MuJoCo + MPPI integration smoke profile for a goal 5 m behind the robot.
+#
+# This profile intentionally disables Geomapping local-costmap input so the
+# integration test isolates the ausim2 odom/cmd_vel/MPPI closed-loop path.
+
+experiment:
+  name: mujoco_behind_goal_smoke
+  base_config: configs/mujoco_external_path_base.yaml
+  output_root: results/mujoco_behind_goal_smoke
+  run_name: behind_goal_smoke
+  timestamp_suffix: false
+  overwrite: true
+
+mujoco:
+  drive_mode: omni_freejoint
+  odom_topic: /scout1/odom
+  cmd_vel_topic: /scout1/cmd_vel
+  odom_timeout: 2.0
+  startup_odom_timeout: 10.0
+
+simulation:
+  disable_goal_termination: false
+  max_steps: 320
+  minimum_distance: 0.65
+  goal_termination_distance: 0.65
+
+local_costmap:
+  enabled: false
+  required: false
+
+external_path:
+  enabled: false
+  stop_on_stale: false
+
+final_controller:
+  enabled: true
+  trigger_distance: 1.2
+  rotate_threshold: 0.45
+  xy_gain: 0.45
+  lateral_gain: 0.10
+  max_vy: 0.10
+  heading_gain: 0.75
+  final_yaw_gain: 0.55
+  wz_gain: 1.4
+
+goal_topic:
+  enabled: true
+  required: true
+  topic: /move_base_simple/goal
+
+motion_policy:
+  allow_reverse: false
+  rotate_then_translate:
+    enabled: true
+    enter_angle_deg: 120.0
+    exit_angle_deg: 60.0
+
+rviz:
+  enabled: false
+
+visualization:
+  plots: false
+  animation: false
+
+scenario:
+  world_mode: nominal
+  initial_state: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  minimum_distance: 0.5
+  max_steps: 320
+  obstacles:
+    static_enabled: true
+    virtual: []
+  terrain:
+    enabled: false
+    goal_relief:
+      enabled: false
+
+robot:
+  max_vx: 1.0
+  max_vy: 0.30
+  max_wz: 1.2
+  max_ax: 1.0
+  max_ay: 0.35
+  max_awz: 1.2
+  velocity_lag_beta: 0.30
+  radius: 0.55
+  safety_dist: 0.15
+
+mppi:
+  num_trajectories: 640
+  draw_num_traj: 0
+  std_normal: [0.42, 0.10, 0.30]
+  control_weight: 0.015
+  smooth_weight: 2.0
+  accel_weight: 0.45
+  jerk_weight: 0.65
+  lateral_weight: 1.2
+  yaw_rate_weight: 0.32
+  update_smoothing_alpha: [0.30, 0.78, 0.78]
+  goal_change_reset_distance: 0.75
+  goal_change_reset_yaw: 1.0
+  goal_progress_weight: 32.0
+  heading_to_goal_weight: 0.12
+
+command_filter:
+  enabled: true
+  alpha: 0.34
+  max_ax: 1.0
+  max_ay: 0.30
+  max_awz: 0.9
+  lateral_scale: 1.0
+  lateral_deadband: 0.03
+  yaw_deadband: 0.03
+
+controllers:
+  - name: nominal_numpy
+    method: nominal
+    backend: numpy

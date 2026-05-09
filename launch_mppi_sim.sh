@@ -41,7 +41,7 @@ trap cleanup_all INT TERM EXIT
 
 echo "[1/3] Starting ausim2 MuJoCo (headless)..."
 cd "${AUSIM_DIR}"
-./em_run.sh --headless > "${LOG_DIR}/ausim2.log" 2>&1 &
+./em_run.sh --robot-config "${AUSIM_DIR}/ground_vehicle/cfg/robot/scout_v2_mppi_freejoint_config.yaml" --headless > "${LOG_DIR}/ausim2.log" 2>&1 &
 AUSIM_PID=$!
 sleep 8
 echo "[1/3] ausim2 PID: ${AUSIM_PID}"
@@ -84,7 +84,7 @@ cd "${PYMPP_DIR}"
 export LD_LIBRARY_PATH="${GEO_DIR}/install/elevation_msgs/lib:${LD_LIBRARY_PATH}"
 export PYTHONPATH="${GEO_DIR}/install/elevation_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH}"
 /usr/bin/python3 tools/fdm_mppi.py mujoco-closed-loop \
-    --profile configs/mujoco_test_obstacles_localmap.yaml \
+    --profile configs/mujoco_scout.yaml \
     --controller nominal_numpy > "${LOG_DIR}/mppi.log" 2>&1 &
 MPPI_PID=$!
 echo "[3/3] MPPI PID: ${MPPI_PID}"
