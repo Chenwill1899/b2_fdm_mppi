@@ -1,0 +1,61 @@
+# High-Level FDM experiment profile.
+#
+# Read by `fdm_mppi high-fdm synth/train` via --config. Every section is
+# optional; any missing field falls back to the dataclass default in
+# b2_fdm_mppi.high_level_fdm.*.
+
+synthetic:
+  dt: 0.1
+  max_vx: 0.8
+  max_vy: 0.4
+  max_wz: 1.2
+  robot_radius: 0.3
+  history_length: 8
+  horizon: 16
+  map_channels: [occupancy, traversability_risk, height_mean, height_std]
+  map_height: 48
+  map_width: 48
+  map_resolution: 0.1
+  cmd_low_pass_tau: 0.35
+  cmd_target_change_prob: 0.08
+  high_cost_threshold: 0.35
+  stuck_velocity_ratio: 0.25
+  stuck_speed_floor: 0.05
+  out_of_map_margin: 0.05
+  terrain_noise_enabled: true
+  residual_world_enabled: true
+  obstacles:
+    num_range: [2, 6]
+    radius_range: [0.25, 0.55]
+    spawn_radius_range: [0.6, 3.5]
+    min_obstacle_gap: 0.2
+
+trainer:
+  epochs: 30
+  batch_size: 64
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-5
+  min_learning_rate: 1.0e-5
+  grad_clip: 1.0
+  num_workers: 0
+  seed: 123
+  device: cpu
+  amp: false
+  log_every: 50
+
+loss:
+  lambda_pose: 1.0
+  lambda_risk: 1.0
+  lambda_smooth: 0.0
+  huber_delta: 1.0
+  step_weight_decay: 0.98
+  # risk_pos_weight: [1.0, 1.0, 1.0, 2.0]  # optionally up-weight untraversable
+
+model:
+  d_hist: 64
+  d_map: 64
+  d_ctx: 128
+  d_hidden: 128
+  pose_head_hidden: 64
+  risk_head_hidden: 64
+  dropout: 0.0

@@ -290,3 +290,56 @@ Dataset 输出通常包含：
 ```bash
 /usr/bin/python3 -m pytest -q
 ```
+
+
+
+## 高层 FDM（High-Level FDM）
+
+一个新的 learned 前向动力学模型，输入历史状态 + 局部地图 + 未来
+velocity command 序列，预测相对轨迹和逐步风险，作为 MPPI 的 learned
+rollout 和 learned constraint。设计文档见
+[`docs/high_level_fdm_design.md`](docs/high_level_fdm_design.md)。
+
+子包：`b2_fdm_mppi/high_level_fdm/`。典型命令：
+
+```bash
+# 1) 合成一小份训练集
+/usr/bin/python3 -m b2_fdm_mppi.cli high-fdm synth \
+  --config configs/high_level_fdm.yaml \
+  --output datasets/high_level_fdm_debug \
+  --train-samples 128 --val-samples 32 --test-samples 32 --base-seed 123
+
+# 2) 训练
+/usr/bin/python3 -m b2_fdm_mppi.cli high-fdm train \
+  --dataset datasets/high_level_fdm_debug \
+  --output results/high_level_fdm/debug \
+  --config configs/high_level_fdm.yaml \
+  --epochs 30 --device cpu
+
+# 3) 评估
+/usr/bin/python3 -m b2_fdm_mppi.cli high-fdm eval \
+  --dataset datasets/high_level_fdm_debug \
+  --checkpoint results/high_level_fdm/debug/best_model.pt \
+  --output results/high_level_fdm/debug/eval --split test
+
+# 4) MPPI rollout + cost 契约自检
+/usr/bin/python3 -m b2_fdm_mppi.cli high-fdm rollout-smoke \
+  --dataset datasets/high_level_fdm_debug \
+  --checkpoint results/high_level_fdm/debug/best_model.pt \
+  --output results/high_level_fdm/debug/rollout_smoke.json
+```
+
+一键端到端自证：
+
+```bash
+scripts/selfproof_high_level_fdm.sh results/high_level_fdm/selfproof
+```
+
+脚本会生成 `selfproof_summary.json`，包含五项通过/失败判定：
+`val_beats_zero_residual_baseline`、`test_beats_zero_residual_baseline`、
+`val_risk_brier_in_unit_interval`、`rollout_shapes_match_mppi_contract`、
+`checkpoint_artifacts_exist`。任意一项失败会让脚本以非零状态退出。
+
+> 说明：本分支只实现 learning 侧和 MPPI 集成契约。`ausim2` MuJoCo 场景
+> 和 `traversability_mapping` 的真实地图输入暂时没有上传，`synthetic.py`
+> 里的合成数据只是占位替身，用来跑通训练/评估/rollout 三个阶段。
